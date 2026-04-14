@@ -14,7 +14,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     @Published var reminderMinutes: Int {
         didSet {
             defaults.set(reminderMinutes, forKey: Keys.reminderMinutes)
-            resetReminder()
+            resetReminder(recordWalk: false)
         }
     }
 
@@ -38,6 +38,8 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
     @Published private(set) var reminderStatusMessage: String?
     @Published private(set) var isReminderStatusError = false
+
+    let walkHistory: WalkHistoryStore
 
     private enum Keys {
         static let reminderMinutes = "reminderMinutes"
@@ -64,6 +66,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         self.lastWalkAt = defaults.object(forKey: Keys.lastWalkAt) as? Date ?? .now
         self.isPaused = defaults.bool(forKey: Keys.isPaused)
         self.pausedRemainingSeconds = min(storedPausedSeconds, maxPausedSeconds)
+        self.walkHistory = WalkHistoryStore(defaults: defaults)
 
         super.init()
 
@@ -95,7 +98,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         case .countingDown, .paused:
             countdownLabel
         case .overdue:
-            "Walk"
+            "Move"
         }
     }
 
@@ -115,7 +118,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         case .countingDown, .paused:
             countdownLabel
         case .overdue:
-            "Break"
+            "MOVE"
         }
     }
 
@@ -126,15 +129,18 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         case .paused:
             "paused"
         case .overdue:
-            "time to stretch"
+            "muscles atrophy, circulation stops, you know..."
         }
     }
 
-    func resetReminder() {
+    func resetReminder(recordWalk: Bool = true) {
         pausedRemainingSeconds = reminderMinutes * 60
         lastWalkAt = .now
         lastReminderAt = nil
         setReminderStatus(nil)
+        if recordWalk {
+            walkHistory.recordWalk()
+        }
     }
 
     func togglePause() {

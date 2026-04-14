@@ -2,21 +2,49 @@ import SwiftUI
 
 struct MenuBarContentView: View {
     @ObservedObject var appModel: AppModel
+    @State private var selectedTab: Tab? = .main
+
+    private enum Tab: Hashable {
+        case main
+        case calendar
+    }
 
     private enum Layout {
-        static let width: CGFloat = 260
+        static let contentWidth: CGFloat = 220
         static let contentPadding: CGFloat = 20
         static let sectionSpacing: CGFloat = 20
     }
 
     var body: some View {
+        NavigationSplitView {
+            List(selection: $selectedTab) {
+                Label("Timer", systemImage: "timer")
+                    .tag(Tab.main)
+                Label("History", systemImage: "calendar")
+                    .tag(Tab.calendar)
+            }
+            .labelStyle(.iconOnly)
+            .navigationSplitViewColumnWidth(50)
+        } detail: {
+            switch selectedTab {
+            case .main, nil:
+                mainContent
+            case .calendar:
+                CalendarView(historyStore: appModel.walkHistory)
+                    .frame(width: Layout.contentWidth)
+            }
+        }
+        .navigationSplitViewColumnWidth(Layout.contentWidth)
+    }
+
+    private var mainContent: some View {
         VStack(spacing: Layout.sectionSpacing) {
             statusSection
             intervalSection
             actionsSection
         }
         .padding(Layout.contentPadding)
-        .frame(width: Layout.width)
+        .frame(width: Layout.contentWidth)
     }
 
     private var statusSection: some View {
@@ -87,7 +115,7 @@ struct MenuBarContentView: View {
         }
 
         if appModel.isOverdue {
-            return .orange
+            return .red
         }
 
         return .primary
