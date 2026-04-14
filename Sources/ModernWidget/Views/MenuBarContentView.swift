@@ -3,16 +3,24 @@ import SwiftUI
 struct MenuBarContentView: View {
     @ObservedObject var appModel: AppModel
 
+    private enum Layout {
+        static let width: CGFloat = 320
+        static let contentPadding: CGFloat = 22
+        static let sectionSpacing: CGFloat = 12
+        static let buttonSpacing: CGFloat = 8
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             breakSection
         }
-        .padding(16)
-        .frame(width: 360, height: 240)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Layout.contentPadding)
+        .frame(width: Layout.width, alignment: .topLeading)
     }
 
     private var breakSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             Text("Off-chair reminder")
                 .font(.headline)
 
@@ -30,7 +38,7 @@ struct MenuBarContentView: View {
                     .labelsHidden()
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: Layout.buttonSpacing) {
                 Button("Reset timer") {
                     appModel.resetReminder()
                 }
