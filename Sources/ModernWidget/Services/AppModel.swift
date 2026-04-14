@@ -37,7 +37,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     @Published private(set) var reminderStatusMessage: String?
-    @Published private(set) var isReminderStatusError = false
 
     let walkHistory: WalkHistoryStore
 
@@ -243,7 +242,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
         do {
             try await addNotificationRequest(request)
-            setReminderStatus("notification queued")
         } catch {
             applyNotificationError(error)
         }
@@ -278,7 +276,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
             do {
                 let granted = try await requestAuthorization()
                 if !granted {
-                    setReminderStatus("notifications blocked in System Settings", isError: true)
+                    setReminderStatus("notifications blocked in System Settings")
                 }
                 return granted
             } catch {
@@ -286,10 +284,10 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
                 return false
             }
         case .denied:
-            setReminderStatus("notifications blocked in System Settings", isError: true)
+            setReminderStatus("notifications blocked in System Settings")
             return false
         @unknown default:
-            setReminderStatus("unknown notification permission state", isError: true)
+            setReminderStatus("unknown notification permission state")
             return false
         }
     }
@@ -306,16 +304,15 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         let nsError = error as NSError
 
         if nsError.domain == UNErrorDomain, nsError.code == 1 {
-            setReminderStatus("notifications blocked in System Settings", isError: true)
+            setReminderStatus("notifications blocked in System Settings")
             return
         }
 
-        setReminderStatus(error.localizedDescription, isError: true)
+        setReminderStatus(error.localizedDescription)
     }
 
-    private func setReminderStatus(_ message: String?, isError: Bool = false) {
+    private func setReminderStatus(_ message: String?) {
         reminderStatusMessage = message
-        isReminderStatusError = message == nil ? false : isError
     }
 
     private func addNotificationRequest(_ request: UNNotificationRequest) async throws {

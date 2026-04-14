@@ -59,11 +59,12 @@ struct MenuBarContentView: View {
             Text(appModel.statusMessage)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
             if let reminderStatusMessage = appModel.reminderStatusMessage {
                 Text(reminderStatusMessage)
                     .font(.caption)
-                    .foregroundStyle(appModel.isReminderStatusError ? .red : .secondary)
+                    .foregroundStyle(.red)
             }
 
             Text("reset \(appModel.lastWalkAt.formatted(date: .omitted, time: .shortened))")
