@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import UserNotifications
 
@@ -11,23 +10,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
             }
 
             defaults.set(reminderMinutes, forKey: Keys.reminderMinutes)
-        }
-    }
-
-    @Published var quotaURLString: String {
-        didSet {
-            defaults.set(quotaURLString, forKey: Keys.quotaURLString)
-
-            if normalizedQuotaURL(from: quotaURLString) != normalizedQuotaURL(from: oldValue) {
-                resetQuotaState()
-                cancelQuotaFetch()
-            }
-        }
-    }
-
-    @Published var quotaRefreshMinutes: Int {
-        didSet {
-            defaults.set(quotaRefreshMinutes, forKey: Keys.quotaRefreshMinutes)
         }
     }
 
@@ -49,41 +31,32 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
     }
 
-    @Published private(set) var quotaSnapshot: QuotaSnapshot?
-    @Published private(set) var quotaError: String?
-    @Published private(set) var isFetchingQuota = false
     @Published private(set) var notificationPermissionStatus = "checking"
     @Published private(set) var reminderStatusMessage: String?
     @Published private(set) var isReminderStatusError = false
 
     private enum Keys {
         static let reminderMinutes = "reminderMinutes"
-        static let quotaURLString = "quotaURLString"
-        static let quotaRefreshMinutes = "quotaRefreshMinutes"
         static let lastWalkAt = "lastWalkAt"
         static let isPaused = "isPaused"
         static let pausedRemainingSeconds = "pausedRemainingSeconds"
     }
 
     private let defaults: UserDefaults
-    private let quotaService = QuotaService()
     private let notificationCenter = UNUserNotificationCenter.current()
     private var loopTask: Task<Void, Never>?
-    private var quotaFetchTask: Task<Void, Never>?
-    private var quotaFetchTaskID: UUID?
-    private var lastQuotaFetchAt: Date?
     private var lastReminderAt: Date?
     private var lastPublishedMenuBarTitle: String?
 
     init(defaults: UserDefaults = .standard) {
+        let storedReminderMinutes = max(5, defaults.object(forKey: Keys.reminderMinutes) as? Int ?? 50)
+
         self.defaults = defaults
-        self.reminderMinutes = max(5, defaults.object(forKey: Keys.reminderMinutes) as? Int ?? 50)
-        self.quotaURLString = defaults.string(forKey: Keys.quotaURLString) ?? ""
-        self.quotaRefreshMinutes = max(1, defaults.object(forKey: Keys.quotaRefreshMinutes) as? Int ?? 15)
+        self.reminderMinutes = storedReminderMinutes
         self.lastWalkAt = defaults.object(forKey: Keys.lastWalkAt) as? Date ?? .now
         self.isPaused = defaults.bool(forKey: Keys.isPaused)
         self.pausedRemainingSeconds = defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int
-            ?? max(5, defaults.object(forKey: Keys.reminderMinutes) as? Int ?? 50) * 60
+            ?? storedReminderMinutes * 60
 
         super.init()
 
@@ -95,7 +68,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
     deinit {
         loopTask?.cancel()
-        quotaFetchTask?.cancel()
     }
 
     var menuBarTitle: String {
@@ -123,45 +95,25 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
     var breakSummary: String {
         if isPaused {
-            return "paused at \(countdownLabel)"
+            return "chair break paused at \(countdownLabel)"
         }
 
         if isOverdue {
-            return "time to get up and move"
+            return "get off chair, move a bit"
         }
 
-        return "next reminder in \(countdownLabel)"
+        return "off chair in \(countdownLabel)"
     }
 
     var lastWalkSummary: String {
-        "last reset \(lastWalkAt.formatted(date: .omitted, time: .shortened))"
+        "last chair break \(lastWalkAt.formatted(date: .omitted, time: .shortened))"
     }
 
     var pauseButtonTitle: String {
         isPaused ? "Resume" : "Pause"
     }
 
-    var quotaSummary: String {
-        if isFetchingQuota {
-            return "fetching quota..."
-        }
-
-        if let quotaSnapshot {
-            return "updated \(quotaSnapshot.fetchedAt.formatted(date: .omitted, time: .shortened))"
-        }
-
-        if quotaError != nil {
-            return "last fetch failed"
-        }
-
-        return "remote JSON not configured"
-    }
-
-    var hasValidQuotaURL: Bool {
-        normalizedQuotaURL != nil
-    }
-
-    func markWalkCompleted() {
+    func resetReminder() {
         isPaused = false
         pausedRemainingSeconds = reminderMinutes * 60
         lastWalkAt = .now
@@ -179,40 +131,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     func sendTestReminder() {
-        enqueueReminderNotification(body: "stretch, walk, shake brain loose.")
-    }
-
-    func openQuotaURL() {
-        guard let url = normalizedQuotaURL else { return }
-        NSWorkspace.shared.open(url)
-    }
-
-    func refreshQuotaNow() {
-        queueQuotaRefresh(force: true)
-    }
-
-    private var normalizedQuotaURL: URL? {
-        normalizedQuotaURL(from: quotaURLString)
-    }
-
-    private func normalizedQuotaURL(from string: String) -> URL? {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard
-            !trimmed.isEmpty,
-            let url = URL(string: trimmed),
-            let scheme = url.scheme?.lowercased(),
-            let host = url.host,
-            !host.isEmpty
-        else {
-            return nil
-        }
-
-        guard scheme == "https" else {
-            return nil
-        }
-
-        return url
+        enqueueReminderNotification(body: "get off chair, stretch, walk a minute.")
     }
 
     private var activeSecondsRemaining: Int {
@@ -247,17 +166,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         if isOverdue {
             maybeSendReminder()
         }
-
-        if shouldAutoRefreshQuota {
-            queueQuotaRefresh()
-        }
-    }
-
-    private var shouldAutoRefreshQuota: Bool {
-        guard normalizedQuotaURL != nil, !isFetchingQuota else { return false }
-        guard let lastQuotaFetchAt else { return true }
-
-        return Date().timeIntervalSince(lastQuotaFetchAt) >= TimeInterval(quotaRefreshMinutes * 60)
     }
 
     private func maybeSendReminder() {
@@ -269,64 +177,13 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
 
         lastReminderAt = now
-        enqueueReminderNotification(body: "time for a short walk.")
+        enqueueReminderNotification(body: "get off chair. short walk now.")
     }
 
     private func refreshNotificationState() {
         Task { @MainActor [weak self] in
             guard let self else { return }
             await refreshNotificationSettings()
-        }
-    }
-
-    private func queueQuotaRefresh(force: Bool = false) {
-        guard force || normalizedQuotaURL != nil else {
-            resetQuotaState()
-            cancelQuotaFetch()
-            return
-        }
-
-        guard quotaFetchTask == nil else { return }
-
-        let taskID = UUID()
-        quotaFetchTaskID = taskID
-        quotaFetchTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer {
-                if quotaFetchTaskID == taskID {
-                    quotaFetchTask = nil
-                    quotaFetchTaskID = nil
-                }
-            }
-
-            await fetchQuota()
-        }
-    }
-
-    private func fetchQuota() async {
-        guard let url = normalizedQuotaURL else {
-            resetQuotaState()
-            return
-        }
-
-        isFetchingQuota = true
-        defer { isFetchingQuota = false }
-
-        do {
-            let snapshot = try await quotaService.fetch(from: url)
-
-            guard !Task.isCancelled, normalizedQuotaURL == url else { return }
-
-            quotaSnapshot = snapshot
-            quotaError = nil
-            lastQuotaFetchAt = .now
-        } catch is CancellationError {
-            return
-        } catch {
-            guard !Task.isCancelled, normalizedQuotaURL == url else { return }
-
-            quotaError = error.localizedDescription
-            lastQuotaFetchAt = .now
         }
     }
 
@@ -351,12 +208,12 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Walk break"
+        content.title = "Off-chair break"
         content.body = body
         content.sound = .default
 
         let request = UNNotificationRequest(
-            identifier: "walk-break-\(UUID().uuidString)",
+            identifier: "off-chair-break-\(UUID().uuidString)",
             content: content,
             trigger: nil
         )
@@ -461,18 +318,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
         notificationPermissionStatus = "error"
         setReminderStatus(error.localizedDescription, isError: true)
-    }
-
-    private func resetQuotaState() {
-        quotaSnapshot = nil
-        quotaError = nil
-        lastQuotaFetchAt = nil
-    }
-
-    private func cancelQuotaFetch() {
-        quotaFetchTask?.cancel()
-        quotaFetchTask = nil
-        quotaFetchTaskID = nil
     }
 
     private func setReminderStatus(_ message: String?, isError: Bool = false) {
