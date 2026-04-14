@@ -3,13 +3,18 @@ import UserNotifications
 
 @MainActor
 final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+    private enum ReminderDisplayState {
+        case countingDown
+        case paused
+        case overdue
+    }
+
+    private static let reminderMinutePresets = [60, 120]
+
     @Published var reminderMinutes: Int {
         didSet {
-            if isPaused {
-                pausedRemainingSeconds = min(pausedRemainingSeconds, reminderMinutes * 60)
-            }
-
             defaults.set(reminderMinutes, forKey: Keys.reminderMinutes)
+            resetReminder()
         }
     }
 
@@ -31,7 +36,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
     }
 
-    @Published private(set) var notificationPermissionStatus = "checking"
     @Published private(set) var reminderStatusMessage: String?
     @Published private(set) var isReminderStatusError = false
 
@@ -49,20 +53,21 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     private var lastPublishedMenuBarTitle: String?
 
     init(defaults: UserDefaults = .standard) {
-        let storedReminderMinutes = max(5, defaults.object(forKey: Keys.reminderMinutes) as? Int ?? 50)
+        let storedReminderMinutes = Self.normalizedReminderMinutes(
+            defaults.object(forKey: Keys.reminderMinutes) as? Int ?? Self.reminderMinutePresets[0]
+        )
+        let maxPausedSeconds = storedReminderMinutes * 60
+        let storedPausedSeconds = defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? maxPausedSeconds
 
         self.defaults = defaults
         self.reminderMinutes = storedReminderMinutes
         self.lastWalkAt = defaults.object(forKey: Keys.lastWalkAt) as? Date ?? .now
         self.isPaused = defaults.bool(forKey: Keys.isPaused)
-        self.pausedRemainingSeconds = defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int
-            ?? storedReminderMinutes * 60
+        self.pausedRemainingSeconds = min(storedPausedSeconds, maxPausedSeconds)
 
         super.init()
 
         notificationCenter.delegate = self
-
-        refreshNotificationState()
         startLoop()
     }
 
@@ -70,20 +75,12 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         loopTask?.cancel()
     }
 
-    var menuBarTitle: String {
-        if isPaused {
-            return "|| \(countdownLabel)"
-        }
-
-        if isOverdue {
-            return "Walk"
-        }
-
-        return countdownLabel
-    }
-
     var isOverdue: Bool {
         !isPaused && displayedSecondsRemaining == 0
+    }
+
+    var reminderMinuteOptions: [Int] {
+        Self.reminderMinutePresets
     }
 
     var countdownLabel: String {
@@ -93,28 +90,47 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         return String(format: "%02d:%02d", minutes, seconds)
     }
 
-    var breakSummary: String {
-        if isPaused {
-            return "chair break paused at \(countdownLabel)"
+    var menuBarLabelText: String {
+        switch reminderDisplayState {
+        case .countingDown, .paused:
+            countdownLabel
+        case .overdue:
+            "Walk"
         }
-
-        if isOverdue {
-            return "get off chair, move a bit"
-        }
-
-        return "off chair in \(countdownLabel)"
     }
 
-    var lastWalkSummary: String {
-        "last chair break \(lastWalkAt.formatted(date: .omitted, time: .shortened))"
+    var menuBarSymbolName: String {
+        switch reminderDisplayState {
+        case .countingDown:
+            "timer"
+        case .paused:
+            "pause.fill"
+        case .overdue:
+            "figure.walk"
+        }
     }
 
-    var pauseButtonTitle: String {
-        isPaused ? "Resume" : "Pause"
+    var statusTitle: String {
+        switch reminderDisplayState {
+        case .countingDown, .paused:
+            countdownLabel
+        case .overdue:
+            "Break"
+        }
+    }
+
+    var statusMessage: String {
+        switch reminderDisplayState {
+        case .countingDown:
+            "until next break"
+        case .paused:
+            "paused"
+        case .overdue:
+            "time to stretch"
+        }
     }
 
     func resetReminder() {
-        isPaused = false
         pausedRemainingSeconds = reminderMinutes * 60
         lastWalkAt = .now
         lastReminderAt = nil
@@ -130,10 +146,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         pauseReminder()
     }
 
-    func sendTestReminder() {
-        enqueueReminderNotification(body: "get off chair, stretch, walk a minute.")
-    }
-
     private var activeSecondsRemaining: Int {
         let interval = TimeInterval(reminderMinutes * 60)
         let elapsed = Date().timeIntervalSince(lastWalkAt)
@@ -142,6 +154,18 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
     private var displayedSecondsRemaining: Int {
         isPaused ? pausedRemainingSeconds : activeSecondsRemaining
+    }
+
+    private var reminderDisplayState: ReminderDisplayState {
+        if isPaused {
+            return .paused
+        }
+
+        if isOverdue {
+            return .overdue
+        }
+
+        return .countingDown
     }
 
     private func startLoop() {
@@ -156,7 +180,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     private func tick() async {
-        let currentMenuBarTitle = menuBarTitle
+        let currentMenuBarTitle = "\(menuBarSymbolName) \(menuBarLabelText)"
 
         if currentMenuBarTitle != lastPublishedMenuBarTitle {
             lastPublishedMenuBarTitle = currentMenuBarTitle
@@ -180,17 +204,10 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         enqueueReminderNotification(body: "get off chair. short walk now.")
     }
 
-    private func refreshNotificationState() {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            await refreshNotificationSettings()
-        }
-    }
-
     private func pauseReminder() {
         pausedRemainingSeconds = activeSecondsRemaining
         isPaused = true
-        setReminderStatus("timer paused")
+        setReminderStatus(nil)
     }
 
     private func resumeReminder() {
@@ -199,7 +216,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
         isPaused = false
         lastWalkAt = Date().addingTimeInterval(TimeInterval(-elapsedBeforePause))
-        setReminderStatus("timer resumed")
+        setReminderStatus(nil)
     }
 
     private func postReminderNotification(body: String) async {
@@ -232,11 +249,6 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
     }
 
-    private func refreshNotificationSettings() async {
-        let authorizationStatus = await notificationAuthorizationStatus()
-        notificationPermissionStatus = permissionLabel(for: authorizationStatus)
-    }
-
     private func requestAuthorization() async throws -> Bool {
         try await withCheckedThrowingContinuation { continuation in
             notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -255,28 +267,22 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
         switch authorizationStatus {
         case .authorized, .provisional, .ephemeral:
-            notificationPermissionStatus = permissionLabel(for: authorizationStatus)
             return true
         case .notDetermined:
             do {
                 let granted = try await requestAuthorization()
-                await refreshNotificationSettings()
-
                 if !granted {
                     setReminderStatus("notifications blocked in System Settings", isError: true)
                 }
-
                 return granted
             } catch {
                 applyNotificationError(error)
                 return false
             }
         case .denied:
-            notificationPermissionStatus = "denied"
             setReminderStatus("notifications blocked in System Settings", isError: true)
             return false
         @unknown default:
-            notificationPermissionStatus = "unknown"
             setReminderStatus("unknown notification permission state", isError: true)
             return false
         }
@@ -290,33 +296,14 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
     }
 
-    private func permissionLabel(for status: UNAuthorizationStatus) -> String {
-        switch status {
-        case .authorized:
-            "allowed"
-        case .provisional:
-            "provisional"
-        case .ephemeral:
-            "ephemeral"
-        case .denied:
-            "denied"
-        case .notDetermined:
-            "not asked"
-        @unknown default:
-            "unknown"
-        }
-    }
-
     private func applyNotificationError(_ error: Error) {
         let nsError = error as NSError
 
         if nsError.domain == UNErrorDomain, nsError.code == 1 {
-            notificationPermissionStatus = "denied"
             setReminderStatus("notifications blocked in System Settings", isError: true)
             return
         }
 
-        notificationPermissionStatus = "error"
         setReminderStatus(error.localizedDescription, isError: true)
     }
 
@@ -344,5 +331,9 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .list, .sound])
+    }
+
+    private static func normalizedReminderMinutes(_ minutes: Int) -> Int {
+        reminderMinutePresets.min { abs($0 - minutes) < abs($1 - minutes) } ?? reminderMinutePresets[0]
     }
 }

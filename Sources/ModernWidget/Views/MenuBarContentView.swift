@@ -4,57 +4,32 @@ struct MenuBarContentView: View {
     @ObservedObject var appModel: AppModel
 
     private enum Layout {
-        static let width: CGFloat = 320
-        static let contentPadding: CGFloat = 22
-        static let sectionSpacing: CGFloat = 12
-        static let buttonSpacing: CGFloat = 8
+        static let width: CGFloat = 260
+        static let contentPadding: CGFloat = 20
+        static let sectionSpacing: CGFloat = 20
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
-            breakSection
+        VStack(spacing: Layout.sectionSpacing) {
+            statusSection
+            intervalSection
+            actionsSection
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(Layout.contentPadding)
-        .frame(width: Layout.width, alignment: .topLeading)
+        .frame(width: Layout.width)
     }
 
-    private var breakSection: some View {
-        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
-            Text("Off-chair reminder")
-                .font(.headline)
+    private var statusSection: some View {
+        VStack(spacing: 6) {
+            Text(appModel.statusTitle)
+                .font(.system(size: 42, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(statusTint)
+                .contentTransition(.numericText(countsDown: true))
+                .animation(.snappy(duration: 0.2), value: appModel.statusTitle)
 
-            Text(appModel.breakSummary)
-                .foregroundStyle(appModel.isOverdue ? .red : .secondary)
-
-            Text(appModel.lastWalkSummary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Text("Every \(appModel.reminderMinutes) min")
-                Spacer()
-                Stepper("", value: $appModel.reminderMinutes, in: 5 ... 180, step: 5)
-                    .labelsHidden()
-            }
-
-            HStack(spacing: Layout.buttonSpacing) {
-                Button("Reset timer") {
-                    appModel.resetReminder()
-                }
-                .keyboardShortcut(.defaultAction)
-
-                Button(appModel.pauseButtonTitle) {
-                    appModel.togglePause()
-                }
-
-                Button("Test ping") {
-                    appModel.sendTestReminder()
-                }
-            }
-
-            Text("notifications: \(appModel.notificationPermissionStatus)")
-                .font(.caption)
+            Text(appModel.statusMessage)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             if let reminderStatusMessage = appModel.reminderStatusMessage {
@@ -63,9 +38,58 @@ struct MenuBarContentView: View {
                     .foregroundStyle(appModel.isReminderStatusError ? .red : .secondary)
             }
 
-            Text("break resets when you get up, move, then come back.")
+            Text("reset \(appModel.lastWalkAt.formatted(date: .omitted, time: .shortened))")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var intervalSection: some View {
+        Picker(selection: $appModel.reminderMinutes) {
+            ForEach(appModel.reminderMinuteOptions, id: \.self) { minutes in
+                Text("\(minutes) min").tag(minutes)
+            }
+        } label: {
+            EmptyView()
+        }
+        .pickerStyle(.segmented)
+    }
+
+    private var actionsSection: some View {
+        HStack(spacing: 12) {
+            Button {
+                appModel.togglePause()
+            } label: {
+                Image(systemName: appModel.isPaused ? "play.fill" : "pause.fill")
+                    .font(.title3)
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(Circle())
+
+            Button {
+                appModel.resetReminder()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.title3)
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(.bordered)
+            .clipShape(Circle())
+            .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    private var statusTint: Color {
+        if appModel.isPaused {
+            return .secondary
+        }
+
+        if appModel.isOverdue {
+            return .orange
+        }
+
+        return .primary
     }
 }
