@@ -60,6 +60,7 @@ struct MenuBarContentView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             if let reminderStatusMessage = appModel.reminderStatusMessage {
                 Text(reminderStatusMessage)
