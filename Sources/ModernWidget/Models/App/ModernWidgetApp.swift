@@ -8,7 +8,7 @@ struct ModernWidgetApp: App {
         MenuBarExtra {
             MenuBarContentView(appModel: appModel)
         } label: {
-            HStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Image(systemName: appModel.menuBarSymbolName)
                 Text(appModel.menuBarLabelText)
                     .monospacedDigit()
