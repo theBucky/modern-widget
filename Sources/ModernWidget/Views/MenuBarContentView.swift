@@ -53,8 +53,6 @@ struct MenuBarContentView: View {
                 .font(.system(size: 42, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(statusTint)
-                .contentTransition(.numericText(countsDown: true))
-                .animation(.snappy(duration: 0.2), value: appModel.statusTitle)
 
             Text(appModel.statusMessage)
                 .font(.subheadline)

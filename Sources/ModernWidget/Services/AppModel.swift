@@ -3,10 +3,15 @@ import UserNotifications
 
 @MainActor
 final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
-    private enum ReminderDisplayState {
+    private enum ReminderDisplayState: Equatable {
         case countingDown
         case paused
         case overdue
+    }
+
+    private struct RenderState: Equatable {
+        let reminderDisplayState: ReminderDisplayState
+        let displayedSecondsRemaining: Int
     }
 
     private static let reminderMinutePresets = [60, 120]
@@ -51,7 +56,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     private let notificationCenter = UNUserNotificationCenter.current()
     private var loopTask: Task<Void, Never>?
     private var lastReminderAt: Date?
-    private var lastPublishedMenuBarTitle: String?
+    private var lastPublishedRenderState: RenderState?
 
     init(defaults: UserDefaults = .standard) {
         let storedReminderMinutes = Self.normalizedReminderMinutes(
@@ -70,7 +75,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         super.init()
 
         notificationCenter.delegate = self
-        startLoop()
+        syncLoopToState()
     }
 
     deinit {
@@ -137,6 +142,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         lastWalkAt = .now
         lastReminderAt = nil
         setReminderStatus(nil)
+        syncLoopToState()
         if recordWalk {
             walkHistory.recordWalk()
         }
@@ -173,32 +179,59 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         return .countingDown
     }
 
-    private func startLoop() {
+    private var currentRenderState: RenderState {
+        RenderState(
+            reminderDisplayState: reminderDisplayState,
+            displayedSecondsRemaining: displayedSecondsRemaining
+        )
+    }
+
+    private func syncLoopToState() {
+        if isPaused {
+            stopLoop()
+            return
+        }
+
+        startLoop()
+    }
+
+    private func stopLoop() {
         loopTask?.cancel()
+        loopTask = nil
+    }
+
+    private func startLoop() {
+        stopLoop()
         loopTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.tick()
-                try? await Task.sleep(for: .seconds(1))
+                let delay = self.tick()
+                try? await Task.sleep(for: delay)
             }
         }
     }
 
-    private func tick() async {
-        let currentMenuBarTitle = "\(menuBarSymbolName) \(menuBarLabelText)"
+    private func tick() -> Duration {
+        let now = Date()
+        let renderState = currentRenderState
 
-        if currentMenuBarTitle != lastPublishedMenuBarTitle {
-            lastPublishedMenuBarTitle = currentMenuBarTitle
+        if renderState != lastPublishedRenderState {
+            lastPublishedRenderState = renderState
             objectWillChange.send()
         }
 
-        if isOverdue {
-            maybeSendReminder()
+        switch renderState.reminderDisplayState {
+        case .countingDown:
+            return .seconds(1)
+        case .paused:
+            return .seconds(60)
+        case .overdue:
+            maybeSendReminder(now: now)
+            return nextOverdueTickDelay(now: now, lastReminderAt: lastReminderAt ?? now)
         }
     }
 
-    private func maybeSendReminder() {
-        let now = Date()
+    private func maybeSendReminder(now: Date) {
         let reminderCooldown = TimeInterval(reminderMinutes * 60)
 
         if let lastReminderAt, now.timeIntervalSince(lastReminderAt) < reminderCooldown {
@@ -209,10 +242,18 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         enqueueReminderNotification(body: "get off chair. short walk now.")
     }
 
+    private func nextOverdueTickDelay(now: Date, lastReminderAt: Date) -> Duration {
+        let reminderCooldown = TimeInterval(reminderMinutes * 60)
+        let remaining = reminderCooldown - now.timeIntervalSince(lastReminderAt)
+        let secondsUntilNextReminder = max(1, Int(ceil(remaining)))
+        return .seconds(secondsUntilNextReminder)
+    }
+
     private func pauseReminder() {
         pausedRemainingSeconds = activeSecondsRemaining
         isPaused = true
         setReminderStatus(nil)
+        syncLoopToState()
     }
 
     private func resumeReminder() {
@@ -222,6 +263,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         isPaused = false
         lastWalkAt = Date().addingTimeInterval(TimeInterval(-elapsedBeforePause))
         setReminderStatus(nil)
+        syncLoopToState()
     }
 
     private func postReminderNotification(body: String) async {
