@@ -2,9 +2,9 @@ import SwiftUI
 
 struct MenuBarContentView: View {
     @ObservedObject var appModel: AppModel
-    @State private var selectedTab: Tab? = .main
+    @State private var selectedTab = Tab.main
 
-    private enum Tab: Hashable {
+    private enum Tab {
         case main
         case calendar
     }
@@ -27,7 +27,7 @@ struct MenuBarContentView: View {
             .navigationSplitViewColumnWidth(50)
         } detail: {
             switch selectedTab {
-            case .main, nil:
+            case .main:
                 mainContent
             case .calendar:
                 CalendarView(historyStore: appModel.walkHistory)
@@ -74,13 +74,12 @@ struct MenuBarContentView: View {
     }
 
     private var intervalSection: some View {
-        Picker(selection: $appModel.reminderMinutes) {
+        Picker("", selection: $appModel.reminderMinutes) {
             ForEach(appModel.reminderMinuteOptions, id: \.self) { minutes in
                 Text("\(minutes) min").tag(minutes)
             }
-        } label: {
-            EmptyView()
         }
+        .labelsHidden()
         .pickerStyle(.segmented)
     }
 
@@ -110,14 +109,10 @@ struct MenuBarContentView: View {
     }
 
     private var statusTint: Color {
-        if appModel.isPaused {
-            return .secondary
+        switch (appModel.isPaused, appModel.isOverdue) {
+        case (true, _): .secondary
+        case (_, true): .red
+        default: .primary
         }
-
-        if appModel.isOverdue {
-            return .red
-        }
-
-        return .primary
     }
 }

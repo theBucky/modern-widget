@@ -2,16 +2,11 @@ import Foundation
 import UserNotifications
 
 @MainActor
-final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+final class AppModel: ObservableObject {
     private enum ReminderDisplayState: Equatable {
         case countingDown
         case paused
         case overdue
-    }
-
-    private struct RenderState: Equatable {
-        let reminderDisplayState: ReminderDisplayState
-        let displayedSecondsRemaining: Int
     }
 
     private static let reminderMinutePresets = [60, 120]
@@ -54,9 +49,10 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
     private let defaults: UserDefaults
     private let notificationCenter = UNUserNotificationCenter.current()
+    private let notificationDelegate = NotificationDelegate()
     private var loopTask: Task<Void, Never>?
     private var lastReminderAt: Date?
-    private var lastPublishedRenderState: RenderState?
+    private var lastPublishedDisplayState: ReminderDisplayState?
 
     init(defaults: UserDefaults = .standard) {
         let storedReminderMinutes = Self.normalizedReminderMinutes(
@@ -72,9 +68,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         self.pausedRemainingSeconds = min(storedPausedSeconds, maxPausedSeconds)
         self.walkHistory = WalkHistoryStore(defaults: defaults)
 
-        super.init()
-
-        notificationCenter.delegate = self
+        notificationCenter.delegate = notificationDelegate
         syncLoopToState()
     }
 
@@ -86,15 +80,16 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         !isPaused && displayedSecondsRemaining == 0
     }
 
+    private var reminderSeconds: Int {
+        reminderMinutes * 60
+    }
+
     var reminderMinuteOptions: [Int] {
         Self.reminderMinutePresets
     }
 
     var countdownLabel: String {
-        let totalSeconds = displayedSecondsRemaining
-        let minutes = totalSeconds / 60
-        let seconds = totalSeconds % 60
-        return String(format: "%02d:%02d", minutes, seconds)
+        String(format: "%02d:%02d", displayedSecondsRemaining / 60, displayedSecondsRemaining % 60)
     }
 
     var menuBarLabelText: String {
@@ -138,10 +133,10 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     func resetReminder(recordWalk: Bool = true) {
-        pausedRemainingSeconds = reminderMinutes * 60
+        pausedRemainingSeconds = reminderSeconds
         lastWalkAt = .now
         lastReminderAt = nil
-        setReminderStatus(nil)
+        reminderStatusMessage = nil
         syncLoopToState()
         if recordWalk {
             walkHistory.recordWalk()
@@ -149,18 +144,12 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     func togglePause() {
-        if isPaused {
-            resumeReminder()
-            return
-        }
-
-        pauseReminder()
+        isPaused ? resumeReminder() : pauseReminder()
     }
 
     private var activeSecondsRemaining: Int {
-        let interval = TimeInterval(reminderMinutes * 60)
         let elapsed = Date().timeIntervalSince(lastWalkAt)
-        return max(0, Int(ceil(interval - elapsed)))
+        return max(0, Int(ceil(Double(reminderSeconds) - elapsed)))
     }
 
     private var displayedSecondsRemaining: Int {
@@ -168,31 +157,15 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     private var reminderDisplayState: ReminderDisplayState {
-        if isPaused {
-            return .paused
+        switch (isPaused, isOverdue) {
+        case (true, _): .paused
+        case (_, true): .overdue
+        default: .countingDown
         }
-
-        if isOverdue {
-            return .overdue
-        }
-
-        return .countingDown
-    }
-
-    private var currentRenderState: RenderState {
-        RenderState(
-            reminderDisplayState: reminderDisplayState,
-            displayedSecondsRemaining: displayedSecondsRemaining
-        )
     }
 
     private func syncLoopToState() {
-        if isPaused {
-            stopLoop()
-            return
-        }
-
-        startLoop()
+        isPaused ? stopLoop() : startLoop()
     }
 
     private func stopLoop() {
@@ -213,14 +186,16 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
 
     private func tick() -> Duration {
         let now = Date()
-        let renderState = currentRenderState
+        let state = reminderDisplayState
 
-        if renderState != lastPublishedRenderState {
-            lastPublishedRenderState = renderState
+        if state != lastPublishedDisplayState {
+            lastPublishedDisplayState = state
+            objectWillChange.send()
+        } else if state == .countingDown {
             objectWillChange.send()
         }
 
-        switch renderState.reminderDisplayState {
+        switch state {
         case .countingDown:
             return .seconds(1)
         case .paused:
@@ -232,9 +207,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     private func maybeSendReminder(now: Date) {
-        let reminderCooldown = TimeInterval(reminderMinutes * 60)
-
-        if let lastReminderAt, now.timeIntervalSince(lastReminderAt) < reminderCooldown {
+        if let lastReminderAt, now.timeIntervalSince(lastReminderAt) < Double(reminderSeconds) {
             return
         }
 
@@ -243,26 +216,22 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
     }
 
     private func nextOverdueTickDelay(now: Date, lastReminderAt: Date) -> Duration {
-        let reminderCooldown = TimeInterval(reminderMinutes * 60)
-        let remaining = reminderCooldown - now.timeIntervalSince(lastReminderAt)
-        let secondsUntilNextReminder = max(1, Int(ceil(remaining)))
-        return .seconds(secondsUntilNextReminder)
+        let remaining = Double(reminderSeconds) - now.timeIntervalSince(lastReminderAt)
+        return .seconds(max(1, Int(ceil(remaining))))
     }
 
     private func pauseReminder() {
         pausedRemainingSeconds = activeSecondsRemaining
         isPaused = true
-        setReminderStatus(nil)
+        reminderStatusMessage = nil
         syncLoopToState()
     }
 
     private func resumeReminder() {
-        let interval = reminderMinutes * 60
-        let elapsedBeforePause = interval - pausedRemainingSeconds
-
+        let elapsedBeforePause = reminderSeconds - pausedRemainingSeconds
         isPaused = false
         lastWalkAt = Date().addingTimeInterval(TimeInterval(-elapsedBeforePause))
-        setReminderStatus(nil)
+        reminderStatusMessage = nil
         syncLoopToState()
     }
 
@@ -283,7 +252,7 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         )
 
         do {
-            try await addNotificationRequest(request)
+            try await notificationCenter.add(request)
         } catch {
             applyNotificationError(error)
         }
@@ -295,30 +264,17 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
         }
     }
 
-    private func requestAuthorization() async throws -> Bool {
-        try await withCheckedThrowingContinuation { continuation in
-            notificationCenter.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                continuation.resume(returning: granted)
-            }
-        }
-    }
-
     private func ensureNotificationAuthorization() async -> Bool {
-        let authorizationStatus = await notificationAuthorizationStatus()
+        let settings = await notificationCenter.notificationSettings()
 
-        switch authorizationStatus {
+        switch settings.authorizationStatus {
         case .authorized, .provisional, .ephemeral:
             return true
         case .notDetermined:
             do {
-                let granted = try await requestAuthorization()
+                let granted = try await notificationCenter.requestAuthorization(options: [.alert, .sound, .badge])
                 if !granted {
-                    setReminderStatus("notifications blocked in System Settings")
+                    reminderStatusMessage = "notifications blocked in System Settings"
                 }
                 return granted
             } catch {
@@ -326,59 +282,33 @@ final class AppModel: NSObject, ObservableObject, UNUserNotificationCenterDelega
                 return false
             }
         case .denied:
-            setReminderStatus("notifications blocked in System Settings")
+            reminderStatusMessage = "notifications blocked in System Settings"
             return false
         @unknown default:
-            setReminderStatus("unknown notification permission state")
+            reminderStatusMessage = "unknown notification permission state"
             return false
-        }
-    }
-
-    private func notificationAuthorizationStatus() async -> UNAuthorizationStatus {
-        await withCheckedContinuation { continuation in
-            notificationCenter.getNotificationSettings { settings in
-                continuation.resume(returning: settings.authorizationStatus)
-            }
         }
     }
 
     private func applyNotificationError(_ error: Error) {
         let nsError = error as NSError
-
         if nsError.domain == UNErrorDomain, nsError.code == 1 {
-            setReminderStatus("notifications blocked in System Settings")
-            return
+            reminderStatusMessage = "notifications blocked in System Settings"
+        } else {
+            reminderStatusMessage = error.localizedDescription
         }
-
-        setReminderStatus(error.localizedDescription)
-    }
-
-    private func setReminderStatus(_ message: String?) {
-        reminderStatusMessage = message
-    }
-
-    private func addNotificationRequest(_ request: UNNotificationRequest) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            notificationCenter.add(request) { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                continuation.resume()
-            }
-        }
-    }
-
-    nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        completionHandler([.banner, .list, .sound])
     }
 
     private static func normalizedReminderMinutes(_ minutes: Int) -> Int {
         reminderMinutePresets.min { abs($0 - minutes) < abs($1 - minutes) } ?? reminderMinutePresets[0]
+    }
+}
+
+private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
     }
 }

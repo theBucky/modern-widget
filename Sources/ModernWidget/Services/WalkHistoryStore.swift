@@ -8,7 +8,6 @@ final class WalkHistoryStore: ObservableObject {
     @Published private(set) var walks: [Date] = []
 
     private let defaults: UserDefaults
-    private let calendar = Calendar.current
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -25,7 +24,7 @@ final class WalkHistoryStore: ObservableObject {
     }
 
     func walksByDay() -> [(day: Date, count: Int)] {
-        Dictionary(grouping: walks) { calendar.startOfDay(for: $0) }
+        Dictionary(grouping: walks) { Calendar.current.startOfDay(for: $0) }
             .map { (day: $0.key, count: $0.value.count) }
             .sorted { $0.day > $1.day }
     }
@@ -44,7 +43,7 @@ final class WalkHistoryStore: ObservableObject {
     }
 
     private func pruneOldEntries() {
-        let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: .now) ?? .now
+        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: .now) ?? .now
         walks.removeAll { $0 < cutoff }
     }
 }
