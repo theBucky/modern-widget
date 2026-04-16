@@ -59,7 +59,8 @@ final class AppModel: ObservableObject {
             defaults.object(forKey: Keys.reminderMinutes) as? Int ?? Self.reminderMinutePresets[0]
         )
         let maxPausedSeconds = storedReminderMinutes * 60
-        let storedPausedSeconds = defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? maxPausedSeconds
+        let storedPausedSeconds =
+            defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? maxPausedSeconds
 
         self.defaults = defaults
         self.reminderMinutes = storedReminderMinutes
@@ -272,7 +273,9 @@ final class AppModel: ObservableObject {
             return true
         case .notDetermined:
             do {
-                let granted = try await notificationCenter.requestAuthorization(options: [.alert, .sound, .badge])
+                let granted = try await notificationCenter.requestAuthorization(options: [
+                    .alert, .sound, .badge,
+                ])
                 if !granted {
                     reminderStatusMessage = "notifications blocked in System Settings"
                 }
@@ -300,7 +303,8 @@ final class AppModel: ObservableObject {
     }
 
     private static func normalizedReminderMinutes(_ minutes: Int) -> Int {
-        reminderMinutePresets.min { abs($0 - minutes) < abs($1 - minutes) } ?? reminderMinutePresets[0]
+        reminderMinutePresets.min { abs($0 - minutes) < abs($1 - minutes) }
+            ?? reminderMinutePresets[0]
     }
 }
 

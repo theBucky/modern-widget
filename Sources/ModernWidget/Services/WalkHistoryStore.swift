@@ -31,7 +31,8 @@ final class WalkHistoryStore: ObservableObject {
 
     private func load() -> [Date] {
         guard let data = defaults.data(forKey: Self.storageKey),
-              let dates = try? JSONDecoder().decode([Date].self, from: data) else {
+            let dates = try? JSONDecoder().decode([Date].self, from: data)
+        else {
             return []
         }
         return dates
@@ -43,7 +44,8 @@ final class WalkHistoryStore: ObservableObject {
     }
 
     private func pruneOldEntries() {
-        let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: .now) ?? .now
+        let cutoff =
+            Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: .now) ?? .now
         walks.removeAll { $0 < cutoff }
     }
 }
