@@ -7,9 +7,7 @@ final class PopupViewModel: ObservableObject {
     let walkHistory: WalkHistoryStore
 
     private let engine: ReminderEngine
-
-    private var observerID: UUID?
-    private var refreshTask: Task<Void, Never>?
+    private let refreshLoop = RefreshLoop()
 
     init(engine: ReminderEngine) {
         self.engine = engine
@@ -22,23 +20,16 @@ final class PopupViewModel: ObservableObject {
     }
 
     func start() {
-        if observerID == nil {
-            observerID = engine.addObserver { [weak self] in
-                self?.refresh()
-            }
+        engine.addObserver(owner: self) { [weak self] in
+            self?.refresh()
         }
 
         refresh(rescheduleIfUnchanged: true)
     }
 
     func stop() {
-        refreshTask?.cancel()
-        refreshTask = nil
-
-        if let observerID {
-            engine.removeObserver(observerID)
-            self.observerID = nil
-        }
+        refreshLoop.cancel()
+        engine.removeObserver(owner: self)
     }
 
     func setReminderMinutes(_ minutes: Int) {
@@ -53,33 +44,21 @@ final class PopupViewModel: ObservableObject {
         engine.resetReminder()
     }
 
-    private func refresh(rescheduleIfUnchanged: Bool = false) {
-        let nextSnapshot = engine.popupSnapshot()
+    private func refresh(rescheduleIfUnchanged: Bool = false, now: Date = .now) {
+        let nextSnapshot = engine.popupSnapshot(at: now)
 
         if nextSnapshot == snapshot, !rescheduleIfUnchanged {
+            scheduleRefresh(now: now)
             return
         }
 
         snapshot = nextSnapshot
-        scheduleRefresh()
+        scheduleRefresh(now: now)
     }
 
-    private func scheduleRefresh() {
-        refreshTask?.cancel()
-        refreshTask = nil
-
-        guard let delay = engine.nextRefreshDelay() else {
-            return
-        }
-
-        refreshTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
-                return
-            }
-
-            self?.refresh()
+    private func scheduleRefresh(now: Date) {
+        refreshLoop.schedule(after: engine.nextRefreshDelay(now: now)) { [weak self] in
+            self?.refresh(now: .now)
         }
     }
 }

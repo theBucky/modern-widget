@@ -1,5 +1,10 @@
 import Foundation
-import UserNotifications
+
+enum ReminderPhase: Equatable {
+    case countingDown
+    case paused
+    case overdue
+}
 
 struct MenuBarSnapshot: Equatable {
     let text: String
@@ -8,20 +13,51 @@ struct MenuBarSnapshot: Equatable {
 
 struct PopupSnapshot: Equatable {
     let reminderMinutes: Int
-    let statusTitle: String
-    let statusMessage: String
+    let phase: ReminderPhase
+    let countdownLabel: String
     let reminderStatusMessage: String?
     let lastWalkAt: Date
-    let isPaused: Bool
-    let isOverdue: Bool
 }
 
 @MainActor
 final class ReminderEngine {
-    private enum ReminderDisplayState: Equatable {
-        case countingDown
-        case paused
-        case overdue
+    private struct CountdownState: Equatable {
+        let phase: ReminderPhase
+        let remainingTime: TimeInterval
+        let secondsRemaining: Int
+
+        var menuBarText: String {
+            switch phase {
+            case .overdue:
+                return "Move"
+            case .paused, .countingDown:
+                return countdownLabel
+            }
+        }
+
+        var menuBarSymbolName: String {
+            switch phase {
+            case .paused:
+                return "pause.fill"
+            case .overdue:
+                return "figure.walk"
+            case .countingDown:
+                return "timer"
+            }
+        }
+
+        var countdownLabel: String {
+            ReminderEngine.countdownLabel(for: secondsRemaining)
+        }
+
+        var nextRefreshDelay: TimeInterval? {
+            guard phase == .countingDown, remainingTime > 0 else {
+                return nil
+            }
+
+            let fractional = remainingTime.truncatingRemainder(dividingBy: 1)
+            return fractional == 0 ? 1 : fractional
+        }
     }
 
     private enum Keys {
@@ -36,10 +72,14 @@ final class ReminderEngine {
     let walkHistory: WalkHistoryStore
 
     private let defaults: UserDefaults
-    private let notificationCenter = UNUserNotificationCenter.current()
-    private let notificationDelegate = NotificationDelegate()
+    private let notifier: ReminderNotifier
 
-    private var observers: [UUID: @MainActor () -> Void] = [:]
+    private struct ObserverEntry {
+        weak var owner: AnyObject?
+        let callback: @MainActor () -> Void
+    }
+
+    private var observers: [ObjectIdentifier: ObserverEntry] = [:]
     private var reminderTask: Task<Void, Never>?
     private var lastReminderAt: Date?
 
@@ -69,7 +109,7 @@ final class ReminderEngine {
 
     private(set) var reminderStatusMessage: String?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, notifier: ReminderNotifier = ReminderNotifier()) {
         let storedReminderMinutes = Self.normalizedReminderMinutes(
             defaults.object(forKey: Keys.reminderMinutes) as? Int ?? Self.reminderMinutePresets[0]
         )
@@ -78,13 +118,13 @@ final class ReminderEngine {
             defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? maxPausedSeconds
 
         self.defaults = defaults
+        self.notifier = notifier
         self.reminderMinutes = storedReminderMinutes
         self.lastWalkAt = defaults.object(forKey: Keys.lastWalkAt) as? Date ?? .now
         self.isPaused = defaults.bool(forKey: Keys.isPaused)
         self.pausedRemainingSeconds = min(storedPausedSeconds, maxPausedSeconds)
         self.walkHistory = WalkHistoryStore(defaults: defaults)
 
-        notificationCenter.delegate = notificationDelegate
         syncReminderTaskToState()
     }
 
@@ -96,14 +136,12 @@ final class ReminderEngine {
         Self.reminderMinutePresets
     }
 
-    func addObserver(_ observer: @escaping @MainActor () -> Void) -> UUID {
-        let id = UUID()
-        observers[id] = observer
-        return id
+    func addObserver(owner: AnyObject, _ observer: @escaping @MainActor () -> Void) {
+        observers[ObjectIdentifier(owner)] = ObserverEntry(owner: owner, callback: observer)
     }
 
-    func removeObserver(_ id: UUID) {
-        observers.removeValue(forKey: id)
+    func removeObserver(owner: AnyObject) {
+        observers.removeValue(forKey: ObjectIdentifier(owner))
     }
 
     func setReminderMinutes(_ minutes: Int) {
@@ -125,68 +163,28 @@ final class ReminderEngine {
     }
 
     func menuBarSnapshot(at date: Date = .now) -> MenuBarSnapshot {
-        let countdownLabel = Self.countdownLabel(for: displayedSecondsRemaining(at: date))
+        let countdownState = countdownState(at: date)
 
-        switch reminderDisplayState(at: date) {
-        case .paused:
-            return MenuBarSnapshot(text: countdownLabel, symbolName: "pause.fill")
-        case .overdue:
-            return MenuBarSnapshot(text: "Move", symbolName: "figure.walk")
-        case .countingDown:
-            return MenuBarSnapshot(text: countdownLabel, symbolName: "timer")
-        }
+        return MenuBarSnapshot(
+            text: countdownState.menuBarText,
+            symbolName: countdownState.menuBarSymbolName
+        )
     }
 
     func popupSnapshot(at date: Date = .now) -> PopupSnapshot {
-        let secondsRemaining = displayedSecondsRemaining(at: date)
-        let countdownLabel = Self.countdownLabel(for: secondsRemaining)
+        let countdownState = countdownState(at: date)
 
-        switch reminderDisplayState(at: date) {
-        case .paused:
-            return PopupSnapshot(
-                reminderMinutes: reminderMinutes,
-                statusTitle: countdownLabel,
-                statusMessage: "paused",
-                reminderStatusMessage: reminderStatusMessage,
-                lastWalkAt: lastWalkAt,
-                isPaused: true,
-                isOverdue: false
-            )
-        case .overdue:
-            return PopupSnapshot(
-                reminderMinutes: reminderMinutes,
-                statusTitle: "MOVE",
-                statusMessage: "muscles atrophy, circulation stops, you know...",
-                reminderStatusMessage: reminderStatusMessage,
-                lastWalkAt: lastWalkAt,
-                isPaused: false,
-                isOverdue: true
-            )
-        case .countingDown:
-            return PopupSnapshot(
-                reminderMinutes: reminderMinutes,
-                statusTitle: countdownLabel,
-                statusMessage: "until next break",
-                reminderStatusMessage: reminderStatusMessage,
-                lastWalkAt: lastWalkAt,
-                isPaused: false,
-                isOverdue: false
-            )
-        }
+        return PopupSnapshot(
+            reminderMinutes: reminderMinutes,
+            phase: countdownState.phase,
+            countdownLabel: countdownState.countdownLabel,
+            reminderStatusMessage: reminderStatusMessage,
+            lastWalkAt: lastWalkAt
+        )
     }
 
     func nextRefreshDelay(now: Date = .now) -> TimeInterval? {
-        if reminderDisplayState(at: now) != .countingDown {
-            return nil
-        }
-
-        let remaining = Double(reminderSeconds) - now.timeIntervalSince(lastWalkAt)
-        if remaining <= 0 {
-            return nil
-        }
-
-        let fractional = remaining.truncatingRemainder(dividingBy: 1)
-        return fractional == 0 ? 1 : fractional
+        countdownState(at: now).nextRefreshDelay
     }
 
     private var reminderSeconds: Int {
@@ -207,24 +205,25 @@ final class ReminderEngine {
         notifyObservers()
     }
 
-    private func displayedSecondsRemaining(at date: Date) -> Int {
+    private func countdownState(at date: Date) -> CountdownState {
         if isPaused {
-            return pausedRemainingSeconds
+            return CountdownState(
+                phase: .paused,
+                remainingTime: TimeInterval(pausedRemainingSeconds),
+                secondsRemaining: pausedRemainingSeconds
+            )
         }
 
-        let elapsed = date.timeIntervalSince(lastWalkAt)
-        return max(0, Int(ceil(Double(reminderSeconds) - elapsed)))
-    }
-
-    private func reminderDisplayState(at date: Date) -> ReminderDisplayState {
-        switch (isPaused, displayedSecondsRemaining(at: date) == 0) {
-        case (true, _):
-            .paused
-        case (_, true):
-            .overdue
-        default:
-            .countingDown
+        let remainingTime = Double(reminderSeconds) - date.timeIntervalSince(lastWalkAt)
+        if remainingTime <= 0 {
+            return CountdownState(phase: .overdue, remainingTime: 0, secondsRemaining: 0)
         }
+
+        return CountdownState(
+            phase: .countingDown,
+            remainingTime: remainingTime,
+            secondsRemaining: Int(ceil(remainingTime))
+        )
     }
 
     private func syncReminderTaskToState() {
@@ -257,7 +256,7 @@ final class ReminderEngine {
     }
 
     private func nextReminderCheckDelay(now: Date) -> TimeInterval {
-        if let lastReminderAt, reminderDisplayState(at: now) == .overdue {
+        if let lastReminderAt, countdownState(at: now).phase == .overdue {
             return max(0, Double(reminderSeconds) - now.timeIntervalSince(lastReminderAt))
         }
 
@@ -266,7 +265,7 @@ final class ReminderEngine {
     }
 
     private func handleReminderCheck(now: Date) {
-        if reminderDisplayState(at: now) != .overdue {
+        if countdownState(at: now).phase != .overdue {
             return
         }
 
@@ -283,7 +282,7 @@ final class ReminderEngine {
     }
 
     private func pauseReminder() {
-        pausedRemainingSeconds = displayedSecondsRemaining(at: .now)
+        pausedRemainingSeconds = countdownState(at: .now).secondsRemaining
         isPaused = true
         reminderStatusMessage = nil
         syncReminderTaskToState()
@@ -300,82 +299,39 @@ final class ReminderEngine {
     }
 
     private func enqueueReminderNotification(body: String) {
-        Task { @MainActor [weak self] in
-            await self?.postReminderNotification(body: body)
+        let notifier = notifier
+
+        Task { @MainActor [weak self, notifier] in
+            let reminderIssue = await notifier.postReminder(body: body)
+            self?.updateReminderStatus(reminderIssue)
         }
     }
 
-    private func postReminderNotification(body: String) async {
-        guard await ensureNotificationAuthorization() else {
+    private func updateReminderStatus(_ issue: ReminderNotificationIssue?) {
+        let message = reminderStatusMessage(for: issue)
+
+        if reminderStatusMessage == message {
             return
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Off-chair break"
-        content.body = body
-        content.sound = .default
-
-        let request = UNNotificationRequest(
-            identifier: "off-chair-break-\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
-
-        do {
-            try await notificationCenter.add(request)
-        } catch {
-            applyNotificationError(error)
-        }
-    }
-
-    private func ensureNotificationAuthorization() async -> Bool {
-        let settings = await notificationCenter.notificationSettings()
-
-        switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            return true
-        case .notDetermined:
-            do {
-                let granted = try await notificationCenter.requestAuthorization(options: [
-                    .alert, .sound, .badge,
-                ])
-
-                if !granted {
-                    reminderStatusMessage = "notifications blocked in System Settings"
-                    notifyObservers()
-                }
-
-                return granted
-            } catch {
-                applyNotificationError(error)
-                return false
-            }
-        case .denied:
-            reminderStatusMessage = "notifications blocked in System Settings"
-            notifyObservers()
-            return false
-        @unknown default:
-            reminderStatusMessage = "unknown notification permission state"
-            notifyObservers()
-            return false
-        }
-    }
-
-    private func applyNotificationError(_ error: Error) {
-        let nsError = error as NSError
-
-        if nsError.domain == UNErrorDomain, nsError.code == 1 {
-            reminderStatusMessage = "notifications blocked in System Settings"
-        } else {
-            reminderStatusMessage = error.localizedDescription
-        }
-
+        reminderStatusMessage = message
         notifyObservers()
     }
 
     private func notifyObservers() {
-        for observer in observers.values {
-            observer()
+        var staleObserverIDs: [ObjectIdentifier] = []
+
+        for (id, entry) in observers {
+            guard entry.owner != nil else {
+                staleObserverIDs.append(id)
+                continue
+            }
+
+            entry.callback()
+        }
+
+        for id in staleObserverIDs {
+            observers.removeValue(forKey: id)
         }
     }
 
@@ -384,16 +340,20 @@ final class ReminderEngine {
             ?? reminderMinutePresets[0]
     }
 
-    private static func countdownLabel(for secondsRemaining: Int) -> String {
+    nonisolated private static func countdownLabel(for secondsRemaining: Int) -> String {
         String(format: "%02d:%02d", secondsRemaining / 60, secondsRemaining % 60)
     }
-}
 
-private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
-    ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+    private func reminderStatusMessage(for issue: ReminderNotificationIssue?) -> String? {
+        switch issue {
+        case .none:
+            return nil
+        case .notificationsBlocked:
+            return "notifications blocked in System Settings"
+        case .unknownPermissionState:
+            return "unknown notification permission state"
+        case let .deliveryFailure(message):
+            return message
+        }
     }
 }

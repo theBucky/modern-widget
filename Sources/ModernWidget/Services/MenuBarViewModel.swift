@@ -5,46 +5,32 @@ final class MenuBarViewModel: ObservableObject {
     @Published private(set) var snapshot: MenuBarSnapshot
 
     private let engine: ReminderEngine
-
-    private var observerID: UUID?
-    private var refreshTask: Task<Void, Never>?
+    private let refreshLoop = RefreshLoop()
 
     init(engine: ReminderEngine) {
         self.engine = engine
-        self.snapshot = engine.menuBarSnapshot()
-        observerID = engine.addObserver { [weak self] in
+        snapshot = engine.menuBarSnapshot()
+        engine.addObserver(owner: self) { [weak self] in
             self?.refresh()
         }
         refresh(rescheduleIfUnchanged: true)
     }
 
-    private func refresh(rescheduleIfUnchanged: Bool = false) {
-        let nextSnapshot = engine.menuBarSnapshot()
+    private func refresh(rescheduleIfUnchanged: Bool = false, now: Date = .now) {
+        let nextSnapshot = engine.menuBarSnapshot(at: now)
 
         if nextSnapshot == snapshot, !rescheduleIfUnchanged {
+            scheduleRefresh(now: now)
             return
         }
 
         snapshot = nextSnapshot
-        scheduleRefresh()
+        scheduleRefresh(now: now)
     }
 
-    private func scheduleRefresh() {
-        refreshTask?.cancel()
-        refreshTask = nil
-
-        guard let delay = engine.nextRefreshDelay() else {
-            return
-        }
-
-        refreshTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
-                return
-            }
-
-            self?.refresh()
+    private func scheduleRefresh(now: Date) {
+        refreshLoop.schedule(after: engine.nextRefreshDelay(now: now)) { [weak self] in
+            self?.refresh(now: .now)
         }
     }
 }

@@ -82,7 +82,7 @@ struct MenuBarContentView: View {
             Button {
                 viewModel.togglePause()
             } label: {
-                Image(systemName: viewModel.snapshot.isPaused ? "play.fill" : "pause.fill")
+                Image(systemName: pauseButtonSymbolName(for: viewModel.snapshot.phase))
                     .font(.title3)
                     .frame(width: 40, height: 40)
             }
@@ -101,6 +101,15 @@ struct MenuBarContentView: View {
             .keyboardShortcut(.defaultAction)
         }
     }
+
+    private func pauseButtonSymbolName(for phase: ReminderPhase) -> String {
+        switch phase {
+        case .paused:
+            return "play.fill"
+        case .countingDown, .overdue:
+            return "pause.fill"
+        }
+    }
 }
 
 private struct ReminderStatusView: View {
@@ -108,12 +117,12 @@ private struct ReminderStatusView: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text(snapshot.statusTitle)
+            Text(statusTitle(for: snapshot))
                 .font(.system(size: 42, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(statusTint(for: snapshot))
 
-            Text(snapshot.statusMessage)
+            Text(statusMessage(for: snapshot.phase))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -133,10 +142,33 @@ private struct ReminderStatusView: View {
     }
 
     private func statusTint(for snapshot: PopupSnapshot) -> Color {
-        switch (snapshot.isPaused, snapshot.isOverdue) {
-        case (true, _): .secondary
-        case (_, true): .red
-        default: .primary
+        switch snapshot.phase {
+        case .paused:
+            return .secondary
+        case .overdue:
+            return .red
+        case .countingDown:
+            return .primary
+        }
+    }
+
+    private func statusTitle(for snapshot: PopupSnapshot) -> String {
+        switch snapshot.phase {
+        case .overdue:
+            return "MOVE"
+        case .paused, .countingDown:
+            return snapshot.countdownLabel
+        }
+    }
+
+    private func statusMessage(for phase: ReminderPhase) -> String {
+        switch phase {
+        case .countingDown:
+            return "until next break"
+        case .paused:
+            return "paused"
+        case .overdue:
+            return "muscles atrophy, circulation stops, you know..."
         }
     }
 }
