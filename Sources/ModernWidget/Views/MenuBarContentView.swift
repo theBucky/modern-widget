@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct MenuBarContentView: View {
-    @ObservedObject var appModel: AppModel
+    @StateObject private var viewModel: PopupViewModel
     @State private var selectedTab = Tab.main
+
+    init(engine: ReminderEngine) {
+        _viewModel = StateObject(wrappedValue: PopupViewModel(engine: engine))
+    }
 
     private enum Tab {
         case main
@@ -30,11 +34,17 @@ struct MenuBarContentView: View {
             case .main:
                 mainContent
             case .calendar:
-                CalendarView(historyStore: appModel.walkHistory)
+                CalendarView(historyStore: viewModel.walkHistory)
                     .frame(width: Layout.contentWidth)
             }
         }
         .navigationSplitViewColumnWidth(Layout.contentWidth)
+        .onAppear {
+            viewModel.start()
+        }
+        .onDisappear {
+            viewModel.stop()
+        }
     }
 
     private var mainContent: some View {
@@ -48,34 +58,18 @@ struct MenuBarContentView: View {
     }
 
     private var statusSection: some View {
-        VStack(spacing: 6) {
-            Text(appModel.statusTitle)
-                .font(.system(size: 42, weight: .light, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(statusTint)
-
-            Text(appModel.statusMessage)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let reminderStatusMessage = appModel.reminderStatusMessage {
-                Text(reminderStatusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-
-            Text("reset \(appModel.lastWalkAt.formatted(date: .omitted, time: .shortened))")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity)
+        ReminderStatusView(snapshot: viewModel.snapshot)
     }
 
     private var intervalSection: some View {
-        Picker("", selection: $appModel.reminderMinutes) {
-            ForEach(appModel.reminderMinuteOptions, id: \.self) { minutes in
+        Picker(
+            "",
+            selection: Binding(
+                get: { viewModel.snapshot.reminderMinutes },
+                set: { viewModel.setReminderMinutes($0) }
+            )
+        ) {
+            ForEach(viewModel.reminderMinuteOptions, id: \.self) { minutes in
                 Text("\(minutes) min").tag(minutes)
             }
         }
@@ -86,9 +80,9 @@ struct MenuBarContentView: View {
     private var actionsSection: some View {
         HStack(spacing: 12) {
             Button {
-                appModel.togglePause()
+                viewModel.togglePause()
             } label: {
-                Image(systemName: appModel.isPaused ? "play.fill" : "pause.fill")
+                Image(systemName: viewModel.snapshot.isPaused ? "play.fill" : "pause.fill")
                     .font(.title3)
                     .frame(width: 40, height: 40)
             }
@@ -96,7 +90,7 @@ struct MenuBarContentView: View {
             .clipShape(Circle())
 
             Button {
-                appModel.resetReminder()
+                viewModel.resetReminder()
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.title3)
@@ -107,9 +101,39 @@ struct MenuBarContentView: View {
             .keyboardShortcut(.defaultAction)
         }
     }
+}
 
-    private var statusTint: Color {
-        switch (appModel.isPaused, appModel.isOverdue) {
+private struct ReminderStatusView: View {
+    let snapshot: PopupSnapshot
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(snapshot.statusTitle)
+                .font(.system(size: 42, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(statusTint(for: snapshot))
+
+            Text(snapshot.statusMessage)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let reminderStatusMessage = snapshot.reminderStatusMessage {
+                Text(reminderStatusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Text("reset \(snapshot.lastWalkAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func statusTint(for snapshot: PopupSnapshot) -> Color {
+        switch (snapshot.isPaused, snapshot.isOverdue) {
         case (true, _): .secondary
         case (_, true): .red
         default: .primary

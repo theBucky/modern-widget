@@ -2,18 +2,35 @@ import SwiftUI
 
 @main
 struct ModernWidgetApp: App {
-    @StateObject private var appModel = AppModel()
+    private let engine: ReminderEngine
+    @StateObject private var menuBarViewModel: MenuBarViewModel
+
+    init() {
+        let engine = ReminderEngine()
+        self.engine = engine
+        _menuBarViewModel = StateObject(wrappedValue: MenuBarViewModel(engine: engine))
+    }
 
     var body: some Scene {
         MenuBarExtra {
-            MenuBarContentView(appModel: appModel)
+            MenuBarContentView(engine: engine)
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Image(systemName: appModel.menuBarSymbolName)
-                Text(appModel.menuBarLabelText)
-                    .monospacedDigit()
-            }
+            MenuBarStatusLabel(viewModel: menuBarViewModel)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+private struct MenuBarStatusLabel: View {
+    @ObservedObject var viewModel: MenuBarViewModel
+
+    var body: some View {
+        let snapshot = viewModel.snapshot
+
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Image(systemName: snapshot.symbolName)
+            Text(snapshot.text)
+                .monospacedDigit()
+        }
     }
 }
