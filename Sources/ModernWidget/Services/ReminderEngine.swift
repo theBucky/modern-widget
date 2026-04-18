@@ -227,7 +227,12 @@ final class ReminderEngine {
     }
 
     private func syncReminderTaskToState() {
-        isPaused ? stopReminderTask() : startReminderTask()
+        if isPaused {
+            stopReminderTask()
+            return
+        }
+
+        startReminderTask()
     }
 
     private func stopReminderTask() {
@@ -256,29 +261,37 @@ final class ReminderEngine {
     }
 
     private func nextReminderCheckDelay(now: Date) -> TimeInterval {
-        if let lastReminderAt, countdownState(at: now).phase == .overdue {
-            return max(0, Double(reminderSeconds) - now.timeIntervalSince(lastReminderAt))
+        guard countdownState(at: now).phase == .overdue else {
+            let dueAt = lastWalkAt.addingTimeInterval(TimeInterval(reminderSeconds))
+            return max(0, dueAt.timeIntervalSince(now))
         }
 
-        let dueAt = lastWalkAt.addingTimeInterval(TimeInterval(reminderSeconds))
-        return max(0, dueAt.timeIntervalSince(now))
+        guard let lastReminderAt else {
+            return 0
+        }
+
+        return max(0, Double(reminderSeconds) - now.timeIntervalSince(lastReminderAt))
     }
 
     private func handleReminderCheck(now: Date) {
-        if countdownState(at: now).phase != .overdue {
-            return
-        }
-
-        maybeSendReminder(now: now)
-    }
-
-    private func maybeSendReminder(now: Date) {
-        if let lastReminderAt, now.timeIntervalSince(lastReminderAt) < Double(reminderSeconds) {
+        guard shouldSendReminder(now: now) else {
             return
         }
 
         lastReminderAt = now
         enqueueReminderNotification(body: "get off chair. short walk now.")
+    }
+
+    private func shouldSendReminder(now: Date) -> Bool {
+        guard countdownState(at: now).phase == .overdue else {
+            return false
+        }
+
+        guard let lastReminderAt else {
+            return true
+        }
+
+        return now.timeIntervalSince(lastReminderAt) >= Double(reminderSeconds)
     }
 
     private func pauseReminder() {
@@ -320,6 +333,7 @@ final class ReminderEngine {
 
     private func notifyObservers() {
         var staleObserverIDs: [ObjectIdentifier] = []
+        staleObserverIDs.reserveCapacity(observers.count)
 
         for (id, entry) in observers {
             guard entry.owner != nil else {
@@ -330,8 +344,8 @@ final class ReminderEngine {
             entry.callback()
         }
 
-        for id in staleObserverIDs {
-            observers.removeValue(forKey: id)
+        for observerID in staleObserverIDs {
+            observers.removeValue(forKey: observerID)
         }
     }
 

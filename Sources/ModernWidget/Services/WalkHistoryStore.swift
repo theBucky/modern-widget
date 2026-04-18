@@ -11,15 +11,19 @@ final class WalkHistoryStore: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.walks = load()
-        let countBefore = walks.count
-        pruneOldEntries()
-        if walks.count != countBefore { save() }
+        let loadedWalks = load()
+        var prunedWalks = loadedWalks
+        Self.pruneOldEntries(in: &prunedWalks)
+        self.walks = prunedWalks
+
+        if loadedWalks.count != prunedWalks.count {
+            save()
+        }
     }
 
     func recordWalk(_ date: Date = .now) {
         walks.append(date)
-        pruneOldEntries()
+        Self.pruneOldEntries(in: &walks)
         save()
     }
 
@@ -43,9 +47,10 @@ final class WalkHistoryStore: ObservableObject {
         defaults.set(data, forKey: Self.storageKey)
     }
 
-    private func pruneOldEntries() {
+    private static func pruneOldEntries(in walks: inout [Date]) {
+        let now = Date.now
         let cutoff =
-            Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: .now) ?? .now
+            Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: now) ?? now
         walks.removeAll { $0 < cutoff }
     }
 }

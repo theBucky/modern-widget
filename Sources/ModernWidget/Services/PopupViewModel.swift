@@ -24,7 +24,7 @@ final class PopupViewModel: ObservableObject {
             self?.refresh()
         }
 
-        refresh(rescheduleIfUnchanged: true)
+        refresh()
     }
 
     func stop() {
@@ -44,15 +44,13 @@ final class PopupViewModel: ObservableObject {
         engine.resetReminder()
     }
 
-    private func refresh(rescheduleIfUnchanged: Bool = false, now: Date = .now) {
+    private func refresh(now: Date = .now) {
         let nextSnapshot = engine.popupSnapshot(at: now)
 
-        if nextSnapshot == snapshot, !rescheduleIfUnchanged {
-            scheduleRefresh(now: now)
-            return
+        if nextSnapshot != snapshot {
+            snapshot = nextSnapshot
         }
 
-        snapshot = nextSnapshot
         scheduleRefresh(now: now)
     }
 

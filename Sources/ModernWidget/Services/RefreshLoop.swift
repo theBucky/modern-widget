@@ -17,11 +17,7 @@ final class RefreshLoop {
         }
 
         task = Task {
-            do {
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
-                return
-            }
+            try? await Task.sleep(for: .seconds(delay))
 
             guard !Task.isCancelled else {
                 return

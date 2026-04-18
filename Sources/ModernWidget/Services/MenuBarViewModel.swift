@@ -13,18 +13,16 @@ final class MenuBarViewModel: ObservableObject {
         engine.addObserver(owner: self) { [weak self] in
             self?.refresh()
         }
-        refresh(rescheduleIfUnchanged: true)
+        refresh()
     }
 
-    private func refresh(rescheduleIfUnchanged: Bool = false, now: Date = .now) {
+    private func refresh(now: Date = .now) {
         let nextSnapshot = engine.menuBarSnapshot(at: now)
 
-        if nextSnapshot == snapshot, !rescheduleIfUnchanged {
-            scheduleRefresh(now: now)
-            return
+        if nextSnapshot != snapshot {
+            snapshot = nextSnapshot
         }
 
-        snapshot = nextSnapshot
         scheduleRefresh(now: now)
     }
 
