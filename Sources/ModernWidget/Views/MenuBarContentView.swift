@@ -2,89 +2,93 @@ import SwiftUI
 
 struct MenuBarContentView: View {
     @StateObject private var viewModel: PopupViewModel
-    @State private var selectedTab = Tab.main
+    @State private var selectedPane = Pane.main
 
     init(engine: ReminderEngine) {
         _viewModel = StateObject(wrappedValue: PopupViewModel(engine: engine))
     }
 
-    private enum Tab {
+    private enum Pane: Hashable {
         case main
         case calendar
     }
 
     private enum Layout {
         static let contentWidth: CGFloat = 220
-        static let contentPadding: CGFloat = 20
-        static let sectionSpacing: CGFloat = 20
+        static let borderPadding: CGFloat = 20
+        static let unitSpacing: CGFloat = 20
+        static let toolbarIconSize: CGFloat = 22
+        static let actionButtonSize: CGFloat = 34
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedTab) {
-                Label("Timer", systemImage: "timer")
-                    .tag(Tab.main)
-                Label("History", systemImage: "calendar")
-                    .tag(Tab.calendar)
-            }
-            .labelStyle(.iconOnly)
-            .navigationSplitViewColumnWidth(50)
-        } detail: {
-            switch selectedTab {
-            case .main:
-                mainContent
-            case .calendar:
-                CalendarView(historyStore: viewModel.walkHistory)
-                    .frame(width: Layout.contentWidth)
-            }
+        VStack(spacing: Layout.unitSpacing) {
+            toolbar
+            paneBody
         }
-        .navigationSplitViewColumnWidth(Layout.contentWidth)
-        .onAppear {
-            viewModel.start()
-        }
-        .onDisappear {
-            viewModel.stop()
-        }
-    }
-
-    private var mainContent: some View {
-        VStack(spacing: Layout.sectionSpacing) {
-            statusSection
-            intervalSection
-            actionsSection
-        }
-        .padding(Layout.contentPadding)
+        .padding(Layout.borderPadding)
         .frame(width: Layout.contentWidth)
+        .onAppear { viewModel.start() }
+        .onDisappear { viewModel.stop() }
     }
 
-    private var statusSection: some View {
-        ReminderStatusView(snapshot: viewModel.snapshot)
-    }
-
-    private var intervalSection: some View {
-        Picker(
-            "",
-            selection: Binding(
-                get: { viewModel.snapshot.reminderMinutes },
-                set: { viewModel.setReminderMinutes($0) }
-            )
-        ) {
-            ForEach(viewModel.reminderMinuteOptions, id: \.self) { minutes in
-                Text("\(minutes) min").tag(minutes)
-            }
+    @ViewBuilder
+    private var paneBody: some View {
+        switch selectedPane {
+        case .main:
+            ReminderStatusView(snapshot: viewModel.snapshot)
+            actionsSection
+            footerSection
+        case .calendar:
+            CalendarView(historyStore: viewModel.walkHistory)
         }
-        .labelsHidden()
-        .pickerStyle(.segmented)
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 6) {
+            paneButton(.main, systemImage: "timer")
+            paneButton(.calendar, systemImage: "calendar")
+            Spacer()
+            intervalMenu
+        }
+    }
+
+    private func paneButton(_ pane: Pane, systemImage: String) -> some View {
+        Button {
+            selectedPane = pane
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: Layout.toolbarIconSize, height: Layout.toolbarIconSize)
+                .foregroundStyle(selectedPane == pane ? Color.accentColor : .secondary)
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private var intervalMenu: some View {
+        Menu {
+            ForEach(viewModel.reminderMinuteOptions, id: \.self) { minutes in
+                Button("\(minutes) min") {
+                    viewModel.setReminderMinutes(minutes)
+                }
+            }
+        } label: {
+            Text("\(viewModel.snapshot.reminderMinutes) min")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     private var actionsSection: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Button {
                 viewModel.togglePause()
             } label: {
                 Image(systemName: pauseButtonSymbolName(for: viewModel.snapshot.phase))
-                    .font(.title3)
-                    .frame(width: 40, height: 40)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
             }
             .buttonStyle(.bordered)
             .clipShape(Circle())
@@ -93,13 +97,19 @@ struct MenuBarContentView: View {
                 viewModel.resetReminder()
             } label: {
                 Image(systemName: "arrow.counterclockwise")
-                    .font(.title3)
-                    .frame(width: 40, height: 40)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
             .clipShape(Circle())
             .keyboardShortcut(.defaultAction)
         }
+    }
+
+    private var footerSection: some View {
+        Text("reset \(viewModel.snapshot.lastWalkAt.formatted(date: .omitted, time: .shortened))")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
     }
 
     private func pauseButtonSymbolName(for phase: ReminderPhase) -> String {
@@ -116,9 +126,9 @@ private struct ReminderStatusView: View {
     let snapshot: PopupSnapshot
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             Text(statusTitle(for: snapshot))
-                .font(.system(size: 42, weight: .light, design: .rounded))
+                .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(statusTint(for: snapshot))
 
@@ -133,10 +143,6 @@ private struct ReminderStatusView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-
-            Text("reset \(snapshot.lastWalkAt.formatted(date: .omitted, time: .shortened))")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
     }
