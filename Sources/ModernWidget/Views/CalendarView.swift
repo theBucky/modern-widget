@@ -32,7 +32,6 @@ struct CalendarView: View {
                     row(entry)
                 }
             }
-            .padding(.vertical, 8)
         }
     }
 
