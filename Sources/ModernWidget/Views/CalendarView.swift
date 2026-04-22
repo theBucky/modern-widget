@@ -3,6 +3,10 @@ import SwiftUI
 struct CalendarView: View {
     @ObservedObject var historyStore: WalkHistoryStore
 
+    private enum Layout {
+        static let listMaxHeight: CGFloat = 260
+    }
+
     var body: some View {
         let grouped = historyStore.walksByDay()
 
@@ -33,6 +37,7 @@ struct CalendarView: View {
                 }
             }
         }
+        .frame(maxHeight: Layout.listMaxHeight)
     }
 
     private func row(_ entry: (day: Date, count: Int)) -> some View {
