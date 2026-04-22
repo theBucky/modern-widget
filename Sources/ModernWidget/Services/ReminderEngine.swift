@@ -7,8 +7,8 @@ enum ReminderPhase: Equatable {
 }
 
 struct MenuBarSnapshot: Equatable {
-    let text: String
-    let symbolName: String
+    let phase: ReminderPhase
+    let progress: Double
 }
 
 struct PopupSnapshot: Equatable {
@@ -25,30 +25,6 @@ final class ReminderEngine {
         let phase: ReminderPhase
         let remainingTime: TimeInterval
         let secondsRemaining: Int
-
-        var menuBarText: String {
-            switch phase {
-            case .overdue:
-                return "Move"
-            case .paused, .countingDown:
-                return countdownLabel
-            }
-        }
-
-        var menuBarSymbolName: String {
-            switch phase {
-            case .paused:
-                return "pause.fill"
-            case .overdue:
-                return "figure.walk"
-            case .countingDown:
-                return "timer"
-            }
-        }
-
-        var countdownLabel: String {
-            ReminderEngine.countdownLabel(for: secondsRemaining)
-        }
 
         var nextRefreshDelay: TimeInterval? {
             guard phase == .countingDown, remainingTime > 0 else {
@@ -107,7 +83,7 @@ final class ReminderEngine {
         }
     }
 
-    private(set) var reminderStatusMessage: String?
+    private(set) var lastReminderIssue: ReminderNotificationIssue?
 
     init(defaults: UserDefaults = .standard, notifier: ReminderNotifier = ReminderNotifier()) {
         let storedReminderMinutes = Self.normalizedReminderMinutes(
@@ -130,10 +106,6 @@ final class ReminderEngine {
 
     deinit {
         reminderTask?.cancel()
-    }
-
-    var reminderMinuteOptions: [Int] {
-        Self.reminderMinutePresets
     }
 
     func addObserver(owner: AnyObject, _ observer: @escaping @MainActor () -> Void) {
@@ -166,8 +138,8 @@ final class ReminderEngine {
         let countdownState = countdownState(at: date)
 
         return MenuBarSnapshot(
-            text: countdownState.menuBarText,
-            symbolName: countdownState.menuBarSymbolName
+            phase: countdownState.phase,
+            progress: Double(countdownState.secondsRemaining) / Double(reminderSeconds)
         )
     }
 
@@ -177,8 +149,8 @@ final class ReminderEngine {
         return PopupSnapshot(
             reminderMinutes: reminderMinutes,
             phase: countdownState.phase,
-            countdownLabel: countdownState.countdownLabel,
-            reminderStatusMessage: reminderStatusMessage,
+            countdownLabel: Self.countdownLabel(for: countdownState.secondsRemaining),
+            reminderStatusMessage: Self.statusMessage(for: lastReminderIssue),
             lastWalkAt: lastWalkAt
         )
     }
@@ -195,7 +167,7 @@ final class ReminderEngine {
         pausedRemainingSeconds = reminderSeconds
         lastWalkAt = .now
         lastReminderAt = nil
-        reminderStatusMessage = nil
+        lastReminderIssue = nil
         syncReminderTaskToState()
 
         if recordWalk {
@@ -297,7 +269,7 @@ final class ReminderEngine {
     private func pauseReminder() {
         pausedRemainingSeconds = countdownState(at: .now).secondsRemaining
         isPaused = true
-        reminderStatusMessage = nil
+        lastReminderIssue = nil
         syncReminderTaskToState()
         notifyObservers()
     }
@@ -306,7 +278,7 @@ final class ReminderEngine {
         let elapsedBeforePause = reminderSeconds - pausedRemainingSeconds
         isPaused = false
         lastWalkAt = Date().addingTimeInterval(TimeInterval(-elapsedBeforePause))
-        reminderStatusMessage = nil
+        lastReminderIssue = nil
         syncReminderTaskToState()
         notifyObservers()
     }
@@ -321,13 +293,11 @@ final class ReminderEngine {
     }
 
     private func updateReminderStatus(_ issue: ReminderNotificationIssue?) {
-        let message = reminderStatusMessage(for: issue)
-
-        if reminderStatusMessage == message {
+        if lastReminderIssue == issue {
             return
         }
 
-        reminderStatusMessage = message
+        lastReminderIssue = issue
         notifyObservers()
     }
 
@@ -358,7 +328,7 @@ final class ReminderEngine {
         String(format: "%02d:%02d", secondsRemaining / 60, secondsRemaining % 60)
     }
 
-    private func reminderStatusMessage(for issue: ReminderNotificationIssue?) -> String? {
+    private static func statusMessage(for issue: ReminderNotificationIssue?) -> String? {
         switch issue {
         case .none:
             return nil

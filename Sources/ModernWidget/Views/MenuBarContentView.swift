@@ -28,8 +28,6 @@ struct MenuBarContentView: View {
         }
         .padding(Layout.borderPadding)
         .frame(width: Layout.contentWidth)
-        .onAppear { viewModel.start() }
-        .onDisappear { viewModel.stop() }
     }
 
     @ViewBuilder

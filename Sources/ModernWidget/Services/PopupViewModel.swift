@@ -13,23 +13,15 @@ final class PopupViewModel: ObservableObject {
         self.engine = engine
         self.snapshot = engine.popupSnapshot()
         self.walkHistory = engine.walkHistory
-    }
 
-    var reminderMinuteOptions: [Int] {
-        engine.reminderMinuteOptions
-    }
-
-    func start() {
         engine.addObserver(owner: self) { [weak self] in
             self?.refresh()
         }
-
         refresh()
     }
 
-    func stop() {
-        refreshLoop.cancel()
-        engine.removeObserver(owner: self)
+    var reminderMinuteOptions: [Int] {
+        ReminderEngine.reminderMinutePresets
     }
 
     func setReminderMinutes(_ minutes: Int) {
@@ -51,10 +43,6 @@ final class PopupViewModel: ObservableObject {
             snapshot = nextSnapshot
         }
 
-        scheduleRefresh(now: now)
-    }
-
-    private func scheduleRefresh(now: Date) {
         refreshLoop.schedule(after: engine.nextRefreshDelay(now: now)) { [weak self] in
             self?.refresh(now: .now)
         }
