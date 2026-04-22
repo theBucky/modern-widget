@@ -30,6 +30,7 @@ struct MenuBarContentView: View {
             toolbar
             paneBody
         }
+        .frame(width: paneWidth)
         .padding(Layout.borderPadding)
         .onGeometryChange(for: CGSize.self, of: \.size) { size in
             onSizeChange(size)
@@ -45,10 +46,15 @@ struct MenuBarContentView: View {
                 actionsSection
                 footerSection
             }
-            .frame(width: Layout.mainPaneWidth)
         case .calendar:
             CalendarView(historyStore: viewModel.walkHistory)
-                .frame(width: Layout.calendarPaneWidth)
+        }
+    }
+
+    private var paneWidth: CGFloat {
+        switch selectedPane {
+        case .main: Layout.mainPaneWidth
+        case .calendar: Layout.calendarPaneWidth
         }
     }
 
