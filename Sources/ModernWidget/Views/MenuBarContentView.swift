@@ -4,8 +4,11 @@ struct MenuBarContentView: View {
     @StateObject private var viewModel: PopupViewModel
     @State private var selectedPane = Pane.main
 
-    init(engine: ReminderEngine) {
+    private let onSizeChange: (CGSize) -> Void
+
+    init(engine: ReminderEngine, onSizeChange: @escaping (CGSize) -> Void) {
         _viewModel = StateObject(wrappedValue: PopupViewModel(engine: engine))
+        self.onSizeChange = onSizeChange
     }
 
     private enum Pane: Hashable {
@@ -14,7 +17,8 @@ struct MenuBarContentView: View {
     }
 
     private enum Layout {
-        static let contentWidth: CGFloat = 220
+        static let mainPaneWidth: CGFloat = 180
+        static let calendarPaneWidth: CGFloat = 260
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
         static let toolbarIconSize: CGFloat = 22
@@ -27,18 +31,24 @@ struct MenuBarContentView: View {
             paneBody
         }
         .padding(Layout.borderPadding)
-        .frame(width: Layout.contentWidth)
+        .onGeometryChange(for: CGSize.self, of: \.size) { size in
+            onSizeChange(size)
+        }
     }
 
     @ViewBuilder
     private var paneBody: some View {
         switch selectedPane {
         case .main:
-            ReminderStatusView(snapshot: viewModel.snapshot)
-            actionsSection
-            footerSection
+            VStack(spacing: Layout.unitSpacing) {
+                ReminderStatusView(snapshot: viewModel.snapshot)
+                actionsSection
+                footerSection
+            }
+            .frame(width: Layout.mainPaneWidth)
         case .calendar:
             CalendarView(historyStore: viewModel.walkHistory)
+                .frame(width: Layout.calendarPaneWidth)
         }
     }
 

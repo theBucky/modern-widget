@@ -16,11 +16,17 @@ final class MenuBarController: NSObject {
     private let glassView: NSGlassEffectView
     private let hostingView: NSHostingView<PanelRootView>
     private var outsideMonitor: Any?
+    private var lastContentSize: CGSize = .zero
 
     init(engine: ReminderEngine, menuBarViewModel: MenuBarViewModel) {
         statusItem = NSStatusBar.system.statusItem(withLength: Layout.statusItemLength)
 
-        hostingView = NSHostingView(rootView: PanelRootView(engine: engine))
+        var onContentSizeChange: ((CGSize) -> Void)?
+        hostingView = NSHostingView(
+            rootView: PanelRootView(engine: engine) { size in
+                onContentSizeChange?(size)
+            }
+        )
         hostingView.translatesAutoresizingMaskIntoConstraints = false
 
         glassView = NSGlassEffectView()
@@ -60,6 +66,10 @@ final class MenuBarController: NSObject {
         ])
 
         super.init()
+
+        onContentSizeChange = { [weak self] size in
+            self?.applyContentSize(size)
+        }
 
         installIcon(viewModel: menuBarViewModel)
 
@@ -114,11 +124,22 @@ final class MenuBarController: NSObject {
     }
 
     private func showPanel() {
-        guard let button = statusItem.button, let buttonWindow = button.window else { return }
-
         hostingView.layoutSubtreeIfNeeded()
-        let size = hostingView.fittingSize
-        panel.setContentSize(size)
+        guard positionPanel(size: hostingView.fittingSize) else { return }
+        panel.makeKeyAndOrderFront(nil)
+        installOutsideMonitor()
+    }
+
+    private func applyContentSize(_ size: CGSize) {
+        guard panel.isVisible, size != lastContentSize else { return }
+        positionPanel(size: size)
+    }
+
+    @discardableResult
+    private func positionPanel(size: CGSize) -> Bool {
+        guard let button = statusItem.button, let buttonWindow = button.window else {
+            return false
+        }
 
         let buttonScreenRect = buttonWindow.convertToScreen(
             button.convert(button.bounds, to: nil)
@@ -134,9 +155,10 @@ final class MenuBarController: NSObject {
             x: clampedX,
             y: buttonScreenRect.minY - size.height - margin
         )
+        panel.setContentSize(size)
         panel.setFrameOrigin(origin)
-        panel.makeKeyAndOrderFront(nil)
-        installOutsideMonitor()
+        lastContentSize = size
+        return true
     }
 
     private func hidePanel() {
@@ -165,9 +187,10 @@ final class MenuBarController: NSObject {
 
 private struct PanelRootView: View {
     let engine: ReminderEngine
+    let onSizeChange: (CGSize) -> Void
 
     var body: some View {
-        MenuBarContentView(engine: engine)
+        MenuBarContentView(engine: engine, onSizeChange: onSizeChange)
             .environment(\.controlActiveState, .active)
             .ignoresSafeArea()
     }
