@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 final class WalkHistoryStore: ObservableObject {
     private static let storageKey = "walkHistory"
-    private static let retentionDays = 30
+    private static let retentionMonths = 3
 
     @Published private(set) var walks: [Date] = []
 
@@ -27,10 +27,20 @@ final class WalkHistoryStore: ObservableObject {
         save()
     }
 
-    func walksByDay() -> [(day: Date, count: Int)] {
-        Dictionary(grouping: walks) { Calendar.current.startOfDay(for: $0) }
-            .map { (day: $0.key, count: $0.value.count) }
-            .sorted { $0.day > $1.day }
+    func walkCountsByDay() -> [Date: Int] {
+        walks.reduce(into: [:]) { counts, walk in
+            counts[Calendar.current.startOfDay(for: walk), default: 0] += 1
+        }
+    }
+
+    static func earliestRetainedMonth(now: Date = .now) -> Date {
+        let calendar = Calendar.current
+        let currentMonthStart = calendar.dateInterval(of: .month, for: now)!.start
+        return calendar.date(
+            byAdding: .month,
+            value: -(retentionMonths - 1),
+            to: currentMonthStart
+        )!
     }
 
     private func load() -> [Date] {
@@ -48,9 +58,7 @@ final class WalkHistoryStore: ObservableObject {
     }
 
     private static func pruneOldEntries(in walks: inout [Date]) {
-        let now = Date.now
-        let cutoff =
-            Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: now) ?? now
+        let cutoff = earliestRetainedMonth()
         walks.removeAll { $0 < cutoff }
     }
 }
