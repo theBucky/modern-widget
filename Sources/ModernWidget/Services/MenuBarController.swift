@@ -14,18 +14,24 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let panel: NSPanel
     private let glassView: NSGlassEffectView
-    private let hostingView: NSHostingView<PanelRootView>
+    private let hostingView: NSView
+    private let popupViewModel: PopupViewModel
     private var outsideMonitor: Any?
     private var lastContentSize: CGSize = .zero
 
     init(engine: ReminderEngine, menuBarViewModel: MenuBarViewModel) {
+        let popupViewModel = PopupViewModel(engine: engine)
+
         statusItem = NSStatusBar.system.statusItem(withLength: Layout.statusItemLength)
+        self.popupViewModel = popupViewModel
 
         var onContentSizeChange: ((CGSize) -> Void)?
         hostingView = NSHostingView(
-            rootView: PanelRootView(engine: engine) { size in
+            rootView: MenuBarContentView(viewModel: popupViewModel) { size in
                 onContentSizeChange?(size)
             }
+            .environment(\.controlActiveState, .active)
+            .ignoresSafeArea()
         )
         hostingView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -124,18 +130,23 @@ final class MenuBarController: NSObject {
     }
 
     private func showPanel() {
+        popupViewModel.activate()
         hostingView.layoutSubtreeIfNeeded()
-        guard positionPanel(size: hostingView.fittingSize) else { return }
+        guard positionPanel(size: hostingView.fittingSize) else {
+            popupViewModel.deactivate()
+            return
+        }
         panel.makeKeyAndOrderFront(nil)
         installOutsideMonitor()
     }
 
     private func applyContentSize(_ size: CGSize) {
         guard panel.isVisible, size != lastContentSize else { return }
-        positionPanel(size: size)
+        if !positionPanel(size: size) {
+            hidePanel()
+        }
     }
 
-    @discardableResult
     private func positionPanel(size: CGSize) -> Bool {
         guard let button = statusItem.button, let buttonWindow = button.window else {
             return false
@@ -144,7 +155,10 @@ final class MenuBarController: NSObject {
         let buttonScreenRect = buttonWindow.convertToScreen(
             button.convert(button.bounds, to: nil)
         )
-        let visibleFrame = (buttonWindow.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+        guard let visibleFrame = buttonWindow.screen?.visibleFrame else {
+            return false
+        }
+
         let margin = Layout.panelSpacing
         let rawX = buttonScreenRect.midX - size.width / 2
         let clampedX = min(
@@ -162,6 +176,7 @@ final class MenuBarController: NSObject {
     }
 
     private func hidePanel() {
+        popupViewModel.deactivate()
         panel.orderOut(nil)
         removeOutsideMonitor()
     }
@@ -171,7 +186,7 @@ final class MenuBarController: NSObject {
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.hidePanel()
             }
         }
@@ -182,16 +197,5 @@ final class MenuBarController: NSObject {
             NSEvent.removeMonitor(outsideMonitor)
         }
         outsideMonitor = nil
-    }
-}
-
-private struct PanelRootView: View {
-    let engine: ReminderEngine
-    let onSizeChange: (CGSize) -> Void
-
-    var body: some View {
-        MenuBarContentView(engine: engine, onSizeChange: onSizeChange)
-            .environment(\.controlActiveState, .active)
-            .ignoresSafeArea()
     }
 }

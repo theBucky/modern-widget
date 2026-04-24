@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct MenuBarContentView: View {
-    @StateObject private var viewModel: PopupViewModel
+    @ObservedObject private var viewModel: PopupViewModel
+
     @State private var selectedPane = Pane.main
 
     private let onSizeChange: (CGSize) -> Void
 
-    init(engine: ReminderEngine, onSizeChange: @escaping (CGSize) -> Void) {
-        _viewModel = StateObject(wrappedValue: PopupViewModel(engine: engine))
+    init(viewModel: PopupViewModel, onSizeChange: @escaping (CGSize) -> Void) {
+        self.viewModel = viewModel
         self.onSizeChange = onSizeChange
     }
 

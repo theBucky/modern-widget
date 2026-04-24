@@ -23,10 +23,6 @@ final class MenuBarViewModel: ObservableObject {
             snapshot = nextSnapshot
         }
 
-        scheduleRefresh(now: now)
-    }
-
-    private func scheduleRefresh(now: Date) {
         refreshLoop.schedule(after: engine.nextRefreshDelay(now: now)) { [weak self] in
             self?.refresh(now: .now)
         }
