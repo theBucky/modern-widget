@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CalendarView: View {
     @ObservedObject var historyStore: WalkHistoryStore
-    @State private var displayedMonth: Date = CalendarView.startOfMonth(.now)
+    @State private var monthGrid = MonthGrid(month: CalendarView.startOfMonth(.now))
 
     private enum Layout {
         static let sectionSpacing: CGFloat = 10
@@ -10,6 +10,10 @@ struct CalendarView: View {
         static let cellHeight: CGFloat = 44
         static let cornerRadius: CGFloat = 5
         static let chevronSize: CGFloat = 22
+        static let columns = Array(
+            repeating: GridItem(.flexible(), spacing: cellSpacing),
+            count: 7
+        )
     }
 
     var body: some View {
@@ -24,7 +28,7 @@ struct CalendarView: View {
         HStack(spacing: 0) {
             chevron(systemImage: "chevron.left", delta: -1, disabled: !canGoBack)
             Spacer()
-            Text(displayedMonth, format: .dateTime.month(.wide).year())
+            Text(monthGrid.month, format: .dateTime.month(.wide).year())
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
             Spacer()
@@ -58,16 +62,10 @@ struct CalendarView: View {
     }
 
     private var daysGrid: some View {
-        let counts = historyStore.walkCountsByDay()
-        let columns = Array(
-            repeating: GridItem(.flexible(), spacing: Layout.cellSpacing),
-            count: 7
-        )
-        let cells = dayCells
-        return LazyVGrid(columns: columns, spacing: Layout.cellSpacing) {
-            ForEach(cells.indices, id: \.self) { index in
-                if let date = cells[index] {
-                    dayCell(for: date, count: counts[date] ?? 0)
+        LazyVGrid(columns: Layout.columns, spacing: Layout.cellSpacing) {
+            ForEach(monthGrid.dayCells.indices, id: \.self) { index in
+                if let date = monthGrid.dayCells[index] {
+                    dayCell(for: date, count: historyStore.walkCountsByDay[date] ?? 0)
                 } else {
                     Color.clear.frame(height: Layout.cellHeight)
                 }
@@ -122,15 +120,16 @@ struct CalendarView: View {
     }
 
     private var canGoBack: Bool {
-        displayedMonth > WalkHistoryStore.earliestRetainedMonth()
+        monthGrid.month > WalkHistoryStore.earliestRetainedMonth()
     }
 
     private var canGoForward: Bool {
-        displayedMonth < Self.startOfMonth(.now)
+        monthGrid.month < Self.startOfMonth(.now)
     }
 
     private func shiftMonth(by delta: Int) {
-        displayedMonth = Calendar.current.date(byAdding: .month, value: delta, to: displayedMonth)!
+        let month = Calendar.current.date(byAdding: .month, value: delta, to: monthGrid.month)!
+        monthGrid = MonthGrid(month: month)
     }
 
     private var weekdaySymbols: [String] {
@@ -140,13 +139,21 @@ struct CalendarView: View {
         return Array(symbols[offset...]) + Array(symbols[..<offset])
     }
 
-    private var dayCells: [Date?] {
+    private static func startOfMonth(_ date: Date) -> Date {
+        Calendar.current.dateInterval(of: .month, for: date)!.start
+    }
+}
+
+private struct MonthGrid {
+    let month: Date
+    let dayCells: [Date?]
+
+    init(month: Date) {
         let calendar = Calendar.current
-        let firstDay = calendar.dateInterval(of: .month, for: displayedMonth)!.start
+        let firstDay = calendar.dateInterval(of: .month, for: month)!.start
         let dayCount = calendar.range(of: .day, in: .month, for: firstDay)!.count
         let firstWeekday = calendar.component(.weekday, from: firstDay)
         let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
-
         let leading: [Date?] = Array(repeating: nil, count: leadingBlanks)
         let days: [Date?] = (0..<dayCount).map {
             calendar.date(byAdding: .day, value: $0, to: firstDay)
@@ -155,10 +162,8 @@ struct CalendarView: View {
             repeating: nil,
             count: (7 - (leading.count + days.count) % 7) % 7
         )
-        return leading + days + trailing
-    }
 
-    private static func startOfMonth(_ date: Date) -> Date {
-        Calendar.current.dateInterval(of: .month, for: date)!.start
+        self.month = firstDay
+        self.dayCells = leading + days + trailing
     }
 }

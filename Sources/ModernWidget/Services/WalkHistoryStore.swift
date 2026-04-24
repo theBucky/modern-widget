@@ -5,9 +5,10 @@ final class WalkHistoryStore: ObservableObject {
     private static let storageKey = "walkHistory"
     private static let retentionMonths = 3
 
-    @Published private(set) var walks: [Date] = []
+    @Published private(set) var walkCountsByDay: [Date: Int] = [:]
 
     private let defaults: UserDefaults
+    private var walks: [Date] = []
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -15,6 +16,7 @@ final class WalkHistoryStore: ObservableObject {
         var prunedWalks = loadedWalks
         Self.pruneOldEntries(in: &prunedWalks)
         self.walks = prunedWalks
+        updateWalkCountsByDay()
 
         if loadedWalks.count != prunedWalks.count {
             save()
@@ -24,11 +26,12 @@ final class WalkHistoryStore: ObservableObject {
     func recordWalk(_ date: Date = .now) {
         walks.append(date)
         Self.pruneOldEntries(in: &walks)
+        updateWalkCountsByDay()
         save()
     }
 
-    func walkCountsByDay() -> [Date: Int] {
-        walks.reduce(into: [:]) { counts, walk in
+    private func updateWalkCountsByDay() {
+        walkCountsByDay = walks.reduce(into: [:]) { counts, walk in
             counts[Calendar.current.startOfDay(for: walk), default: 0] += 1
         }
     }
