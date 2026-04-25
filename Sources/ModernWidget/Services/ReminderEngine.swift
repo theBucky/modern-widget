@@ -9,6 +9,7 @@ enum ReminderPhase: Equatable {
 struct MenuBarSnapshot: Equatable {
     let phase: ReminderPhase
     let progress: Double
+    let secondsRemaining: Int
 }
 
 struct PopupSnapshot: Equatable {
@@ -139,7 +140,8 @@ final class ReminderEngine {
 
         return MenuBarSnapshot(
             phase: countdownState.phase,
-            progress: Double(countdownState.secondsRemaining) / Double(reminderSeconds)
+            progress: Double(countdownState.secondsRemaining) / Double(reminderSeconds),
+            secondsRemaining: countdownState.secondsRemaining
         )
     }
 

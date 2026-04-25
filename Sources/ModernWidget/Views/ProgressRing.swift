@@ -3,12 +3,13 @@ import SwiftUI
 struct ProgressRing: View {
     static let size: CGFloat = 18
     static let lineWidth: CGFloat = 2.25
-    static let alertThreshold: Double = 0.15
 
+    private static let alertThresholdSeconds = 5 * 60
     private static let solidStroke = StrokeStyle(lineWidth: lineWidth, lineCap: .round)
     private static let outerPadding: CGFloat = lineWidth / 2 + 1
 
     let progress: Double
+    let secondsRemaining: Int
     let phase: ReminderPhase
 
     var body: some View {
@@ -29,6 +30,6 @@ struct ProgressRing: View {
     }
 
     private var tint: Color {
-        progress < Self.alertThreshold ? .orange : .primary
+        secondsRemaining <= Self.alertThresholdSeconds ? .orange : .primary
     }
 }

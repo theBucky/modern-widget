@@ -14,8 +14,12 @@ struct MenuBarIconView: View {
                     .foregroundStyle(Color.primary)
                     .symbolEffect(.bounce.down, options: .nonRepeating, value: snapshot.phase)
             case .countingDown, .overdue:
-                ProgressRing(progress: snapshot.progress, phase: snapshot.phase)
-                    .frame(width: ProgressRing.size, height: ProgressRing.size)
+                ProgressRing(
+                    progress: snapshot.progress,
+                    secondsRemaining: snapshot.secondsRemaining,
+                    phase: snapshot.phase
+                )
+                .frame(width: ProgressRing.size, height: ProgressRing.size)
             }
         }
         .transition(.scale(scale: 0.6).combined(with: .opacity))
