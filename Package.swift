@@ -17,6 +17,10 @@ let package = Package(
         .executableTarget(
             name: "ModernWidget"
         ),
+        .testTarget(
+            name: "ModernWidgetTests",
+            dependencies: ["ModernWidget"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
