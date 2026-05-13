@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct CalendarView: View {
-    @ObservedObject var historyStore: WalkHistoryStore
-    @State private var monthGrid = MonthGrid(month: CalendarView.startOfMonth(.now))
+    let historyStore: WalkHistoryStore
+    @State private var monthGrid = WalkHistoryMonth(containing: .now)
 
     private enum Layout {
         static let sectionSpacing: CGFloat = 10
@@ -120,50 +120,19 @@ struct CalendarView: View {
     }
 
     private var canGoBack: Bool {
-        monthGrid.month > WalkHistoryStore.earliestRetainedMonth()
+        monthGrid.month > WalkHistoryCalendar.earliestRetainedMonth()
     }
 
     private var canGoForward: Bool {
-        monthGrid.month < Self.startOfMonth(.now)
+        monthGrid.month < WalkHistoryCalendar.startOfMonth(.now)
     }
 
     private func shiftMonth(by delta: Int) {
         let month = Calendar.current.date(byAdding: .month, value: delta, to: monthGrid.month)!
-        monthGrid = MonthGrid(month: month)
+        monthGrid = WalkHistoryMonth(containing: month)
     }
 
     private var weekdaySymbols: [String] {
-        let calendar = Calendar.current
-        let symbols = calendar.veryShortStandaloneWeekdaySymbols
-        let offset = calendar.firstWeekday - 1
-        return Array(symbols[offset...]) + Array(symbols[..<offset])
-    }
-
-    private static func startOfMonth(_ date: Date) -> Date {
-        Calendar.current.dateInterval(of: .month, for: date)!.start
-    }
-}
-
-private struct MonthGrid {
-    let month: Date
-    let dayCells: [Date?]
-
-    init(month: Date) {
-        let calendar = Calendar.current
-        let firstDay = calendar.dateInterval(of: .month, for: month)!.start
-        let dayCount = calendar.range(of: .day, in: .month, for: firstDay)!.count
-        let firstWeekday = calendar.component(.weekday, from: firstDay)
-        let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
-        let leading: [Date?] = Array(repeating: nil, count: leadingBlanks)
-        let days: [Date?] = (0..<dayCount).map {
-            calendar.date(byAdding: .day, value: $0, to: firstDay)
-        }
-        let trailing: [Date?] = Array(
-            repeating: nil,
-            count: (7 - (leading.count + days.count) % 7) % 7
-        )
-
-        self.month = firstDay
-        self.dayCells = leading + days + trailing
+        WalkHistoryCalendar.weekdaySymbols()
     }
 }

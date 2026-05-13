@@ -1,13 +1,16 @@
 import Foundation
+import Observation
 
 @MainActor
-final class WalkHistoryStore: ObservableObject {
+@Observable
+final class WalkHistoryStore {
     private static let storageKey = "walkHistory"
-    private static let retentionMonths = 3
 
-    @Published private(set) var walkCountsByDay: [Date: Int] = [:]
+    private(set) var walkCountsByDay: [Date: Int] = [:]
 
+    @ObservationIgnored
     private let defaults: UserDefaults
+    @ObservationIgnored
     private var walks: [Date] = []
 
     init(defaults: UserDefaults = .standard) {
@@ -36,16 +39,6 @@ final class WalkHistoryStore: ObservableObject {
         }
     }
 
-    static func earliestRetainedMonth(now: Date = .now) -> Date {
-        let calendar = Calendar.current
-        let currentMonthStart = calendar.dateInterval(of: .month, for: now)!.start
-        return calendar.date(
-            byAdding: .month,
-            value: -(retentionMonths - 1),
-            to: currentMonthStart
-        )!
-    }
-
     private func load() -> [Date] {
         guard let data = defaults.data(forKey: Self.storageKey),
             let dates = try? JSONDecoder().decode([Date].self, from: data)
@@ -61,7 +54,7 @@ final class WalkHistoryStore: ObservableObject {
     }
 
     private static func pruneOldEntries(in walks: inout [Date]) {
-        let cutoff = earliestRetainedMonth()
+        let cutoff = WalkHistoryCalendar.earliestRetainedMonth()
         walks.removeAll { $0 < cutoff }
     }
 }

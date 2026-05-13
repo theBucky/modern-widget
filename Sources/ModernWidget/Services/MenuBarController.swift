@@ -15,19 +15,15 @@ final class MenuBarController: NSObject {
     private let panel: NSPanel
     private let glassView: NSGlassEffectView
     private let hostingView: NSView
-    private let popupViewModel: PopupViewModel
     private var outsideMonitor: Any?
     private var lastContentSize: CGSize = .zero
 
-    init(engine: ReminderEngine, menuBarViewModel: MenuBarViewModel) {
-        let popupViewModel = PopupViewModel(engine: engine)
-
+    init(engine: ReminderEngine) {
         statusItem = NSStatusBar.system.statusItem(withLength: Layout.statusItemLength)
-        self.popupViewModel = popupViewModel
 
         var onContentSizeChange: ((CGSize) -> Void)?
         hostingView = NSHostingView(
-            rootView: MenuBarContentView(viewModel: popupViewModel) { size in
+            rootView: MenuBarContentView(engine: engine) { size in
                 onContentSizeChange?(size)
             }
             .environment(\.controlActiveState, .active)
@@ -77,7 +73,7 @@ final class MenuBarController: NSObject {
             self?.applyContentSize(size)
         }
 
-        installIcon(viewModel: menuBarViewModel)
+        installIcon(engine: engine)
 
         NotificationCenter.default.addObserver(
             self,
@@ -96,11 +92,11 @@ final class MenuBarController: NSObject {
         }
     }
 
-    private func installIcon(viewModel: MenuBarViewModel) {
+    private func installIcon(engine: ReminderEngine) {
         guard let button = statusItem.button else { return }
 
         let iconHost = NSHostingView(
-            rootView: MenuBarIconView(viewModel: viewModel).allowsHitTesting(false)
+            rootView: MenuBarIconView(engine: engine).allowsHitTesting(false)
         )
         iconHost.translatesAutoresizingMaskIntoConstraints = false
         button.addSubview(iconHost)
@@ -130,10 +126,8 @@ final class MenuBarController: NSObject {
     }
 
     private func showPanel() {
-        popupViewModel.activate()
         hostingView.layoutSubtreeIfNeeded()
         guard positionPanel(size: hostingView.fittingSize) else {
-            popupViewModel.deactivate()
             return
         }
         panel.makeKeyAndOrderFront(nil)
@@ -160,23 +154,19 @@ final class MenuBarController: NSObject {
         }
 
         let margin = Layout.panelSpacing
-        let rawX = buttonScreenRect.midX - size.width / 2
-        let clampedX = min(
-            max(rawX, visibleFrame.minX + margin),
-            visibleFrame.maxX - size.width - margin
-        )
-        let origin = NSPoint(
-            x: clampedX,
-            y: buttonScreenRect.minY - size.height - margin
+        let placement = MenuBarPanelPlacement(
+            contentSize: size,
+            statusItemFrame: buttonScreenRect,
+            visibleFrame: visibleFrame,
+            spacing: margin
         )
         panel.setContentSize(size)
-        panel.setFrameOrigin(origin)
+        panel.setFrameOrigin(placement.origin)
         lastContentSize = size
         return true
     }
 
     private func hidePanel() {
-        popupViewModel.deactivate()
         panel.orderOut(nil)
         removeOutsideMonitor()
     }

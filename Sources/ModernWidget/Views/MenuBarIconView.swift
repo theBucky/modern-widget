@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct MenuBarIconView: View {
-    @ObservedObject var viewModel: MenuBarViewModel
+    let engine: ReminderEngine
 
     var body: some View {
-        let snapshot = viewModel.snapshot
+        let snapshot = engine.snapshot
 
         Group {
             switch snapshot.phase {
