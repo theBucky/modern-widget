@@ -4,7 +4,7 @@ macOS menu bar app for break reminders. SwiftPM, Swift 6.3, macOS 26.0+.
 
 ## Structure
 
-```
+```text
 Sources/ModernWidget/
   Models/App/   entry point
   Models/MenuBar/ panel placement
