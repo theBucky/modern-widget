@@ -54,6 +54,10 @@ struct ReminderSchedule: Equatable {
     }
 
     func nextReminderDelay(lastReminderAt: Date?, now: Date) -> TimeInterval {
+        if case .paused = mode {
+            return .infinity
+        }
+
         guard countdown(at: now).phase == .overdue else {
             let dueAt = startedAt.addingTimeInterval(TimeInterval(reminderSeconds))
             return max(0, dueAt.timeIntervalSince(now))

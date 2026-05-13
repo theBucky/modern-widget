@@ -36,6 +36,18 @@ struct ReminderScheduleTests {
         #expect(countdown.nextRefreshDelay == nil)
     }
 
+    @Test("paused schedules never become reminder due")
+    func pausedScheduleHasNoReminderDelay() {
+        let schedule = ReminderSchedule(
+            reminderSeconds: 3600,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .paused(secondsRemaining: 1200)
+        )
+        let delay = schedule.nextReminderDelay(lastReminderAt: nil, now: date(2026, 5, 13, 12))
+
+        #expect(delay.isInfinite)
+    }
+
     @Test("overdue reminders repeat by interval")
     func overdueReminderCadence() {
         let startedAt = date(2026, 5, 13, 9)
