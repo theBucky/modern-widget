@@ -30,7 +30,7 @@ macOS menu bar app that reminds you to get off your chair and move.
 
 ```bash
 # format sources
-swift-format format --in-place --recursive Sources/
+swift-format format --in-place --recursive Sources/ Tests/
 
 # build
 swift build
@@ -61,11 +61,11 @@ script/build_and_run.sh logs
 ```
 Sources/ModernWidget/
 ├── Models/App/            # entry point, app delegate
+├── Models/MenuBar/        # panel placement model
+├── Models/Reminder/       # countdown state, schedule, snapshots
+├── Models/WalkHistory/    # month grid and retention rules
 ├── Services/
 │   ├── MenuBarController  # NSStatusItem + popover panel
-│   ├── MenuBarViewModel   # status item title state
-│   ├── PopupViewModel     # popover pane state
-│   ├── RefreshLoop        # tick scheduler
 │   ├── ReminderEngine     # countdown logic, persistence
 │   ├── ReminderNotifier   # macOS notification delivery
 │   └── WalkHistoryStore   # walk log
