@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct MenuBarContentView: View {
-    @ObservedObject private var viewModel: PopupViewModel
+    private let engine: ReminderEngine
 
     @State private var selectedPane = Pane.main
 
     private let onSizeChange: (CGSize) -> Void
 
-    init(viewModel: PopupViewModel, onSizeChange: @escaping (CGSize) -> Void) {
-        self.viewModel = viewModel
+    init(engine: ReminderEngine, onSizeChange: @escaping (CGSize) -> Void) {
+        self.engine = engine
         self.onSizeChange = onSizeChange
     }
 
@@ -23,7 +23,6 @@ struct MenuBarContentView: View {
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
         static let toolbarIconSize: CGFloat = 22
-        static let actionButtonSize: CGFloat = 34
     }
 
     var body: some View {
@@ -42,13 +41,9 @@ struct MenuBarContentView: View {
     private var paneBody: some View {
         switch selectedPane {
         case .main:
-            VStack(spacing: Layout.unitSpacing) {
-                ReminderStatusView(snapshot: viewModel.snapshot)
-                actionsSection
-                footerSection
-            }
+            ReminderPaneView(engine: engine)
         case .calendar:
-            CalendarView(historyStore: viewModel.walkHistory)
+            CalendarView(historyStore: engine.walkHistory)
         }
     }
 
@@ -82,26 +77,45 @@ struct MenuBarContentView: View {
 
     private var intervalMenu: some View {
         Menu {
-            ForEach(viewModel.reminderMinuteOptions, id: \.self) { minutes in
+            ForEach(ReminderEngine.reminderMinuteOptions, id: \.self) { minutes in
                 Button("\(minutes) min") {
-                    viewModel.setReminderMinutes(minutes)
+                    engine.setReminderMinutes(minutes)
                 }
             }
         } label: {
-            Text("\(viewModel.snapshot.reminderMinutes) min")
+            Text("\(engine.reminderMinutes) min")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
     }
+}
 
-    private var actionsSection: some View {
+private struct ReminderPaneView: View {
+    let engine: ReminderEngine
+
+    private enum Layout {
+        static let unitSpacing: CGFloat = 20
+        static let actionButtonSize: CGFloat = 34
+    }
+
+    var body: some View {
+        let snapshot = engine.snapshot
+
+        VStack(spacing: Layout.unitSpacing) {
+            ReminderStatusView(snapshot: snapshot)
+            actionsSection(snapshot: snapshot)
+            footerSection(snapshot: snapshot)
+        }
+    }
+
+    private func actionsSection(snapshot: ReminderSnapshot) -> some View {
         HStack(spacing: 10) {
             Button {
-                viewModel.togglePause()
+                engine.togglePause()
             } label: {
-                Image(systemName: pauseButtonSymbolName(for: viewModel.snapshot.phase))
+                Image(systemName: pauseButtonSymbolName(for: snapshot.phase))
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
             }
@@ -109,7 +123,7 @@ struct MenuBarContentView: View {
             .clipShape(Circle())
 
             Button {
-                viewModel.resetReminder()
+                engine.completeWalk()
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: 13, weight: .semibold))
@@ -121,8 +135,8 @@ struct MenuBarContentView: View {
         }
     }
 
-    private var footerSection: some View {
-        Text("reset \(viewModel.snapshot.lastWalkAt.formatted(date: .omitted, time: .shortened))")
+    private func footerSection(snapshot: ReminderSnapshot) -> some View {
+        Text("reset \(snapshot.lastResetAt.formatted(date: .omitted, time: .shortened))")
             .font(.caption)
             .foregroundStyle(.tertiary)
     }
@@ -138,7 +152,7 @@ struct MenuBarContentView: View {
 }
 
 private struct ReminderStatusView: View {
-    let snapshot: PopupSnapshot
+    let snapshot: ReminderSnapshot
 
     var body: some View {
         VStack(spacing: 4) {
@@ -162,7 +176,7 @@ private struct ReminderStatusView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func statusTint(for snapshot: PopupSnapshot) -> Color {
+    private func statusTint(for snapshot: ReminderSnapshot) -> Color {
         switch snapshot.phase {
         case .paused:
             return .secondary
@@ -173,7 +187,7 @@ private struct ReminderStatusView: View {
         }
     }
 
-    private func statusTitle(for snapshot: PopupSnapshot) -> String {
+    private func statusTitle(for snapshot: ReminderSnapshot) -> String {
         switch snapshot.phase {
         case .overdue:
             return "MOVE"
