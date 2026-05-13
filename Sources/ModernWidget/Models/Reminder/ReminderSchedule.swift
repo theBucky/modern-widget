@@ -1,5 +1,7 @@
 import Foundation
 
+private let secondBoundaryEpsilon: TimeInterval = 1e-6
+
 enum ReminderPhase: Equatable {
     case countingDown
     case paused
@@ -22,7 +24,11 @@ struct ReminderCountdown: Equatable {
         }
 
         let fractional = remainingTime.truncatingRemainder(dividingBy: 1)
-        return fractional == 0 ? 1 : fractional
+        if remainingTime > secondBoundaryEpsilon, fractional <= secondBoundaryEpsilon {
+            return 1
+        }
+
+        return fractional
     }
 }
 

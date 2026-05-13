@@ -21,6 +21,17 @@ struct ReminderScheduleTests {
         #expect(countdown.nextRefreshDelay == 0.75)
     }
 
+    @Test("near whole second countdown waits for the next full second")
+    func nearWholeSecondRefreshDelay() {
+        let countdown = ReminderCountdown(
+            phase: .countingDown,
+            remainingTime: 1200 + 1e-12,
+            secondsRemaining: 1201
+        )
+
+        #expect(countdown.nextRefreshDelay == 1)
+    }
+
     @Test("paused countdown has no refresh clock")
     func pausedCountdownDoesNotRefresh() {
         let schedule = ReminderSchedule(

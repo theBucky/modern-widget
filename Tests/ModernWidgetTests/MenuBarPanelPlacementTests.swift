@@ -28,4 +28,16 @@ struct MenuBarPanelPlacementTests {
 
         #expect(placement.origin == CGPoint(x: 6, y: 394))
     }
+
+    @Test("panel clamps above the visible bottom edge")
+    func verticalClampedPlacement() {
+        let placement = MenuBarPanelPlacement(
+            contentSize: CGSize(width: 60, height: 580),
+            statusItemFrame: CGRect(x: 100, y: 500, width: 20, height: 22),
+            visibleFrame: CGRect(x: 0, y: 0, width: 300, height: 600),
+            spacing: 6
+        )
+
+        #expect(placement.origin == CGPoint(x: 80, y: 6))
+    }
 }
