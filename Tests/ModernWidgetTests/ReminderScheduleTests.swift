@@ -59,6 +59,39 @@ struct ReminderScheduleTests {
         #expect(delay.isInfinite)
     }
 
+    @Test("running schedules wait until due")
+    func runningScheduleWaitsUntilDue() {
+        let startedAt = date(2026, 5, 13, 9)
+        let schedule = ReminderSchedule(
+            reminderSeconds: 3600,
+            startedAt: startedAt,
+            mode: .running
+        )
+
+        #expect(
+            schedule.nextReminderDelay(
+                lastReminderAt: nil,
+                now: startedAt.addingTimeInterval(1200)
+            ) == 2400
+        )
+    }
+
+    @Test("due countdown is overdue and stops refreshing")
+    func dueCountdownIsOverdue() {
+        let startedAt = date(2026, 5, 13, 9)
+        let schedule = ReminderSchedule(
+            reminderSeconds: 3600,
+            startedAt: startedAt,
+            mode: .running
+        )
+
+        let countdown = schedule.countdown(at: startedAt.addingTimeInterval(3600))
+
+        #expect(countdown.phase == .overdue)
+        #expect(countdown.secondsRemaining == 0)
+        #expect(countdown.nextRefreshDelay == nil)
+    }
+
     @Test("overdue reminders repeat by interval")
     func overdueReminderCadence() {
         let startedAt = date(2026, 5, 13, 9)

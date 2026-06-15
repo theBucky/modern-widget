@@ -28,4 +28,26 @@ struct WalkHistoryCalendarTests {
             ) == date(2026, 3, 1)
         )
     }
+
+    @Test("retention crosses year boundary")
+    func earliestRetainedMonthCrossesYearBoundary() {
+        let calendar = gregorianUTC()
+
+        #expect(
+            WalkHistoryCalendar.earliestRetainedMonth(
+                now: date(2026, 1, 13),
+                calendar: calendar
+            ) == date(2025, 11, 1)
+        )
+    }
+
+    @Test("weekday symbols follow calendar first weekday")
+    func weekdaySymbolsFollowFirstWeekday() {
+        let calendar = gregorianUTC(firstWeekday: 2)
+
+        #expect(
+            WalkHistoryCalendar.weekdaySymbols(calendar: calendar)
+                == ["M", "T", "W", "T", "F", "S", "S"]
+        )
+    }
 }
