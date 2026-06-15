@@ -2,7 +2,7 @@ import Foundation
 
 private let secondBoundaryEpsilon: TimeInterval = 1e-6
 
-enum ReminderPhase: Equatable {
+enum ReminderPhase {
     case countingDown
     case paused
     case overdue
@@ -13,7 +13,7 @@ enum ReminderMode: Equatable {
     case paused(secondsRemaining: Int)
 }
 
-struct ReminderCountdown: Equatable {
+struct ReminderCountdown {
     let phase: ReminderPhase
     let remainingTime: TimeInterval
     let secondsRemaining: Int

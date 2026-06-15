@@ -12,7 +12,7 @@ struct MenuBarContentView: View {
         self.onSizeChange = onSizeChange
     }
 
-    private enum Pane: Hashable {
+    private enum Pane {
         case main
         case calendar
     }
@@ -77,7 +77,7 @@ struct MenuBarContentView: View {
 
     private var intervalMenu: some View {
         Menu {
-            ForEach(ReminderEngine.reminderMinuteOptions, id: \.self) { minutes in
+            ForEach(ReminderState.minutePresets, id: \.self) { minutes in
                 Button("\(minutes) min") {
                     engine.setReminderMinutes(minutes)
                 }
@@ -106,7 +106,9 @@ private struct ReminderPaneView: View {
         VStack(spacing: Layout.unitSpacing) {
             ReminderStatusView(snapshot: snapshot)
             actionsSection(snapshot: snapshot)
-            footerSection(snapshot: snapshot)
+            Text("reset \(snapshot.lastResetAt.formatted(date: .omitted, time: .shortened))")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -133,12 +135,6 @@ private struct ReminderPaneView: View {
             .clipShape(Circle())
             .keyboardShortcut(.defaultAction)
         }
-    }
-
-    private func footerSection(snapshot: ReminderSnapshot) -> some View {
-        Text("reset \(snapshot.lastResetAt.formatted(date: .omitted, time: .shortened))")
-            .font(.caption)
-            .foregroundStyle(.tertiary)
     }
 
     private func pauseButtonSymbolName(for phase: ReminderPhase) -> String {

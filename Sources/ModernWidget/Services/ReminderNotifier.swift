@@ -17,14 +17,14 @@ final class ReminderNotifier {
         notificationCenter.delegate = notificationDelegate
     }
 
-    func postReminder(body: String) async -> ReminderNotificationIssue? {
+    func postReminder() async -> ReminderNotificationIssue? {
         if let authorizationIssue = await authorizationIssue() {
             return authorizationIssue
         }
 
         let content = UNMutableNotificationContent()
         content.title = "Off-chair break"
-        content.body = body
+        content.body = "get off chair. short walk now."
         content.sound = .default
 
         let request = UNNotificationRequest(
@@ -50,7 +50,7 @@ final class ReminderNotifier {
         case .notDetermined:
             do {
                 let granted = try await notificationCenter.requestAuthorization(options: [
-                    .alert, .sound, .badge,
+                    .alert, .sound,
                 ])
                 return granted ? nil : .notificationsBlocked
             } catch {
@@ -65,8 +65,9 @@ final class ReminderNotifier {
 
     private func issue(for error: Error) -> ReminderNotificationIssue {
         let nsError = error as NSError
+        let code = UNError.Code(rawValue: nsError.code)
 
-        if nsError.domain == UNErrorDomain, nsError.code == 1 {
+        if nsError.domain == UNErrorDomain, code == .notificationsNotAllowed {
             return .notificationsBlocked
         }
 

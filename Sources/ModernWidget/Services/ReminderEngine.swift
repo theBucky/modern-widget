@@ -11,10 +11,6 @@ final class ReminderEngine {
         static let pausedRemainingSeconds = "pausedRemainingSeconds"
     }
 
-    private static let notificationBody = "get off chair. short walk now."
-
-    static let reminderMinuteOptions = ReminderState.minutePresets
-
     private(set) var snapshot: ReminderSnapshot
     let walkHistory: WalkHistoryStore
 
@@ -57,7 +53,7 @@ final class ReminderEngine {
             return
         }
 
-        let now = Date()
+        let now = Date.now
         lastReminderAt = nil
         updateState {
             $0.reminderMinutes = normalizedMinutes
@@ -77,7 +73,7 @@ final class ReminderEngine {
     }
 
     func completeWalk() {
-        let now = Date()
+        let now = Date.now
         lastReminderAt = nil
         updateState {
             $0.restart(at: now)
@@ -87,7 +83,7 @@ final class ReminderEngine {
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
         let storedReminderMinutes = ReminderState.normalizedReminderMinutes(
-            defaults.object(forKey: Keys.reminderMinutes) as? Int ?? reminderMinuteOptions[0]
+            defaults.integer(forKey: Keys.reminderMinutes)
         )
         let reminderSeconds = storedReminderMinutes * 60
         let storedPausedSeconds =
@@ -167,21 +163,13 @@ final class ReminderEngine {
     }
 
     private func syncReminderTaskToState() {
-        if case .paused = state.mode {
-            stopReminderTask()
+        reminderTask?.cancel()
+        reminderTask = nil
+
+        guard case .running = state.mode else {
             return
         }
 
-        startReminderTask()
-    }
-
-    private func stopReminderTask() {
-        reminderTask?.cancel()
-        reminderTask = nil
-    }
-
-    private func startReminderTask() {
-        stopReminderTask()
         reminderTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -207,16 +195,8 @@ final class ReminderEngine {
         }
 
         lastReminderAt = now
-        let issue = await notifier.postReminder(body: Self.notificationBody)
+        let issue = await notifier.postReminder()
         if Task.isCancelled {
-            return
-        }
-
-        updateReminderStatus(issue)
-    }
-
-    private func updateReminderStatus(_ issue: ReminderNotificationIssue?) {
-        if state.notificationIssue == issue {
             return
         }
 
