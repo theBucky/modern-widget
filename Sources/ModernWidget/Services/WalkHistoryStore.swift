@@ -15,13 +15,12 @@ final class WalkHistoryStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let loadedWalks = load()
-        var prunedWalks = loadedWalks
-        Self.pruneOldEntries(in: &prunedWalks)
-        self.walks = prunedWalks
+        walks = load()
+        let loadedCount = walks.count
+        Self.pruneOldEntries(in: &walks)
         updateWalkCountsByDay()
 
-        if loadedWalks.count != prunedWalks.count {
+        if walks.count != loadedCount {
             save()
         }
     }

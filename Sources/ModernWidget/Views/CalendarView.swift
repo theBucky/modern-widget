@@ -51,9 +51,11 @@ struct CalendarView: View {
     }
 
     private var weekdayHeader: some View {
-        HStack(spacing: Layout.cellSpacing) {
-            ForEach(weekdaySymbols.indices, id: \.self) { index in
-                Text(weekdaySymbols[index])
+        let symbols = WalkHistoryCalendar.weekdaySymbols()
+
+        return HStack(spacing: Layout.cellSpacing) {
+            ForEach(symbols.indices, id: \.self) { index in
+                Text(symbols[index])
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
@@ -130,9 +132,5 @@ struct CalendarView: View {
     private func shiftMonth(by delta: Int) {
         let month = Calendar.current.date(byAdding: .month, value: delta, to: monthGrid.month)!
         monthGrid = WalkHistoryMonth(containing: month)
-    }
-
-    private var weekdaySymbols: [String] {
-        WalkHistoryCalendar.weekdaySymbols()
     }
 }

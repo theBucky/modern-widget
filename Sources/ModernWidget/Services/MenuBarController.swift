@@ -11,14 +11,15 @@ final class MenuBarController: NSObject {
         static let dimmedIconAlpha: CGFloat = 0.5
     }
 
+    private let engine: ReminderEngine
     private let statusItem: NSStatusItem
     private let panel: NSPanel
-    private let glassView: NSGlassEffectView
     private let hostingView: NSView
     private var outsideMonitor: Any?
     private var lastContentSize: CGSize = .zero
 
-    init(engine: ReminderEngine) {
+    init(engine: ReminderEngine = ReminderEngine()) {
+        self.engine = engine
         statusItem = NSStatusBar.system.statusItem(withLength: Layout.statusItemLength)
 
         var onContentSizeChange: ((CGSize) -> Void)?
@@ -31,7 +32,7 @@ final class MenuBarController: NSObject {
         )
         hostingView.translatesAutoresizingMaskIntoConstraints = false
 
-        glassView = NSGlassEffectView()
+        let glassView = NSGlassEffectView()
         glassView.cornerRadius = Layout.panelCornerRadius
 
         panel = NSPanel(
@@ -73,7 +74,7 @@ final class MenuBarController: NSObject {
             self?.applyContentSize(size)
         }
 
-        installIcon(engine: engine)
+        installIcon()
 
         NotificationCenter.default.addObserver(
             self,
@@ -92,7 +93,7 @@ final class MenuBarController: NSObject {
         }
     }
 
-    private func installIcon(engine: ReminderEngine) {
+    private func installIcon() {
         guard let button = statusItem.button else { return }
 
         let iconHost = NSHostingView(
@@ -153,12 +154,11 @@ final class MenuBarController: NSObject {
             return false
         }
 
-        let margin = Layout.panelSpacing
         let placement = MenuBarPanelPlacement(
             contentSize: size,
             statusItemFrame: buttonScreenRect,
             visibleFrame: visibleFrame,
-            spacing: margin
+            spacing: Layout.panelSpacing
         )
         panel.setContentSize(size)
         panel.setFrameOrigin(placement.origin)

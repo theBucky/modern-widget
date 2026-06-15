@@ -1,6 +1,6 @@
 import CoreGraphics
 
-struct MenuBarPanelPlacement: Equatable {
+struct MenuBarPanelPlacement {
     let origin: CGPoint
 
     init(

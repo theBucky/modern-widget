@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ProgressRing: View {
     static let size: CGFloat = 18
-    static let lineWidth: CGFloat = 2.25
+    private static let lineWidth: CGFloat = 2.25
 
     private static let alertThresholdSeconds = 5 * 60
     private static let solidStroke = StrokeStyle(lineWidth: lineWidth, lineCap: .round)

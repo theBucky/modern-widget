@@ -1,6 +1,6 @@
 import Foundation
 
-struct WalkHistoryMonth: Equatable {
+struct WalkHistoryMonth {
     let month: Date
     let dayCells: [Date?]
 
@@ -11,7 +11,7 @@ struct WalkHistoryMonth: Equatable {
         let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
         let leadingDays = Array<Date?>(repeating: nil, count: leadingBlanks)
         let days: [Date?] = (0..<dayCount).map {
-            calendar.date(byAdding: .day, value: $0, to: firstDay)
+            calendar.date(byAdding: .day, value: $0, to: firstDay)!
         }
         let trailingDays = Array<Date?>(
             repeating: nil,
