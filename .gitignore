@@ -9,3 +9,5 @@ DerivedData/
 .netrc
 .codex
 .claude
+.agents
+refs
