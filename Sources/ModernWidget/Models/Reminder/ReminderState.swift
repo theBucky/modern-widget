@@ -49,6 +49,15 @@ struct ReminderState: Equatable {
         notificationIssue = nil
     }
 
+    mutating func togglePause(at date: Date) {
+        switch mode {
+        case .running:
+            pause(at: date)
+        case .paused:
+            resume(at: date)
+        }
+    }
+
     func snapshot(at date: Date) -> ReminderSnapshot {
         let countdown = schedule.countdown(at: date)
 
@@ -63,17 +72,7 @@ struct ReminderState: Equatable {
     }
 
     static func normalizedReminderMinutes(_ minutes: Int) -> Int {
-        let firstPreset = minutePresets.first!
-        let lastPreset = minutePresets.last!
-
-        if minutes <= firstPreset {
-            return firstPreset
-        }
-        if minutes >= lastPreset {
-            return lastPreset
-        }
-
-        return minutePresets.min { abs($0 - minutes) < abs($1 - minutes) }!
+        minutes <= 90 ? 60 : 120
     }
 
     private static func countdownLabel(for secondsRemaining: Int) -> String {
@@ -81,9 +80,11 @@ struct ReminderState: Equatable {
     }
 
     private static func statusMessage(for issue: ReminderNotificationIssue?) -> String? {
-        switch issue {
-        case .none:
+        guard let issue else {
             return nil
+        }
+
+        switch issue {
         case .notificationsBlocked:
             return "notifications blocked in System Settings"
         case .unknownPermissionState:

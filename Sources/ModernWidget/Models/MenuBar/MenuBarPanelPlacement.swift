@@ -1,14 +1,12 @@
 import CoreGraphics
 
-struct MenuBarPanelPlacement {
-    let origin: CGPoint
-
-    init(
+enum MenuBarPanelPlacement {
+    static func origin(
         contentSize: CGSize,
         statusItemFrame: CGRect,
         visibleFrame: CGRect,
         spacing: CGFloat
-    ) {
+    ) -> CGPoint {
         let minX = visibleFrame.minX + spacing
         let maxX = max(minX, visibleFrame.maxX - contentSize.width - spacing)
         let centeredX = statusItemFrame.midX - contentSize.width / 2
@@ -16,9 +14,6 @@ struct MenuBarPanelPlacement {
         let proposedY = statusItemFrame.minY - contentSize.height - spacing
         let clampedY = max(proposedY, visibleFrame.minY + spacing)
 
-        origin = CGPoint(
-            x: clampedX,
-            y: clampedY
-        )
+        return CGPoint(x: clampedX, y: clampedY)
     }
 }
