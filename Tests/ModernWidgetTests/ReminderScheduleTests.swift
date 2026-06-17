@@ -32,6 +32,22 @@ struct ReminderScheduleTests {
         #expect(countdown.nextRefreshDelay == 1)
     }
 
+    @Test("last fractional second is still counting down")
+    func lastFractionalSecondIsStillCountingDown() {
+        let startedAt = date(2026, 5, 13, 9)
+        let schedule = ReminderSchedule(
+            reminderSeconds: 3600,
+            startedAt: startedAt,
+            mode: .running
+        )
+
+        let countdown = schedule.countdown(at: startedAt.addingTimeInterval(3599.2))
+
+        #expect(countdown.phase == .countingDown)
+        #expect(countdown.secondsRemaining == 1)
+        #expect(abs((countdown.nextRefreshDelay ?? 0) - 0.8) < 0.0001)
+    }
+
     @Test("paused countdown has no refresh clock")
     func pausedCountdownDoesNotRefresh() {
         let schedule = ReminderSchedule(

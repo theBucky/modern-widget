@@ -60,6 +60,43 @@ struct ReminderStateTests {
         #expect(snapshot.reminderStatusMessage == nil)
     }
 
+    @Test("toggle pause resumes from the frozen value")
+    func togglePauseResumesFromFrozenValue() {
+        var state = ReminderState(
+            reminderMinutes: 60,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .running,
+            notificationIssue: nil
+        )
+
+        state.togglePause(at: date(2026, 5, 13, 9, 10))
+        state.togglePause(at: date(2026, 5, 13, 11))
+        let snapshot = state.snapshot(at: date(2026, 5, 13, 11))
+
+        #expect(state.startedAt == date(2026, 5, 13, 10, 50))
+        #expect(snapshot.phase == .countingDown)
+        #expect(snapshot.secondsRemaining == 3000)
+        #expect(snapshot.countdownLabel == "50:00")
+    }
+
+    @Test("pausing an overdue timer freezes zero remaining")
+    func pausingOverdueTimerFreezesZeroRemaining() {
+        var state = ReminderState(
+            reminderMinutes: 60,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .running,
+            notificationIssue: nil
+        )
+
+        state.pause(at: date(2026, 5, 13, 10, 1))
+        let snapshot = state.snapshot(at: date(2026, 5, 13, 11))
+
+        #expect(state.mode == .paused(secondsRemaining: 0))
+        #expect(snapshot.phase == .paused)
+        #expect(snapshot.secondsRemaining == 0)
+        #expect(snapshot.countdownLabel == "00:00")
+    }
+
     @Test("snapshot reports progress, label, and notification issue")
     func snapshotReportsVisibleState() {
         let state = ReminderState(

@@ -28,3 +28,10 @@ func date(
         )
     )!
 }
+
+func makeDefaults(_ prefix: String = "ModernWidgetTests") -> UserDefaults {
+    let suiteName = "\(prefix).\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defaults.removePersistentDomain(forName: suiteName)
+    return defaults
+}
