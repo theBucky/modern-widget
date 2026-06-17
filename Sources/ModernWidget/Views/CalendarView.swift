@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CalendarView: View {
     let historyStore: WalkHistoryStore
+    let supplementStore: DailySupplementStore
     @State private var monthGrid = WalkHistoryMonth(containing: .now)
 
     private enum Layout {
@@ -88,7 +89,7 @@ struct CalendarView: View {
                     .padding(.top, 8)
             }
 
-            dayLabel(date: date, today: today)
+            dayLabel(date)
                 .padding(.top, 4)
                 .padding(.trailing, 5)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -101,13 +102,16 @@ struct CalendarView: View {
     }
 
     @ViewBuilder
-    private func dayLabel(date: Date, today: Bool) -> some View {
+    private func dayLabel(_ date: Date) -> some View {
         let text = Text(date, format: .dateTime.day())
             .font(.system(size: 8, weight: .regular).monospacedDigit())
-        if today {
-            text.foregroundStyle(Color.accentColor)
-        } else {
+
+        if Calendar.current.startOfDay(for: date) > Calendar.current.startOfDay(for: .now) {
             text.foregroundStyle(.tertiary)
+        } else if supplementStore.isTaken(on: date) {
+            text.foregroundStyle(Color(red: 0, green: 0.45, blue: 0.12))
+        } else {
+            text.foregroundStyle(Color(red: 0.75, green: 0, blue: 0))
         }
     }
 

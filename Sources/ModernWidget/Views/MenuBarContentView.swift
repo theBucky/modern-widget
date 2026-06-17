@@ -43,7 +43,10 @@ struct MenuBarContentView: View {
         case .main:
             ReminderPaneView(engine: engine)
         case .calendar:
-            CalendarView(historyStore: engine.walkHistory)
+            CalendarView(
+                historyStore: engine.walkHistory,
+                supplementStore: engine.dailySupplements
+            )
         }
     }
 
@@ -103,9 +106,16 @@ private struct ReminderPaneView: View {
         VStack(spacing: Layout.unitSpacing) {
             ReminderStatusView(snapshot: snapshot)
             actionsSection(snapshot: snapshot)
-            Text("reset \(snapshot.lastResetAt.formatted(date: .omitted, time: .shortened))")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            Toggle(
+                "took daily supplement today?",
+                isOn: Binding(
+                    get: { engine.dailySupplements.isTaken(on: .now) },
+                    set: { engine.dailySupplements.setTaken($0) }
+                )
+            )
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 

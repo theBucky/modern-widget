@@ -13,6 +13,7 @@ final class ReminderEngine {
 
     private(set) var snapshot: ReminderSnapshot
     let walkHistory: WalkHistoryStore
+    let dailySupplements: DailySupplementStore
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -35,6 +36,7 @@ final class ReminderEngine {
         self.defaults = defaults
         self.notifier = notifier
         self.walkHistory = WalkHistoryStore(defaults: defaults)
+        self.dailySupplements = DailySupplementStore(defaults: defaults)
         self.state = state
         self.snapshot = state.snapshot(at: .now)
 
