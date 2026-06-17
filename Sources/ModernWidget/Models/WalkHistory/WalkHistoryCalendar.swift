@@ -9,17 +9,15 @@ struct WalkHistoryMonth {
         let dayCount = calendar.range(of: .day, in: .month, for: firstDay)!.count
         let firstWeekday = calendar.component(.weekday, from: firstDay)
         let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
-        let leadingDays = Array<Date?>(repeating: nil, count: leadingBlanks)
-        let days: [Date?] = (0..<dayCount).map {
-            calendar.date(byAdding: .day, value: $0, to: firstDay)!
-        }
-        let trailingDays = Array<Date?>(
-            repeating: nil,
-            count: (7 - (leadingDays.count + days.count) % 7) % 7
-        )
+        let filledCells = leadingBlanks + dayCount
+        let cellCount = filledCells + (7 - filledCells % 7) % 7
 
         month = firstDay
-        dayCells = leadingDays + days + trailingDays
+        dayCells = (0..<cellCount).map { cellIndex in
+            let dayOffset = cellIndex - leadingBlanks
+            guard (0..<dayCount).contains(dayOffset) else { return nil }
+            return calendar.date(byAdding: .day, value: dayOffset, to: firstDay)!
+        }
     }
 }
 

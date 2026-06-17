@@ -62,13 +62,9 @@ final class ReminderEngine {
     }
 
     func togglePause() {
+        let now = Date.now
         updateState {
-            switch $0.mode {
-            case .running:
-                $0.pause(at: .now)
-            case .paused:
-                $0.resume(at: .now)
-            }
+            $0.togglePause(at: now)
         }
     }
 

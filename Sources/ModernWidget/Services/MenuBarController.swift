@@ -12,30 +12,30 @@ final class MenuBarController: NSObject {
     }
 
     private let engine: ReminderEngine
-    private let statusItem: NSStatusItem
-    private let panel: NSPanel
-    private let hostingView: NSView
     private var outsideMonitor: Any?
     private var lastContentSize: CGSize = .zero
 
-    init(engine: ReminderEngine = ReminderEngine()) {
-        self.engine = engine
-        statusItem = NSStatusBar.system.statusItem(withLength: Layout.statusItemLength)
+    private lazy var statusItem = NSStatusBar.system.statusItem(
+        withLength: Layout.statusItemLength
+    )
 
-        var onContentSizeChange: ((CGSize) -> Void)?
-        hostingView = NSHostingView(
-            rootView: MenuBarContentView(engine: engine) { size in
-                onContentSizeChange?(size)
+    private lazy var hostingView: NSView = {
+        let view = NSHostingView(
+            rootView: MenuBarContentView(engine: engine) { [weak self] size in
+                self?.applyContentSize(size)
             }
             .environment(\.controlActiveState, .active)
             .ignoresSafeArea()
         )
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
 
+    private lazy var panel: NSPanel = {
         let glassView = NSGlassEffectView()
         glassView.cornerRadius = Layout.panelCornerRadius
 
-        panel = NSPanel(
+        let panel = NSPanel(
             contentRect: CGRect(x: 0, y: 0, width: 100, height: 100),
             styleMask: [.titled, .nonactivatingPanel, .utilityWindow, .fullSizeContentView],
             backing: .buffered,
@@ -67,15 +67,17 @@ final class MenuBarController: NSObject {
             hostingView.trailingAnchor.constraint(equalTo: glassView.trailingAnchor),
             hostingView.bottomAnchor.constraint(equalTo: glassView.bottomAnchor),
         ])
+        return panel
+    }()
 
+    init(engine: ReminderEngine = ReminderEngine()) {
+        self.engine = engine
         super.init()
-
-        onContentSizeChange = { [weak self] size in
-            self?.applyContentSize(size)
-        }
-
         installIcon()
+        installObservers()
+    }
 
+    private func installObservers() {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(panelDidResignKey),
@@ -154,14 +156,14 @@ final class MenuBarController: NSObject {
             return false
         }
 
-        let placement = MenuBarPanelPlacement(
+        let origin = MenuBarPanelPlacement.origin(
             contentSize: size,
             statusItemFrame: buttonScreenRect,
             visibleFrame: visibleFrame,
             spacing: Layout.panelSpacing
         )
         panel.setContentSize(size)
-        panel.setFrameOrigin(placement.origin)
+        panel.setFrameOrigin(origin)
         lastContentSize = size
         return true
     }
@@ -183,9 +185,8 @@ final class MenuBarController: NSObject {
     }
 
     private func removeOutsideMonitor() {
-        if let outsideMonitor {
-            NSEvent.removeMonitor(outsideMonitor)
-        }
-        outsideMonitor = nil
+        guard let outsideMonitor else { return }
+        NSEvent.removeMonitor(outsideMonitor)
+        self.outsideMonitor = nil
     }
 }

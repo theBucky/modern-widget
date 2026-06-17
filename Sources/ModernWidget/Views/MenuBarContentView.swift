@@ -48,10 +48,7 @@ struct MenuBarContentView: View {
     }
 
     private var paneWidth: CGFloat {
-        switch selectedPane {
-        case .main: Layout.mainPaneWidth
-        case .calendar: Layout.calendarPaneWidth
-        }
+        selectedPane == .main ? Layout.mainPaneWidth : Layout.calendarPaneWidth
     }
 
     private var toolbar: some View {
@@ -151,13 +148,15 @@ private struct ReminderStatusView: View {
     let snapshot: ReminderSnapshot
 
     var body: some View {
+        let currentStatus = status
+
         VStack(spacing: 4) {
-            Text(statusTitle(for: snapshot))
+            Text(currentStatus.title)
                 .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(statusTint(for: snapshot))
+                .foregroundStyle(currentStatus.tint)
 
-            Text(statusMessage(for: snapshot.phase))
+            Text(currentStatus.message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -172,34 +171,14 @@ private struct ReminderStatusView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func statusTint(for snapshot: ReminderSnapshot) -> Color {
+    private var status: (title: String, message: String, tint: Color) {
         switch snapshot.phase {
-        case .paused:
-            return .secondary
-        case .overdue:
-            return .red
         case .countingDown:
-            return .primary
-        }
-    }
-
-    private func statusTitle(for snapshot: ReminderSnapshot) -> String {
-        switch snapshot.phase {
-        case .overdue:
-            return "MOVE"
-        case .paused, .countingDown:
-            return snapshot.countdownLabel
-        }
-    }
-
-    private func statusMessage(for phase: ReminderPhase) -> String {
-        switch phase {
-        case .countingDown:
-            return "until next break"
+            return (snapshot.countdownLabel, "until next break", .primary)
         case .paused:
-            return "paused"
+            return (snapshot.countdownLabel, "paused", .secondary)
         case .overdue:
-            return "muscles atrophy, circulation stops, you know..."
+            return ("MOVE", "muscles atrophy, circulation stops, you know...", .red)
         }
     }
 }
