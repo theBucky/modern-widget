@@ -111,22 +111,16 @@ extension CodingUsageLoader {
         string(value).flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    // Reused across a scan: a refresh parses one file at a time on a single background
-    // task, so building an `ISO8601DateFormatter` per timestamp is pure overhead.
-    nonisolated(unsafe) private static let fractionalTimestampParser: ISO8601DateFormatter = {
+    func parseTimestampString(_ value: String) -> Date? {
+        // ISO8601DateFormatter is neither Sendable nor documented thread-safe, so it is
+        // built per call rather than shared across concurrent scans.
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return parser
-    }()
-    nonisolated(unsafe) private static let plainTimestampParser: ISO8601DateFormatter = {
-        let parser = ISO8601DateFormatter()
+        if let date = parser.date(from: value) {
+            return date
+        }
         parser.formatOptions = [.withInternetDateTime]
-        return parser
-    }()
-
-    func parseTimestampString(_ value: String) -> Date? {
-        Self.fractionalTimestampParser.date(from: value)
-            ?? Self.plainTimestampParser.date(from: value)
+        return parser.date(from: value)
     }
 
     func fileModifiedDate(_ url: URL) -> Date? {
