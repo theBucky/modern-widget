@@ -12,6 +12,7 @@ final class MenuBarController: NSObject {
     }
 
     private let engine: ReminderEngine
+    private let usageStore: CodingUsageStore
     private var outsideMonitor: Any?
     private var lastContentSize: CGSize = .zero
 
@@ -21,7 +22,8 @@ final class MenuBarController: NSObject {
 
     private lazy var hostingView: NSView = {
         let view = NSHostingView(
-            rootView: MenuBarContentView(engine: engine) { [weak self] size in
+            rootView: MenuBarContentView(engine: engine, usageStore: usageStore) {
+                [weak self] size in
                 self?.applyContentSize(size)
             }
             .environment(\.controlActiveState, .active)
@@ -70,8 +72,11 @@ final class MenuBarController: NSObject {
         return panel
     }()
 
-    init(engine: ReminderEngine = ReminderEngine()) {
+    init(
+        engine: ReminderEngine = ReminderEngine(), usageStore: CodingUsageStore = CodingUsageStore()
+    ) {
         self.engine = engine
+        self.usageStore = usageStore
         super.init()
         installIcon()
         installObservers()
