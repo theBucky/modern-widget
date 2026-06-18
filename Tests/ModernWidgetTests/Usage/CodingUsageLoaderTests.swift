@@ -111,6 +111,25 @@ struct CodingUsageLoaderTests {
         #expect(abs(claude.totalCounts.costUSD - 0.00096) < 0.00000001)
     }
 
+    @Test("does not price an unknown numeric model version as its base model")
+    func doesNotPriceUnknownNumericModelVersionAsBaseModel() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-VersionBump")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-a","message":{"id":"msg-a","model":"claude-opus-4-1-20990101","usage":{"input_tokens":100,"output_tokens":10}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.totalTokens == 110)
+        #expect(claude.totalCounts.costUSD == 0)
+    }
+
     @Test("skips unchanged codex token count snapshots")
     func skipsUnchangedCodexTokenCountSnapshots() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSnapshots")

@@ -59,9 +59,28 @@ struct CodingUsagePricing {
 
         return
             entries
-            .filter { normalizedModel.contains($0.key) }
+            .filter { isSuffixVariant(normalizedModel, of: $0.key) }
             .max { left, right in left.key.count < right.key.count }
             .map(\.value)
+    }
+
+    /// Matches a model to `key` when `key` is its prefix up to a `-`/`.` boundary, so
+    /// `claude-sonnet-4-20250514` resolves to `claude-sonnet-4`. A version-numbered key
+    /// (one ending in a digit) must not swallow a finer version: `claude-opus-4` stays
+    /// distinct from `claude-opus-4-1`, while an 8-digit date suffix still matches.
+    private static func isSuffixVariant(_ model: String, of key: String) -> Bool {
+        guard model.hasPrefix(key) else {
+            return false
+        }
+        let suffix = model.dropFirst(key.count)
+        guard let separator = suffix.first, separator == "-" || separator == "." else {
+            return false
+        }
+        guard key.last?.isNumber == true else {
+            return true
+        }
+        let versionDigits = suffix.dropFirst().prefix(while: \.isNumber)
+        return versionDigits.isEmpty || versionDigits.count == 8
     }
 
     private static func normalized(_ model: String) -> String {
