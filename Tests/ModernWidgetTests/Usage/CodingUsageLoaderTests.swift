@@ -168,6 +168,38 @@ struct CodingUsageLoaderTests {
         #expect(loader.unsignedInteger(NSNumber(value: 1.5)) == nil)
     }
 
+    @Test("parses common utc log timestamps")
+    func parsesCommonUTCLogTimestamps() {
+        let loader = CodingUsageLoader(
+            environment: [:], homeDirectory: FileManager.default.temporaryDirectory)
+
+        #expect(loader.parseTimestamp("2026-06-18T01:02:03Z") == date(2026, 6, 18, 1, 2, 3))
+        #expect(loader.parseTimestamp("2026-06-18T01:02:03.000Z") == date(2026, 6, 18, 1, 2, 3))
+        #expect(loader.parseTimestamp(" 2026-06-18T01:02:03.000Z\n") == date(2026, 6, 18, 1, 2, 3))
+        #expect(
+            loader.parseTimestamp("2026-06-18T01:02:03.250Z")?
+                .timeIntervalSince(date(2026, 6, 18, 1, 2, 3)) == 0.25)
+        #expect(loader.parseTimestamp("2026-06-18T09:02:03+08:00") == date(2026, 6, 18, 1, 2, 3))
+    }
+
+    @Test("keeps codex events with different fractional timestamps")
+    func keepsCodexEventsWithDifferentFractionalTimestamps() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexFractionalTimestamps")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.001Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.002Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/session.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.totalTokens == 240)
+    }
+
     @Test("loads repeated codex token count snapshots")
     func loadsRepeatedCodexTokenCountSnapshots() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSnapshots")

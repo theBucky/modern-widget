@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 typealias JSONObject = [String: Any]
@@ -113,8 +114,12 @@ extension CodingUsageLoader {
     }
 
     func parseTimestamp(_ value: Any?) -> Date? {
-        if let text = string(value) {
-            return parseTimestampString(text)
+        if let text = value as? String {
+            if let date = parseTimestampString(text) {
+                return date
+            }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed == text ? nil : parseTimestampString(trimmed)
         }
 
         guard let number = value as? NSNumber, !isBooleanNumber(number) else {
@@ -132,8 +137,10 @@ extension CodingUsageLoader {
     }
 
     private func parseTimestampString(_ value: String) -> Date? {
-        // ISO8601DateFormatter is neither Sendable nor documented thread-safe, so it is
-        // built per call rather than shared across concurrent scans.
+        if let date = parseUTCLogTimestamp(value) {
+            return date
+        }
+
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = parser.date(from: value) {
@@ -141,6 +148,49 @@ extension CodingUsageLoader {
         }
         parser.formatOptions = [.withInternetDateTime]
         return parser.date(from: value)
+    }
+
+    private func parseUTCLogTimestamp(_ value: String) -> Date? {
+        value.withCString { valuePointer in
+            var components = Darwin.tm()
+            guard let end = strptime(valuePointer, "%Y-%m-%dT%H:%M:%S", &components),
+                let fractionalSeconds = fractionalSeconds(after: end)
+            else {
+                return nil
+            }
+
+            let seconds = timegm(&components)
+            return Date(timeIntervalSince1970: TimeInterval(seconds) + fractionalSeconds)
+        }
+    }
+
+    private func fractionalSeconds(after pointer: UnsafePointer<CChar>) -> TimeInterval? {
+        let dot = CChar(UInt8(ascii: "."))
+        let z = CChar(UInt8(ascii: "Z"))
+        if pointer.pointee == z {
+            return pointer.successor().pointee == 0 ? 0 : nil
+        }
+        guard pointer.pointee == dot else {
+            return nil
+        }
+
+        var cursor = pointer.successor()
+        var fraction = 0.0
+        var divisor = 10.0
+        while cursor.pointee >= CChar(UInt8(ascii: "0"))
+            && cursor.pointee <= CChar(UInt8(ascii: "9"))
+        {
+            if divisor <= 1_000_000_000 {
+                fraction += Double(cursor.pointee - CChar(UInt8(ascii: "0"))) / divisor
+                divisor *= 10
+            }
+            cursor = cursor.successor()
+        }
+        guard cursor > pointer.successor(), cursor.pointee == z, cursor.successor().pointee == 0
+        else {
+            return nil
+        }
+        return fraction
     }
 
     func fileModifiedDate(_ url: URL) -> Date? {
