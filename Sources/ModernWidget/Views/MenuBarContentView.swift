@@ -2,24 +2,32 @@ import SwiftUI
 
 struct MenuBarContentView: View {
     private let engine: ReminderEngine
+    private let usageStore: CodingUsageStore
 
     @State private var selectedPane = Pane.main
 
     private let onSizeChange: (CGSize) -> Void
 
-    init(engine: ReminderEngine, onSizeChange: @escaping (CGSize) -> Void) {
+    init(
+        engine: ReminderEngine,
+        usageStore: CodingUsageStore,
+        onSizeChange: @escaping (CGSize) -> Void
+    ) {
         self.engine = engine
+        self.usageStore = usageStore
         self.onSizeChange = onSizeChange
     }
 
     private enum Pane {
         case main
         case calendar
+        case usage
     }
 
     private enum Layout {
         static let mainPaneWidth: CGFloat = 180
         static let calendarPaneWidth: CGFloat = 260
+        static let usagePaneWidth: CGFloat = 280
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
         static let toolbarIconSize: CGFloat = 22
@@ -47,17 +55,27 @@ struct MenuBarContentView: View {
                 historyStore: engine.walkHistory,
                 supplementStore: engine.dailySupplements
             )
+        case .usage:
+            CodingUsageView(store: usageStore)
         }
     }
 
     private var paneWidth: CGFloat {
-        selectedPane == .main ? Layout.mainPaneWidth : Layout.calendarPaneWidth
+        switch selectedPane {
+        case .main:
+            return Layout.mainPaneWidth
+        case .calendar:
+            return Layout.calendarPaneWidth
+        case .usage:
+            return Layout.usagePaneWidth
+        }
     }
 
     private var toolbar: some View {
         HStack(spacing: 6) {
             paneButton(.main, systemImage: "timer")
             paneButton(.calendar, systemImage: "calendar")
+            paneButton(.usage, systemImage: "chart.line.uptrend.xyaxis")
             Spacer()
             intervalMenu
         }
