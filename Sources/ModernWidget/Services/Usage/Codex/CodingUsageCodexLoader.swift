@@ -1,8 +1,9 @@
 import Foundation
 
-struct CodexUsageSource {
+struct CodexUsageSource: Sendable {
     let directory: URL
     let home: URL
+    let files: [URL]
 }
 
 struct CodexUsageFileKey: Hashable {
@@ -84,7 +85,7 @@ struct CodexRawUsage: Equatable {
 
 extension CodingUsageLoader {
     func loadCodexUsage(
-        scope: CodingUsageDateScope,
+        sources: [CodexUsageSource],
         into accumulator: inout CodingUsageAccumulator
     ) {
         // Active sessions are scanned before archived ones; within a home the first
@@ -92,11 +93,11 @@ extension CodingUsageLoader {
         var seenFiles: Set<CodexUsageFileKey> = []
         var seenEvents: Set<CodexScopedEventKey> = []
 
-        for source in codexUsageSources() {
+        for source in sources {
             let usesFastPricing = codexConfigRequestsFastPricing(
                 source.home.appendingPathComponent("config.toml"))
 
-            for file in usageFiles(in: source.directory) {
+            for file in source.files {
                 let fileKey = CodexUsageFileKey(
                     scope: source.home.path,
                     path: relativePath(file, from: source.directory)
@@ -119,23 +120,30 @@ extension CodingUsageLoader {
         }
     }
 
-    func codexUsageSources() -> [CodexUsageSource] {
+    func codexUsageSources(scope: CodingUsageDateScope) -> [CodexUsageSource] {
         codexHomeDirectories().flatMap {
             home -> [CodexUsageSource] in
             let sessions = home.appendingPathComponent("sessions")
             let archivedSessions = home.appendingPathComponent("archived_sessions")
-            var sources: [CodexUsageSource] = []
+            var directories: [URL] = []
 
             if isDirectory(sessions) {
-                sources.append(CodexUsageSource(directory: sessions, home: home))
+                directories.append(sessions)
             }
             if isDirectory(archivedSessions) {
-                sources.append(CodexUsageSource(directory: archivedSessions, home: home))
+                directories.append(archivedSessions)
             }
-            if sources.isEmpty {
-                sources.append(CodexUsageSource(directory: home, home: home))
+            if directories.isEmpty {
+                directories.append(home)
             }
-            return sources
+
+            return directories.map {
+                CodexUsageSource(
+                    directory: $0,
+                    home: home,
+                    files: usageFiles(in: $0, modifiedSince: scope.history.start)
+                )
+            }
         }
     }
 

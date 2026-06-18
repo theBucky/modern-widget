@@ -2,15 +2,19 @@ import Foundation
 
 extension CodingUsageLoader {
     func loadPiUsage(
-        scope: CodingUsageDateScope,
+        files: [URL],
         into accumulator: inout CodingUsageAccumulator
     ) {
-        for directory in piUsageDirectories() {
-            for file in usageFiles(in: directory) {
-                for record in readPiUsageFile(file) {
-                    accumulator.add(.pi, counts: record.counts, at: record.timestamp)
-                }
+        for file in files {
+            for record in readPiUsageFile(file) {
+                accumulator.add(.pi, counts: record.counts, at: record.timestamp)
             }
+        }
+    }
+
+    func piUsageFiles(scope: CodingUsageDateScope) -> [URL] {
+        piUsageDirectories().flatMap {
+            usageFiles(in: $0, modifiedSince: scope.history.start)
         }
     }
 

@@ -2,12 +2,18 @@ import Foundation
 
 typealias JSONObject = [String: Any]
 
+struct CodingUsageFileFingerprint: Equatable, Sendable {
+    let path: String
+    let modifiedAt: Date?
+    let byteCount: Int?
+}
+
 extension CodingUsageLoader {
-    func usageFiles(in directory: URL) -> [URL] {
+    func usageFiles(in directory: URL, modifiedSince: Date) -> [URL] {
         guard
             let enumerator = FileManager.default.enumerator(
                 at: directory,
-                includingPropertiesForKeys: [.isRegularFileKey],
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
                 options: []
             )
         else {
@@ -20,14 +26,35 @@ extension CodingUsageLoader {
                 continue
             }
 
-            let values = try? file.resourceValues(forKeys: [.isRegularFileKey])
-            guard values?.isRegularFile == true
-            else {
+            let values = try? file.resourceValues(forKeys: [
+                .isRegularFileKey, .contentModificationDateKey,
+            ])
+            guard values?.isRegularFile == true else {
+                continue
+            }
+            // ponytail: mtime is the cheap cutoff; per-line indexes if copied stale logs matter.
+            if let modifiedAt = values?.contentModificationDate,
+                modifiedAt < modifiedSince
+            {
                 continue
             }
             files.append(file)
         }
         return files.sorted { $0.path < $1.path }
+    }
+
+    func usageFileFingerprint(_ file: URL) -> CodingUsageFileFingerprint? {
+        let values = try? file.resourceValues(forKeys: [
+            .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
+        ])
+        guard values?.isRegularFile == true else {
+            return nil
+        }
+        return CodingUsageFileFingerprint(
+            path: file.standardizedFileURL.path,
+            modifiedAt: values?.contentModificationDate,
+            byteCount: values?.fileSize
+        )
     }
 
     func forEachJSONLine(

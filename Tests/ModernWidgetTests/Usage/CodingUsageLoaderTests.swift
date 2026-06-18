@@ -325,6 +325,48 @@ struct CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 48)
     }
 
+    @Test("skips stale files before parsing")
+    func skipsStaleFilesBeforeParsing() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-StaleFiles")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":999,"output_tokens":999}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home,
+            modifiedAt: date(2026, 5, 1)
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.totalTokens == 0)
+    }
+
+    @Test("fingerprint changes when usage files change")
+    func fingerprintChangesWhenUsageFilesChange() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-Fingerprint")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":40,"output_tokens":8}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let first = loader.usageScan(scope: scope()).fingerprint
+
+        try writeFixture(
+            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":41,"output_tokens":8}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home,
+            modifiedAt: date(2026, 6, 18, 12, 1)
+        )
+
+        #expect(loader.usageScan(scope: scope()).fingerprint != first)
+    }
+
     @Test("reports no usage when no usage data is found")
     func reportsNoUsageWhenNoUsageDataIsFound() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-Empty")

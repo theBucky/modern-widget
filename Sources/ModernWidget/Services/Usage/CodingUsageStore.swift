@@ -12,6 +12,8 @@ final class CodingUsageStore {
     private let loader: CodingUsageLoader
     @ObservationIgnored
     private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var lastFingerprint: CodingUsageFingerprint?
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -37,13 +39,22 @@ final class CodingUsageStore {
     private func reload() async {
         let loader = self.loader
         let scope = CodingUsageDateScope()
+        let scan = await Task.detached(priority: .utility) {
+            loader.usageScan(scope: scope)
+        }.value
+
+        if Task.isCancelled || scan.fingerprint == lastFingerprint {
+            return
+        }
+
         let report = await Task.detached(priority: .utility) {
-            loader.loadReport(scope: scope)
+            loader.loadReport(scan: scan)
         }.value
 
         if Task.isCancelled {
             return
         }
+        lastFingerprint = scan.fingerprint
         self.report = report
     }
 }

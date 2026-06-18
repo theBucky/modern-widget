@@ -15,10 +15,12 @@ struct ClaudeDedupeKey: Hashable {
 
 extension CodingUsageLoader {
     func loadClaudeUsage(
+        files: [URL],
         scope: CodingUsageDateScope,
         into accumulator: inout CodingUsageAccumulator
     ) {
-        let entries = claudeUsageFiles()
+        let entries =
+            files
             .flatMap(readClaudeUsageFile)
             .filter { scope.historyDay(containing: $0.timestamp) != nil }
 
@@ -27,9 +29,10 @@ extension CodingUsageLoader {
         }
     }
 
-    func claudeUsageFiles() -> [URL] {
+    func claudeUsageFiles(scope: CodingUsageDateScope) -> [URL] {
         claudeConfigDirectories().flatMap {
-            usageFiles(in: $0.appendingPathComponent("projects"))
+            usageFiles(
+                in: $0.appendingPathComponent("projects"), modifiedSince: scope.history.start)
         }
     }
 
