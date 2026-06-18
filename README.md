@@ -11,9 +11,9 @@ ModernWidget lives in the menu bar and opens a compact glass-style panel with th
 
 - **Break timer**: 60 or 120 minute countdown, pause/resume, overdue state, and native reminders.
 - **Walk history**: monthly calendar with per-day walk counts and daily supplement status.
-- **AI usage**: local Claude and Codex usage cost summaries with a 30-day mini chart.
+- **AI usage**: local Claude, Codex, and Pi usage cost summaries with a 30-day mini chart.
 
-Everything runs locally. State is stored with `UserDefaults`, and AI usage is read from local Claude/Codex JSONL logs.
+Everything runs locally. State is stored with `UserDefaults`, and AI usage is read from local Claude, Codex, and Pi JSONL logs.
 
 ## Screenshots
 
@@ -43,9 +43,10 @@ Everything runs locally. State is stored with `UserDefaults`, and AI usage is re
 
 - Claude usage is loaded from `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME/claude`, or `~/.claude`.
 - Codex usage is loaded from `CODEX_HOME` or `~/.codex`.
+- Pi usage is loaded from `PI_AGENT_DIR` or `~/.pi/agent/sessions`.
 - Active and archived Codex sessions are deduplicated.
 - Claude sidechain duplicates are collapsed.
-- Cost estimates support known Claude and GPT/Codex model pricing.
+- Cost estimates support known Claude and GPT/Codex/Pi model pricing.
 - The panel refreshes usage roughly every 10 minutes.
 
 ## Requirements
@@ -95,7 +96,7 @@ Sources/ModernWidget/
 ├── Services/
 │   ├── DailySupplementStore.swift     # daily supplement persistence
 │   ├── Reminder/                      # timer engine and notification delivery
-│   ├── Usage/                         # Claude/Codex log loading and pricing
+│   ├── Usage/                         # Claude/Codex/Pi log loading and pricing
 │   └── WalkHistoryStore.swift         # walk persistence and day counts
 └── Views/
     ├── MenuBarPanelView.swift         # tabbed menu bar panel shell
@@ -108,7 +109,7 @@ Tests/ModernWidgetTests/
 ├── Reminder*                          # reminder state and schedule tests
 ├── WalkHistory*                       # calendar and retention tests
 ├── DailySupplementStoreTests.swift
-└── Usage/                             # Claude/Codex usage loader tests
+└── Usage/                             # Claude/Codex/Pi usage loader tests
 ```
 
 ## Data and privacy
@@ -117,4 +118,4 @@ Tests/ModernWidgetTests/
 - No analytics.
 - No network calls for usage tracking.
 - Local app state is stored in `UserDefaults`.
-- AI usage summaries are computed from local Claude and Codex log files.
+- AI usage summaries are computed from local Claude, Codex, and Pi log files.

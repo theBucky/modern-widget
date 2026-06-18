@@ -10,16 +10,16 @@ Sources/ModernWidget/
   Models/
     HistoryRetention   shared three-month retention window
     Reminder/          countdown state, snapshots, schedules
-    Usage/             Claude/Codex usage report models
+    Usage/             Claude/Codex/Pi usage report models
     WalkHistory/       month grid and weekday helpers
   Services/
     DailySupplementStore daily supplement persistence
     Reminder/          timer engine and notification delivery
-    Usage/             Claude/Codex log loading and pricing
+    Usage/             Claude/Codex/Pi log loading and pricing
     WalkHistoryStore   walk persistence and day counts
   Views/               tabbed menu bar panel, timer, calendar, usage panes
 Tests/ModernWidgetTests/
-  Usage/               Claude/Codex usage loader tests
+  Usage/               Claude/Codex/Pi usage loader tests
   *.swift              reminder, walk history, supplement, retention tests
 ```
 
