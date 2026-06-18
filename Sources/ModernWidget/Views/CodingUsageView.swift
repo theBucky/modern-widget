@@ -59,7 +59,7 @@ struct CodingUsageView: View {
                     Text(row.title)
                         .foregroundStyle(.secondary)
                         .frame(width: Layout.labelWidth, alignment: .leading)
-                    Text(isFetching ? "fetching" : formatCost(row.costUSD))
+                    Text(isFetching ? "fetching" : formatCodingUsageCost(row.costUSD))
                         .foregroundStyle(isFetching || row.costUSD > 0 ? .primary : .tertiary)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -70,20 +70,7 @@ struct CodingUsageView: View {
     }
 
     private func usageChart(_ summary: CodingUsageAgentSummary) -> some View {
-        Chart(chartDays(summary), id: \.date) { day in
-            BarMark(
-                x: .value("Day", day.date, unit: .day),
-                y: .value("Cost", isFetching ? 1 : day.counts.costUSD),
-                width: .ratio(0.7)
-            )
-            .foregroundStyle(
-                isFetching ? Color.secondary.opacity(0.18) : Color.accentColor.opacity(0.8))
-        }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartLegend(.hidden)
-        .frame(height: 44)
-        .frame(maxWidth: .infinity)
+        CodingUsageChart(days: chartDays(summary), isFetching: isFetching)
     }
 
     private func amountRows(_ summary: CodingUsageAgentSummary) -> [CodingUsageAmountRow] {
@@ -137,16 +124,79 @@ struct CodingUsageView: View {
     private var reportDate: Date {
         store.report.generatedAt ?? .now
     }
+}
 
-    private func formatCost(_ cost: Double) -> String {
-        if cost <= 0 {
-            return "$0.00"
+private struct CodingUsageChart: View {
+    let days: [CodingUsageDaySummary]
+    let isFetching: Bool
+
+    @State private var selectedDate: Date?
+
+    var body: some View {
+        Chart {
+            ForEach(days, id: \.date) { day in
+                BarMark(
+                    x: .value("Day", day.date, unit: .day),
+                    y: .value("Cost", isFetching ? 1 : day.counts.costUSD),
+                    width: .ratio(0.7)
+                )
+                .foregroundStyle(
+                    isFetching ? Color.secondary.opacity(0.18) : Color.accentColor.opacity(0.8))
+            }
+
+            if let selectedDay {
+                RuleMark(x: .value("Selected Day", selectedDay.date, unit: .day))
+                    .foregroundStyle(Color.secondary.opacity(0.45))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                    .annotation(
+                        position: .top, spacing: 0,
+                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                    ) {
+                        chartHoverAnnotation(selectedDay)
+                    }
+                    .accessibilityHidden(true)
+            }
         }
-        if cost < 0.01 {
-            return String(format: "$%.4f", cost)
-        }
-        return String(format: "$%.2f", cost)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .chartXSelection(value: $selectedDate)
+        .frame(height: 44)
+        .frame(maxWidth: .infinity)
     }
+
+    private var selectedDay: CodingUsageDaySummary? {
+        guard let selectedDate else {
+            return nil
+        }
+        return days.first { day in
+            Calendar.current.dateInterval(of: .day, for: day.date)!.contains(selectedDate)
+        }
+    }
+
+    private func chartHoverAnnotation(_ day: CodingUsageDaySummary) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
+                .foregroundStyle(.secondary)
+            Text(isFetching ? "fetching" : formatCodingUsageCost(day.counts.costUSD))
+                .foregroundStyle(isFetching || day.counts.costUSD > 0 ? .primary : .tertiary)
+        }
+        .font(.caption2.monospacedDigit())
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(.regularMaterial, in: .rect(cornerRadius: 4))
+        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+    }
+}
+
+private func formatCodingUsageCost(_ cost: Double) -> String {
+    if cost <= 0 {
+        return "$0.00"
+    }
+    if cost < 0.01 {
+        return String(format: "$%.4f", cost)
+    }
+    return String(format: "$%.2f", cost)
 }
 
 private extension CodingUsageAgent {
