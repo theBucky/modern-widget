@@ -41,7 +41,7 @@ extension CodingUsageLoader {
     ) {
         let data: Data
         do {
-            data = try Data(contentsOf: file)
+            data = try Data(contentsOf: file, options: .mappedIfSafe)
         } catch {
             return
         }
@@ -118,14 +118,22 @@ extension CodingUsageLoader {
         string(value).flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    func parseTimestampString(_ value: String) -> Date? {
+    // Reused across a scan: a refresh parses one file at a time on a single background
+    // task, so building an `ISO8601DateFormatter` per timestamp is pure overhead.
+    nonisolated(unsafe) private static let fractionalTimestampParser: ISO8601DateFormatter = {
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = parser.date(from: value) {
-            return date
-        }
+        return parser
+    }()
+    nonisolated(unsafe) private static let plainTimestampParser: ISO8601DateFormatter = {
+        let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime]
-        return parser.date(from: value)
+        return parser
+    }()
+
+    func parseTimestampString(_ value: String) -> Date? {
+        Self.fractionalTimestampParser.date(from: value)
+            ?? Self.plainTimestampParser.date(from: value)
     }
 
     func fileModifiedDate(_ url: URL) -> Date? {
