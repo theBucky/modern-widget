@@ -87,16 +87,9 @@ extension CodingUsageLoader {
         guard let number = value as? NSNumber, !isBooleanNumber(number) else {
             return nil
         }
-
-        let doubleValue = number.doubleValue
-        guard doubleValue.isFinite,
-            doubleValue >= 0,
-            doubleValue.rounded(.towardZero) == doubleValue,
-            doubleValue <= Double(UInt64.max)
-        else {
-            return nil
-        }
-        return UInt64(doubleValue)
+        // `init(exactly:)` rejects non-finite, negative, fractional, and out-of-range
+        // values without trapping, unlike `UInt64(double)`.
+        return UInt64(exactly: number.doubleValue)
     }
 
     func parseTimestamp(_ value: Any?) -> Date? {

@@ -130,6 +130,16 @@ struct CodingUsageLoaderTests {
         #expect(claude.totalCounts.costUSD == 0)
     }
 
+    @Test("rejects an out-of-range token count instead of trapping")
+    func rejectsOutOfRangeTokenCount() {
+        let loader = CodingUsageLoader(
+            environment: [:], homeDirectory: FileManager.default.temporaryDirectory)
+
+        #expect(loader.unsignedInteger(NSNumber(value: Double(UInt64.max))) == nil)
+        #expect(loader.unsignedInteger(NSNumber(value: 42)) == 42)
+        #expect(loader.unsignedInteger(NSNumber(value: 1.5)) == nil)
+    }
+
     @Test("skips unchanged codex token count snapshots")
     func skipsUnchangedCodexTokenCountSnapshots() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSnapshots")
