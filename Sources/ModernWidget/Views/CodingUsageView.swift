@@ -60,7 +60,6 @@ struct CodingUsageView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: Layout.labelWidth, alignment: .leading)
                     Text(isFetching ? "fetching" : formatCost(row.costUSD))
-                        .fontWeight(.semibold)
                         .foregroundStyle(isFetching || row.costUSD > 0 ? .primary : .tertiary)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
