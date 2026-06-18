@@ -1,8 +1,6 @@
 import Darwin
 import Foundation
 
-typealias JSONObject = [String: Any]
-
 struct CodingUsageFileFingerprint: Equatable, Sendable {
     let path: String
     let modifiedAt: Date?
@@ -58,139 +56,34 @@ extension CodingUsageLoader {
         )
     }
 
+    /// Maps `file` and hands each non-empty line to `visit` as a borrowed byte slice of
+    /// the mapping. Newlines are located with `memchr` over the raw pointer; slicing the
+    /// `Data` per line instead is ~75x slower because every byte pays Collection witness
+    /// and bounds-check overhead.
     func forEachJSONLine(
         in file: URL,
-        _ visit: (Data) -> Void
+        _ visit: (UnsafeRawBufferPointer) -> Void
     ) {
-        let data: Data
-        do {
-            data = try Data(contentsOf: file, options: .mappedIfSafe)
-        } catch {
+        guard let data = try? Data(contentsOf: file, options: .mappedIfSafe), !data.isEmpty else {
             return
         }
-
-        guard !data.isEmpty else {
-            return
-        }
-
-        var start = data.startIndex
-        while start < data.endIndex {
-            let end = data[start...].firstIndex(of: UInt8(ascii: "\n")) ?? data.endIndex
-            if start < end {
-                visit(data[start..<end])
+        data.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            let bytes = base.assumingMemoryBound(to: UInt8.self)
+            let count = raw.count
+            var start = 0
+            while start < count {
+                let newline = memchr(bytes + start, 0x0a, count - start)
+                let end = newline.map { UnsafeRawPointer($0) - UnsafeRawPointer(bytes) } ?? count
+                if end > start {
+                    visit(UnsafeRawBufferPointer(start: bytes + start, count: end - start))
+                }
+                if newline == nil {
+                    break
+                }
+                start = end + 1
             }
-            if end == data.endIndex {
-                break
-            }
-            start = data.index(after: end)
         }
-    }
-
-    func parseJSONObject(_ data: Data) -> JSONObject? {
-        (try? JSONSerialization.jsonObject(with: data)) as? JSONObject
-    }
-
-    func dictionary(_ value: Any?) -> JSONObject? {
-        value as? JSONObject
-    }
-
-    func string(_ value: Any?) -> String? {
-        guard let value = value as? String else { return nil }
-        return value.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    func bool(_ value: Any?) -> Bool? {
-        guard let number = value as? NSNumber, isBooleanNumber(number) else {
-            return nil
-        }
-        return number.boolValue
-    }
-
-    func unsignedInteger(_ value: Any?) -> UInt64? {
-        guard let number = value as? NSNumber, !isBooleanNumber(number) else {
-            return nil
-        }
-        return number as? UInt64
-    }
-
-    func parseTimestamp(_ value: Any?) -> Date? {
-        if let text = value as? String {
-            if let date = parseTimestampString(text) {
-                return date
-            }
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed == text ? nil : parseTimestampString(trimmed)
-        }
-
-        guard let number = value as? NSNumber, !isBooleanNumber(number) else {
-            return nil
-        }
-        let raw = number.doubleValue
-        if raw > 10_000_000_000 {
-            return Date(timeIntervalSince1970: raw / 1_000)
-        }
-        return Date(timeIntervalSince1970: raw)
-    }
-
-    func nonEmptyString(_ value: Any?) -> String? {
-        string(value).flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    private func parseTimestampString(_ value: String) -> Date? {
-        if let date = parseUTCLogTimestamp(value) {
-            return date
-        }
-
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = parser.date(from: value) {
-            return date
-        }
-        parser.formatOptions = [.withInternetDateTime]
-        return parser.date(from: value)
-    }
-
-    private func parseUTCLogTimestamp(_ value: String) -> Date? {
-        value.withCString { valuePointer in
-            var components = Darwin.tm()
-            guard let end = strptime(valuePointer, "%Y-%m-%dT%H:%M:%S", &components),
-                let fractionalSeconds = fractionalSeconds(after: end)
-            else {
-                return nil
-            }
-
-            let seconds = timegm(&components)
-            return Date(timeIntervalSince1970: TimeInterval(seconds) + fractionalSeconds)
-        }
-    }
-
-    private func fractionalSeconds(after pointer: UnsafePointer<CChar>) -> TimeInterval? {
-        let dot = CChar(UInt8(ascii: "."))
-        let z = CChar(UInt8(ascii: "Z"))
-        if pointer.pointee == z {
-            return pointer.successor().pointee == 0 ? 0 : nil
-        }
-        guard pointer.pointee == dot else {
-            return nil
-        }
-
-        var cursor = pointer.successor()
-        var fraction = 0.0
-        var divisor = 10.0
-        while cursor.pointee >= CChar(UInt8(ascii: "0"))
-            && cursor.pointee <= CChar(UInt8(ascii: "9"))
-        {
-            if divisor <= 1_000_000_000 {
-                fraction += Double(cursor.pointee - CChar(UInt8(ascii: "0"))) / divisor
-                divisor *= 10
-            }
-            cursor = cursor.successor()
-        }
-        guard cursor > pointer.successor(), cursor.pointee == z, cursor.successor().pointee == 0
-        else {
-            return nil
-        }
-        return fraction
     }
 
     func fileModifiedDate(_ url: URL) -> Date? {
@@ -222,15 +115,26 @@ extension CodingUsageLoader {
         }
         return url.lastPathComponent
     }
-
-    private func isBooleanNumber(_ number: NSNumber) -> Bool {
-        CFGetTypeID(number) == CFBooleanGetTypeID()
-    }
 }
 
 extension UInt64 {
     func saturatingSubtract(_ other: UInt64) -> UInt64 {
         self >= other ? self - other : 0
+    }
+}
+
+extension String {
+    /// The string unless it is empty, mirroring the loaders' "treat blank as absent".
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+extension UnsafeRawBufferPointer {
+    /// Reports whether `needle` occurs in the buffer, via `memmem`.
+    func contains(_ needle: [UInt8]) -> Bool {
+        guard let base = baseAddress, count >= needle.count else {
+            return false
+        }
+        return needle.withUnsafeBytes { memmem(base, count, $0.baseAddress!, $0.count) != nil }
     }
 }
 

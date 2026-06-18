@@ -99,6 +99,29 @@ struct CodingUsageLoaderTests {
         #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
     }
 
+    @Test("skips escaped strings and nested content while extracting usage")
+    func skipsEscapedContentWhileExtractingUsage() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-Escaped")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // The content array carries escaped quotes, braces, and a backslash run that the
+        // scanner must step over before reaching the trailing usage object.
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","isSidechain":false,"requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","content":[{"type":"text","text":"a \"quoted\" {brace} and trailing slash \\"}],"usage":{"input_tokens":100,"output_tokens":10,"cache_read_input_tokens":20}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(dayCounts(claude, 2026, 6, 18).inputTokens == 100)
+        #expect(dayCounts(claude, 2026, 6, 18).outputTokens == 10)
+        #expect(dayCounts(claude, 2026, 6, 18).cacheReadTokens == 20)
+        #expect(dayCounts(claude, 2026, 6, 18).totalTokens == 130)
+    }
+
     @Test("skips records outside the thirty day scan window")
     func skipsRecordsOutsideThirtyDayScanWindow() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-ScanWindow")
@@ -160,26 +183,33 @@ struct CodingUsageLoaderTests {
 
     @Test("rejects an out-of-range token count instead of trapping")
     func rejectsOutOfRangeTokenCount() {
-        let loader = CodingUsageLoader(
-            environment: [:], homeDirectory: FileManager.default.temporaryDirectory)
-
-        #expect(loader.unsignedInteger(NSNumber(value: Double(UInt64.max))) == nil)
-        #expect(loader.unsignedInteger(NSNumber(value: 42)) == 42)
-        #expect(loader.unsignedInteger(NSNumber(value: 1.5)) == nil)
+        #expect(scanUInt64(#"{"v":42}"#) == 42)
+        #expect(scanUInt64(#"{"v":1.5}"#) == nil)
+        #expect(scanUInt64(#"{"v":-3}"#) == nil)
+        #expect(scanUInt64(#"{"v":18446744073709551615}"#) == UInt64.max)
+        #expect(scanUInt64(#"{"v":18446744073709551616}"#) == nil)
     }
 
     @Test("parses common utc log timestamps")
     func parsesCommonUTCLogTimestamps() {
-        let loader = CodingUsageLoader(
-            environment: [:], homeDirectory: FileManager.default.temporaryDirectory)
-
-        #expect(loader.parseTimestamp("2026-06-18T01:02:03Z") == date(2026, 6, 18, 1, 2, 3))
-        #expect(loader.parseTimestamp("2026-06-18T01:02:03.000Z") == date(2026, 6, 18, 1, 2, 3))
-        #expect(loader.parseTimestamp(" 2026-06-18T01:02:03.000Z\n") == date(2026, 6, 18, 1, 2, 3))
+        #expect(LogTimestamp.parse("2026-06-18T01:02:03Z") == date(2026, 6, 18, 1, 2, 3))
+        #expect(LogTimestamp.parse("2026-06-18T01:02:03.000Z") == date(2026, 6, 18, 1, 2, 3))
+        #expect(LogTimestamp.parse(" 2026-06-18T01:02:03.000Z\n") == date(2026, 6, 18, 1, 2, 3))
         #expect(
-            loader.parseTimestamp("2026-06-18T01:02:03.250Z")?
+            LogTimestamp.parse("2026-06-18T01:02:03.250Z")?
                 .timeIntervalSince(date(2026, 6, 18, 1, 2, 3)) == 0.25)
-        #expect(loader.parseTimestamp("2026-06-18T09:02:03+08:00") == date(2026, 6, 18, 1, 2, 3))
+        #expect(LogTimestamp.parse("2026-06-18T09:02:03+08:00") == date(2026, 6, 18, 1, 2, 3))
+    }
+
+    private func scanUInt64(_ json: String) -> UInt64? {
+        Data(json.utf8).withUnsafeBytes { buffer -> UInt64? in
+            guard var scanner = JSONScanner(buffer), scanner.beginObject(),
+                scanner.nextKey() != nil
+            else {
+                return nil
+            }
+            return scanner.readUInt64()
+        }
     }
 
     @Test("keeps codex events with different fractional timestamps")

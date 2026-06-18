@@ -13,6 +13,55 @@ struct ClaudeDedupeKey: Hashable {
     let requestID: String?
 }
 
+/// Scalar fields pulled from a Claude `message` object. The cache-creation split
+/// prefers the `cache_creation` object's ephemeral buckets and falls back to the flat
+/// `cache_creation_input_tokens` count, matching the original loader.
+private struct ClaudeMessageFields {
+    var id: String?
+    var model: String?
+    var hasUsage = false
+    var input: UInt64 = 0
+    var output: UInt64 = 0
+    var cacheRead: UInt64 = 0
+    var cacheCreationFallback: UInt64 = 0
+    var cacheCreation5m: UInt64 = 0
+    var cacheCreation1h: UInt64 = 0
+    var hasCacheCreationObject = false
+    var speed: String?
+
+    var cacheCreation5mResolved: UInt64 {
+        hasCacheCreationObject ? cacheCreation5m : cacheCreationFallback
+    }
+    var cacheCreation1hResolved: UInt64 {
+        hasCacheCreationObject ? cacheCreation1h : 0
+    }
+}
+
+/// Timestamp, request id, sidechain flag, and message of one log record. The same
+/// shape appears at the top level and nested under `data.message` in exported
+/// transcripts, so a single reader serves both.
+private struct ClaudeRecordFields {
+    var timestamp: Date?
+    var requestID: String?
+    var isSidechain = false
+    var message: ClaudeMessageFields?
+
+    mutating func consume(key: JSONKey, from scanner: inout JSONScanner) -> Bool {
+        if key == "timestamp" {
+            timestamp = scanner.readTimestamp()
+        } else if key == "requestId" {
+            requestID = scanner.readString()
+        } else if key == "isSidechain" {
+            isSidechain = scanner.readBool() == true
+        } else if key == "message" {
+            message = claudeMessageFields(&scanner)
+        } else {
+            return false
+        }
+        return true
+    }
+}
+
 extension CodingUsageLoader {
     func loadClaudeUsage(
         files: [URL],
@@ -77,100 +126,18 @@ extension CodingUsageLoader {
 
     func readClaudeUsageFile(_ file: URL) -> [ClaudeUsageEntry] {
         var entries: [ClaudeUsageEntry] = []
-        let usageNeedle = Data(#""usage""#.utf8)
+        let usageNeedle = [UInt8](#""usage""#.utf8)
 
         forEachJSONLine(in: file) { line in
-            guard line.range(of: usageNeedle) != nil,
-                let object = parseJSONObject(line),
-                let entry = claudeUsageEntry(from: object)
-            else {
+            guard line.contains(usageNeedle) else {
                 return
             }
-            entries.append(entry)
+            if let entry = claudeUsageEntry(line) {
+                entries.append(entry)
+            }
         }
 
         return entries
-    }
-
-    func claudeUsageEntry(from object: JSONObject) -> ClaudeUsageEntry? {
-        if let message = dictionary(object["message"]) {
-            return claudeUsageEntry(
-                timestampValue: object["timestamp"],
-                message: message,
-                requestIDValue: object["requestId"],
-                isSidechainValue: object["isSidechain"]
-            )
-        }
-
-        guard let data = dictionary(object["data"]),
-            let outerMessage = dictionary(data["message"]),
-            let message = dictionary(outerMessage["message"])
-        else {
-            return nil
-        }
-
-        return claudeUsageEntry(
-            timestampValue: outerMessage["timestamp"],
-            message: message,
-            requestIDValue: outerMessage["requestId"],
-            isSidechainValue: outerMessage["isSidechain"]
-        )
-    }
-
-    func claudeUsageEntry(
-        timestampValue: Any?,
-        message: JSONObject,
-        requestIDValue: Any?,
-        isSidechainValue: Any?
-    ) -> ClaudeUsageEntry? {
-        guard let timestamp = parseTimestamp(timestampValue),
-            let usage = dictionary(message["usage"])
-        else {
-            return nil
-        }
-
-        let inputTokens = unsignedInteger(usage["input_tokens"]) ?? 0
-        let outputTokens = unsignedInteger(usage["output_tokens"]) ?? 0
-        let cacheCreationTokens = claudeCacheCreationTokens(from: usage)
-        let cacheReadTokens = unsignedInteger(usage["cache_read_input_tokens"]) ?? 0
-        let speed = string(usage["speed"])
-
-        return ClaudeUsageEntry(
-            timestamp: timestamp,
-            counts: .claude(
-                inputTokens: inputTokens,
-                outputTokens: outputTokens,
-                cacheCreationTokens: cacheCreationTokens.ephemeral5m
-                    + cacheCreationTokens.ephemeral1h,
-                cacheReadTokens: cacheReadTokens,
-                costUSD: CodingUsagePricing.claudeCost(
-                    model: string(message["model"]),
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheCreation5mTokens: cacheCreationTokens.ephemeral5m,
-                    cacheCreation1hTokens: cacheCreationTokens.ephemeral1h,
-                    cacheReadTokens: cacheReadTokens,
-                    usesFastPricing: speed == "fast"
-                )
-            ),
-            messageID: string(message["id"]),
-            requestID: string(requestIDValue),
-            isSidechain: bool(isSidechainValue) == true
-        )
-    }
-
-    func claudeCacheCreationTokens(from usage: JSONObject) -> (
-        ephemeral5m: UInt64, ephemeral1h: UInt64
-    ) {
-        if let cacheCreation = dictionary(usage["cache_creation"]) {
-            return (
-                ephemeral5m: unsignedInteger(cacheCreation["ephemeral_5m_input_tokens"]) ?? 0,
-                ephemeral1h: unsignedInteger(cacheCreation["ephemeral_1h_input_tokens"]) ?? 0
-            )
-        }
-        return (
-            ephemeral5m: unsignedInteger(usage["cache_creation_input_tokens"]) ?? 0, ephemeral1h: 0
-        )
     }
 
     func dedupeClaudeEntries(_ entries: [ClaudeUsageEntry]) -> [ClaudeUsageEntry] {
@@ -223,4 +190,132 @@ extension CodingUsageLoader {
         }
         return candidate.counts.costUSD > existing.counts.costUSD
     }
+}
+
+/// Extracts one Claude entry, accepting both the top-level record and the
+/// `data.message` wrapper. The wrapper's record wins only when the top level carries
+/// no usage.
+private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEntry? {
+    guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
+        return nil
+    }
+    var record = ClaudeRecordFields()
+    var wrapped: ClaudeRecordFields?
+    while let key = scanner.nextKey() {
+        if record.consume(key: key, from: &scanner) {
+            continue
+        }
+        if key == "data" {
+            wrapped = claudeWrappedRecord(&scanner)
+        } else {
+            scanner.skipValue()
+        }
+    }
+    return claudeEntry(from: record) ?? wrapped.flatMap(claudeEntry)
+}
+
+/// Reads the `data` object and returns its `message` record.
+private func claudeWrappedRecord(_ scanner: inout JSONScanner) -> ClaudeRecordFields? {
+    guard scanner.beginObject() else { return nil }
+    var record: ClaudeRecordFields?
+    while let key = scanner.nextKey() {
+        if key == "message" {
+            record = claudeRecordFields(&scanner)
+        } else {
+            scanner.skipValue()
+        }
+    }
+    return record
+}
+
+private func claudeRecordFields(_ scanner: inout JSONScanner) -> ClaudeRecordFields {
+    var record = ClaudeRecordFields()
+    guard scanner.beginObject() else { return record }
+    while let key = scanner.nextKey() {
+        if !record.consume(key: key, from: &scanner) {
+            scanner.skipValue()
+        }
+    }
+    return record
+}
+
+private func claudeMessageFields(_ scanner: inout JSONScanner) -> ClaudeMessageFields? {
+    guard scanner.beginObject() else { return nil }
+    var fields = ClaudeMessageFields()
+    while let key = scanner.nextKey() {
+        if key == "id" {
+            fields.id = scanner.readString()
+        } else if key == "model" {
+            fields.model = scanner.readString()
+        } else if key == "usage" {
+            if scanner.beginObject() {
+                fields.hasUsage = true
+                claudeUsageFields(&scanner, into: &fields)
+            }
+        } else {
+            scanner.skipValue()
+        }
+    }
+    return fields
+}
+
+private func claudeUsageFields(_ scanner: inout JSONScanner, into fields: inout ClaudeMessageFields)
+{
+    while let key = scanner.nextKey() {
+        if key == "input_tokens" {
+            fields.input = scanner.readUInt64() ?? 0
+        } else if key == "output_tokens" {
+            fields.output = scanner.readUInt64() ?? 0
+        } else if key == "cache_read_input_tokens" {
+            fields.cacheRead = scanner.readUInt64() ?? 0
+        } else if key == "cache_creation_input_tokens" {
+            fields.cacheCreationFallback = scanner.readUInt64() ?? 0
+        } else if key == "cache_creation" {
+            if scanner.beginObject() {
+                fields.hasCacheCreationObject = true
+                while let inner = scanner.nextKey() {
+                    if inner == "ephemeral_5m_input_tokens" {
+                        fields.cacheCreation5m = scanner.readUInt64() ?? 0
+                    } else if inner == "ephemeral_1h_input_tokens" {
+                        fields.cacheCreation1h = scanner.readUInt64() ?? 0
+                    } else {
+                        scanner.skipValue()
+                    }
+                }
+            }
+        } else if key == "speed" {
+            fields.speed = scanner.readString()
+        } else {
+            scanner.skipValue()
+        }
+    }
+}
+
+private func claudeEntry(from record: ClaudeRecordFields) -> ClaudeUsageEntry? {
+    guard let timestamp = record.timestamp, let message = record.message, message.hasUsage else {
+        return nil
+    }
+    let cacheCreation5m = message.cacheCreation5mResolved
+    let cacheCreation1h = message.cacheCreation1hResolved
+    return ClaudeUsageEntry(
+        timestamp: timestamp,
+        counts: .claude(
+            inputTokens: message.input,
+            outputTokens: message.output,
+            cacheCreationTokens: cacheCreation5m + cacheCreation1h,
+            cacheReadTokens: message.cacheRead,
+            costUSD: CodingUsagePricing.claudeCost(
+                model: message.model,
+                inputTokens: message.input,
+                outputTokens: message.output,
+                cacheCreation5mTokens: cacheCreation5m,
+                cacheCreation1hTokens: cacheCreation1h,
+                cacheReadTokens: message.cacheRead,
+                usesFastPricing: message.speed == "fast"
+            )
+        ),
+        messageID: message.id,
+        requestID: record.requestID,
+        isSidechain: record.isSidechain
+    )
 }

@@ -199,168 +199,276 @@ extension CodingUsageLoader {
         usesFastPricing: Bool
     ) -> [CodexUsageEvent] {
         let fallbackTimestamp = fileModifiedDate(file) ?? .distantPast
-        let tokenCountNeedle = Data(#""token_count""#.utf8)
-        let turnContextNeedle = Data(#""turn_context""#.utf8)
-        let usageNeedle = Data(#""usage""#.utf8)
+        let tokenCountNeedle = [UInt8](#""token_count""#.utf8)
+        let turnContextNeedle = [UInt8](#""turn_context""#.utf8)
+        let usageNeedle = [UInt8](#""usage""#.utf8)
         var events: [CodexUsageEvent] = []
         var previousTotals: CodexRawUsage?
         var currentModel: String?
 
         forEachJSONLine(in: file) { line in
-            if line.range(of: tokenCountNeedle) == nil
-                && line.range(of: turnContextNeedle) == nil
-                && line.range(of: usageNeedle) == nil
+            if !line.contains(tokenCountNeedle), !line.contains(turnContextNeedle),
+                !line.contains(usageNeedle)
             {
                 return
             }
 
-            guard let object = parseJSONObject(line) else { return }
+            guard let fields = scanCodexLine(line) else { return }
 
-            if let nextModel = codexTurnContextModel(from: object) {
-                currentModel = nextModel
+            if fields.type == "turn_context", let model = fields.payloadModel.resolved {
+                currentModel = model
                 return
             }
 
-            if let event = codexTokenCountEvent(
-                from: object,
-                previousTotals: &previousTotals,
-                currentModel: &currentModel,
-                usesFastPricing: usesFastPricing
-            ) {
-                events.append(event)
-                return
+            if fields.type == "event_msg", fields.payloadType == "token_count", fields.hasInfo,
+                let timestamp = fields.topTimestamp
+            {
+                let totalUsage = fields.infoTotal
+                let rawUsage = fields.infoLast ?? totalUsage?.subtracting(previousTotals)
+                if let totalUsage {
+                    previousTotals = totalUsage
+                }
+                if let rawUsage, !rawUsage.isEmpty {
+                    let model =
+                        fields.payloadModel.resolved ?? fields.infoModel.resolved ?? currentModel
+                        ?? "gpt-5"
+                    currentModel = model
+                    events.append(
+                        CodexUsageEvent(
+                            timestamp: timestamp,
+                            model: model,
+                            counts: rawUsage.tokenCounts(
+                                model: model, usesFastPricing: usesFastPricing)
+                        )
+                    )
+                    return
+                }
             }
 
-            if let event = codexHeadlessEvent(
-                from: object,
-                fallbackTimestamp: fallbackTimestamp,
-                currentModel: &currentModel,
-                usesFastPricing: usesFastPricing
-            ) {
-                events.append(event)
+            if let rawUsage = fields.headlessUsage, !rawUsage.isEmpty {
+                let timestamp = fields.headlessTimestamp ?? fallbackTimestamp
+                let model = fields.headlessModel ?? currentModel ?? "gpt-5"
+                currentModel = model
+                events.append(
+                    CodexUsageEvent(
+                        timestamp: timestamp,
+                        model: model,
+                        counts: rawUsage.tokenCounts(model: model, usesFastPricing: usesFastPricing)
+                    )
+                )
             }
         }
 
         return events
     }
+}
 
-    func codexTokenCountEvent(
-        from object: JSONObject,
-        previousTotals: inout CodexRawUsage?,
-        currentModel: inout String?,
-        usesFastPricing: Bool
-    ) -> CodexUsageEvent? {
-        guard string(object["type"]) == "event_msg",
-            let timestamp = parseTimestamp(object["timestamp"]),
-            let payload = dictionary(object["payload"]),
-            string(payload["type"]) == "token_count",
-            let info = dictionary(payload["info"])
-        else {
-            return nil
+private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLineFields? {
+    guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
+        return nil
+    }
+    var fields = CodexLineFields()
+    while let key = scanner.nextKey() {
+        if key == "type" {
+            fields.type = scanner.readString()
+        } else if key == "timestamp" {
+            fields.topTimestamp = scanner.readTimestamp()
+        } else if (key == "created_at" || key == "createdAt"), fields.topCreatedAt == nil {
+            fields.topCreatedAt = scanner.readTimestamp()
+        } else if key == "usage" {
+            fields.topUsage = codexUsage(&scanner)
+        } else if key == "payload" {
+            codexPayload(&scanner, into: &fields)
+        } else if key == "data" {
+            fields.data = codexContainer(&scanner)
+        } else if key == "result" {
+            fields.result = codexContainer(&scanner)
+        } else if key == "response" {
+            fields.response = codexContainer(&scanner)
+        } else if fields.topModel.consume(key: key, from: &scanner) {
+            // model / model_name / metadata
+        } else {
+            scanner.skipValue()
         }
+    }
+    return fields
+}
 
-        let totalUsage = codexRawUsage(from: dictionary(info["total_token_usage"]))
-        let rawUsage =
-            codexRawUsage(from: dictionary(info["last_token_usage"]))
-            ?? totalUsage?.subtracting(previousTotals)
-
-        if let totalUsage {
-            previousTotals = totalUsage
+private func codexPayload(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) {
+    guard scanner.beginObject() else { return }
+    while let key = scanner.nextKey() {
+        if key == "type" {
+            fields.payloadType = scanner.readString()
+        } else if key == "info" {
+            codexInfo(&scanner, into: &fields)
+        } else if fields.payloadModel.consume(key: key, from: &scanner) {
+            // model / model_name / metadata
+        } else {
+            scanner.skipValue()
         }
+    }
+}
 
-        guard let rawUsage, !rawUsage.isEmpty else {
-            return nil
+private func codexInfo(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) {
+    guard scanner.beginObject() else { return }
+    fields.hasInfo = true
+    while let key = scanner.nextKey() {
+        if key == "total_token_usage" {
+            fields.infoTotal = codexUsage(&scanner)
+        } else if key == "last_token_usage" {
+            fields.infoLast = codexUsage(&scanner)
+        } else if fields.infoModel.consume(key: key, from: &scanner) {
+            // model / model_name / metadata
+        } else {
+            scanner.skipValue()
         }
-
-        let model = codexModel(from: payload) ?? codexModel(from: info) ?? currentModel ?? "gpt-5"
-        currentModel = model
-
-        return CodexUsageEvent(
-            timestamp: timestamp,
-            model: model,
-            counts: rawUsage.tokenCounts(model: model, usesFastPricing: usesFastPricing)
-        )
     }
+}
 
-    func codexHeadlessEvent(
-        from object: JSONObject,
-        fallbackTimestamp: Date,
-        currentModel: inout String?,
-        usesFastPricing: Bool
-    ) -> CodexUsageEvent? {
-        let containers = codexContainers(from: object)
-        guard
-            let rawUsage = containers.compactMap({
-                codexRawUsage(from: dictionary($0["usage"]))
-            }).first,
-            !rawUsage.isEmpty
-        else {
-            return nil
+/// Reads a `data`/`result`/`response` container's usage, model, and timestamp.
+private func codexContainer(_ scanner: inout JSONScanner) -> CodexContainer? {
+    guard scanner.beginObject() else { return nil }
+    var container = CodexContainer()
+    var model = CodexModelFields()
+    var createdAt: Date?
+    while let key = scanner.nextKey() {
+        if key == "usage" {
+            container.usage = codexUsage(&scanner)
+        } else if key == "timestamp" {
+            container.timestamp = scanner.readTimestamp()
+        } else if (key == "created_at" || key == "createdAt"), createdAt == nil {
+            createdAt = scanner.readTimestamp()
+        } else if model.consume(key: key, from: &scanner) {
+            // model / model_name / metadata
+        } else {
+            scanner.skipValue()
         }
-        let timestamp = containers.compactMap(codexTimestamp).first ?? fallbackTimestamp
-        let model = containers.compactMap(codexModel).first ?? currentModel ?? "gpt-5"
-
-        currentModel = model
-        return CodexUsageEvent(
-            timestamp: timestamp,
-            model: model,
-            counts: rawUsage.tokenCounts(model: model, usesFastPricing: usesFastPricing)
-        )
     }
+    container.model = model.resolved
+    container.timestamp = container.timestamp ?? createdAt
+    return container
+}
 
-    func codexTurnContextModel(from object: JSONObject) -> String? {
-        guard string(object["type"]) == "turn_context",
-            let payload = dictionary(object["payload"])
-        else {
-            return nil
+/// Reads a usage object, returning `nil` when the value is not an object so a
+/// missing usage key stays distinguishable from an all-zero one.
+private func codexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
+    guard scanner.beginObject() else { return nil }
+    var inputTokens: UInt64?
+    var promptTokens: UInt64?
+    var input: UInt64?
+    var outputTokens: UInt64?
+    var completionTokens: UInt64?
+    var output: UInt64?
+    var reasoningOutput: UInt64?
+    var reasoning: UInt64?
+    var cachedInput: UInt64?
+    var cacheReadInput: UInt64?
+    var cached: UInt64?
+    var total: UInt64?
+    while let key = scanner.nextKey() {
+        if key == "input_tokens" {
+            inputTokens = scanner.readUInt64()
+        } else if key == "prompt_tokens" {
+            promptTokens = scanner.readUInt64()
+        } else if key == "input" {
+            input = scanner.readUInt64()
+        } else if key == "output_tokens" {
+            outputTokens = scanner.readUInt64()
+        } else if key == "completion_tokens" {
+            completionTokens = scanner.readUInt64()
+        } else if key == "output" {
+            output = scanner.readUInt64()
+        } else if key == "reasoning_output_tokens" {
+            reasoningOutput = scanner.readUInt64()
+        } else if key == "reasoning_tokens" {
+            reasoning = scanner.readUInt64()
+        } else if key == "cached_input_tokens" {
+            cachedInput = scanner.readUInt64()
+        } else if key == "cache_read_input_tokens" {
+            cacheReadInput = scanner.readUInt64()
+        } else if key == "cached_tokens" {
+            cached = scanner.readUInt64()
+        } else if key == "total_tokens" {
+            total = scanner.readUInt64()
+        } else {
+            scanner.skipValue()
         }
-        return codexModel(from: payload)
     }
+    return CodexRawUsage(
+        inputTokens: inputTokens ?? promptTokens ?? input ?? 0,
+        cachedInputTokens: cachedInput ?? cacheReadInput ?? cached ?? 0,
+        outputTokens: outputTokens ?? completionTokens ?? output ?? 0,
+        reasoningTokens: reasoningOutput ?? reasoning ?? 0,
+        totalTokens: total ?? 0
+    )
+}
 
-    func codexContainers(from object: JSONObject) -> [JSONObject] {
-        [object, object["data"], object["result"], object["response"]].compactMap(dictionary)
+/// A `model` / `model_name` / `metadata.model` triple resolved in the loader's order.
+private struct CodexModelFields {
+    var model: String?
+    var modelName: String?
+    var metadata: String?
+
+    var resolved: String? { model?.nilIfEmpty ?? modelName?.nilIfEmpty ?? metadata?.nilIfEmpty }
+
+    mutating func consume(key: JSONKey, from scanner: inout JSONScanner) -> Bool {
+        if key == "model" {
+            model = scanner.readString()
+        } else if key == "model_name" {
+            modelName = scanner.readString()
+        } else if key == "metadata" {
+            guard scanner.beginObject() else { return true }
+            while let inner = scanner.nextKey() {
+                if inner == "model" {
+                    metadata = scanner.readString()
+                } else {
+                    scanner.skipValue()
+                }
+            }
+        } else {
+            return false
+        }
+        return true
     }
+}
 
-    func codexRawUsage(from usage: JSONObject?) -> CodexRawUsage? {
-        guard let usage else { return nil }
+/// The usage, model, and timestamp of one container object.
+private struct CodexContainer {
+    var usage: CodexRawUsage?
+    var model: String?
+    var timestamp: Date?
+}
 
-        let inputTokens =
-            unsignedInteger(usage["input_tokens"])
-            ?? unsignedInteger(usage["prompt_tokens"])
-            ?? unsignedInteger(usage["input"])
-            ?? 0
-        let outputTokens =
-            unsignedInteger(usage["output_tokens"])
-            ?? unsignedInteger(usage["completion_tokens"])
-            ?? unsignedInteger(usage["output"])
-            ?? 0
-        let reasoningTokens =
-            unsignedInteger(usage["reasoning_output_tokens"])
-            ?? unsignedInteger(usage["reasoning_tokens"])
-            ?? 0
-        let cachedInputTokens =
-            unsignedInteger(usage["cached_input_tokens"])
-            ?? unsignedInteger(usage["cache_read_input_tokens"])
-            ?? unsignedInteger(usage["cached_tokens"])
-            ?? 0
-        return CodexRawUsage(
-            inputTokens: inputTokens,
-            cachedInputTokens: cachedInputTokens,
-            outputTokens: outputTokens,
-            reasoningTokens: reasoningTokens,
-            totalTokens: unsignedInteger(usage["total_tokens"]) ?? 0
-        )
+/// Scalar fields pulled from one Codex log line. Models the three extraction paths the
+/// loader needs: `turn_context` model carry-over, `token_count` events from
+/// `payload.info`, and headless usage from the line's own `usage`/`data`/`result`/
+/// `response` containers (object first, then those three in order).
+private struct CodexLineFields {
+    var type: String?
+    var topTimestamp: Date?
+    var topCreatedAt: Date?
+    var topModel = CodexModelFields()
+    var topUsage: CodexRawUsage?
+
+    var payloadType: String?
+    var payloadModel = CodexModelFields()
+    var hasInfo = false
+    var infoTotal: CodexRawUsage?
+    var infoLast: CodexRawUsage?
+    var infoModel = CodexModelFields()
+
+    var data: CodexContainer?
+    var result: CodexContainer?
+    var response: CodexContainer?
+
+    /// First container with a usage key, object before `data`/`result`/`response`.
+    var headlessUsage: CodexRawUsage? {
+        topUsage ?? data?.usage ?? result?.usage ?? response?.usage
     }
-
-    func codexModel(from object: JSONObject) -> String? {
-        nonEmptyString(object["model"])
-            ?? nonEmptyString(object["model_name"])
-            ?? dictionary(object["metadata"]).flatMap { nonEmptyString($0["model"]) }
+    var headlessModel: String? {
+        topModel.resolved ?? data?.model ?? result?.model ?? response?.model
     }
-
-    func codexTimestamp(from object: JSONObject) -> Date? {
-        parseTimestamp(object["timestamp"])
-            ?? parseTimestamp(object["created_at"])
-            ?? parseTimestamp(object["createdAt"])
+    var headlessTimestamp: Date? {
+        topTimestamp ?? topCreatedAt ?? data?.timestamp ?? result?.timestamp ?? response?.timestamp
     }
 }

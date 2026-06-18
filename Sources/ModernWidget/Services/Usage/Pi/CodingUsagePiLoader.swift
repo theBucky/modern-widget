@@ -35,71 +35,127 @@ extension CodingUsageLoader {
     }
 
     func readPiUsageFile(_ file: URL) -> [(timestamp: Date, counts: CodingTokenCounts)] {
-        let usageNeedle = Data(#""usage""#.utf8)
-        let messageNeedle = Data(#""message""#.utf8)
+        let usageNeedle = [UInt8](#""usage""#.utf8)
+        let messageNeedle = [UInt8](#""message""#.utf8)
         var records: [(timestamp: Date, counts: CodingTokenCounts)] = []
 
         forEachJSONLine(in: file) { line in
-            guard line.range(of: usageNeedle) != nil,
-                line.range(of: messageNeedle) != nil,
-                let object = parseJSONObject(line),
-                let record = piUsageRecord(from: object)
-            else {
+            guard line.contains(usageNeedle), line.contains(messageNeedle) else {
                 return
             }
-            records.append(record)
+            if let record = piUsageRecord(line) {
+                records.append(record)
+            }
         }
 
         return records
     }
+}
 
-    func piUsageRecord(from object: JSONObject) -> (timestamp: Date, counts: CodingTokenCounts)? {
-        if let messageType = string(object["type"]), messageType != "message" {
-            return nil
+private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
+    -> (timestamp: Date, counts: CodingTokenCounts)?
+{
+    guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
+        return nil
+    }
+
+    var type: String?
+    var timestamp: Date?
+    var fields = PiMessageFields()
+
+    while let key = scanner.nextKey() {
+        if key == "type" {
+            type = scanner.readString()
+        } else if key == "timestamp" {
+            timestamp = scanner.readTimestamp()
+        } else if key == "message" {
+            fields = piMessageFields(&scanner)
+        } else {
+            scanner.skipValue()
         }
-        guard let timestamp = parseTimestamp(object["timestamp"]),
-            let message = dictionary(object["message"]),
-            string(message["role"]) == "assistant",
-            let usage = dictionary(message["usage"])
-        else {
-            return nil
-        }
+    }
 
-        let inputTokens = unsignedInteger(usage["input"]) ?? 0
-        let rawOutputTokens = unsignedInteger(usage["output"]) ?? 0
-        let cacheCreationTokens = unsignedInteger(usage["cacheWrite"]) ?? 0
-        let cacheReadTokens = unsignedInteger(usage["cacheRead"]) ?? 0
-        let reportedTotalTokens = unsignedInteger(usage["totalTokens"]) ?? 0
-        let knownTokens = inputTokens + rawOutputTokens + cacheCreationTokens + cacheReadTokens
-        let outputTokens =
-            rawOutputTokens == 0
-            ? reportedTotalTokens.saturatingSubtract(knownTokens) : rawOutputTokens
-        let totalTokens = max(
-            reportedTotalTokens,
-            inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens
-        )
+    if let type, type != "message" {
+        return nil
+    }
+    guard let timestamp, fields.role == "assistant", fields.hasUsage else {
+        return nil
+    }
 
-        guard totalTokens > 0 else {
-            return nil
-        }
+    let knownTokens = fields.input + fields.rawOutput + fields.cacheWrite + fields.cacheRead
+    let outputTokens =
+        fields.rawOutput == 0
+        ? fields.totalTokens.saturatingSubtract(knownTokens) : fields.rawOutput
+    let totalTokens = max(
+        fields.totalTokens,
+        fields.input + outputTokens + fields.cacheWrite + fields.cacheRead
+    )
 
-        let model = nonEmptyString(message["model"])
-        return (
-            timestamp,
-            CodingTokenCounts(
-                inputTokens: inputTokens,
+    guard totalTokens > 0 else {
+        return nil
+    }
+
+    let model = fields.model?.nilIfEmpty
+    return (
+        timestamp,
+        CodingTokenCounts(
+            inputTokens: fields.input,
+            outputTokens: outputTokens,
+            cacheCreationTokens: fields.cacheWrite,
+            cacheReadTokens: fields.cacheRead,
+            totalTokens: totalTokens,
+            costUSD: CodingUsagePricing.cachedTokenCost(
+                model: model,
+                inputTokens: fields.input,
                 outputTokens: outputTokens,
-                cacheCreationTokens: cacheCreationTokens,
-                cacheReadTokens: cacheReadTokens,
-                totalTokens: totalTokens,
-                costUSD: CodingUsagePricing.cachedTokenCost(
-                    model: model,
-                    inputTokens: inputTokens,
-                    outputTokens: outputTokens,
-                    cacheCreationTokens: cacheCreationTokens,
-                    cacheReadTokens: cacheReadTokens
-                )
+                cacheCreationTokens: fields.cacheWrite,
+                cacheReadTokens: fields.cacheRead
             )
         )
+    )
+}
+
+private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields {
+    var fields = PiMessageFields()
+    guard scanner.beginObject() else { return fields }
+    while let key = scanner.nextKey() {
+        if key == "role" {
+            fields.role = scanner.readString()
+        } else if key == "model" {
+            fields.model = scanner.readString()
+        } else if key == "usage" {
+            if scanner.beginObject() {
+                fields.hasUsage = true
+                while let inner = scanner.nextKey() {
+                    if inner == "input" {
+                        fields.input = scanner.readUInt64() ?? 0
+                    } else if inner == "output" {
+                        fields.rawOutput = scanner.readUInt64() ?? 0
+                    } else if inner == "cacheWrite" {
+                        fields.cacheWrite = scanner.readUInt64() ?? 0
+                    } else if inner == "cacheRead" {
+                        fields.cacheRead = scanner.readUInt64() ?? 0
+                    } else if inner == "totalTokens" {
+                        fields.totalTokens = scanner.readUInt64() ?? 0
+                    } else {
+                        scanner.skipValue()
+                    }
+                }
+            }
+        } else {
+            scanner.skipValue()
+        }
     }
+    return fields
+}
+
+private struct PiMessageFields {
+    var role: String?
+    var model: String?
+    var hasUsage = false
+    var input: UInt64 = 0
+    var rawOutput: UInt64 = 0
+    var cacheWrite: UInt64 = 0
+    var cacheRead: UInt64 = 0
+    var totalTokens: UInt64 = 0
 }
