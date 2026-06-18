@@ -19,11 +19,14 @@ extension CodingUsageLoader {
 
         var files: [URL] = []
         for case let file as URL in enumerator {
+            guard file.pathExtension == "jsonl" else {
+                continue
+            }
+
             let values = try? file.resourceValues(forKeys: [
                 .contentModificationDateKey, .isRegularFileKey,
             ])
-            guard file.pathExtension == "jsonl",
-                values?.isRegularFile == true
+            guard values?.isRegularFile == true
             else {
                 continue
             }
@@ -87,9 +90,7 @@ extension CodingUsageLoader {
         guard let number = value as? NSNumber, !isBooleanNumber(number) else {
             return nil
         }
-        // `init(exactly:)` rejects non-finite, negative, fractional, and out-of-range
-        // values without trapping, unlike `UInt64(double)`.
-        return UInt64(exactly: number.doubleValue)
+        return number as? UInt64
     }
 
     func parseTimestamp(_ value: Any?) -> Date? {
@@ -111,7 +112,7 @@ extension CodingUsageLoader {
         string(value).flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    func parseTimestampString(_ value: String) -> Date? {
+    private func parseTimestampString(_ value: String) -> Date? {
         // ISO8601DateFormatter is neither Sendable nor documented thread-safe, so it is
         // built per call rather than shared across concurrent scans.
         let parser = ISO8601DateFormatter()
@@ -153,7 +154,7 @@ extension CodingUsageLoader {
         return url.lastPathComponent
     }
 
-    func isBooleanNumber(_ number: NSNumber) -> Bool {
+    private func isBooleanNumber(_ number: NSNumber) -> Bool {
         CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 }

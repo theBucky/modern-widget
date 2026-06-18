@@ -18,7 +18,7 @@ struct CodingUsagePricing {
         cacheReadTokens: UInt64,
         usesFastPricing: Bool = false
     ) -> Double {
-        guard let pricing = model.flatMap(pricing) else {
+        guard let model, let pricing = pricing(for: model) else {
             return 0
         }
 
@@ -43,7 +43,7 @@ struct CodingUsagePricing {
         }
 
         let cachedInputTokens = min(cachedInputTokens, inputTokens)
-        let billedInputTokens = inputTokens.saturatingSubtract(cachedInputTokens)
+        let billedInputTokens = inputTokens - cachedInputTokens
         let multiplier = usesFastPricing ? pricing.fastMultiplier : 1
         return multiplier
             * (Double(billedInputTokens) * pricing.input
@@ -59,7 +59,7 @@ struct CodingUsagePricing {
 
         return
             entries
-            .filter { isSuffixVariant(normalizedModel, of: $0.key) }
+            .filter { isVersionVariant(normalizedModel, of: $0.key) }
             .max { left, right in left.key.count < right.key.count }
             .map(\.value)
     }
@@ -68,7 +68,7 @@ struct CodingUsagePricing {
     /// `claude-sonnet-4-20250514` resolves to `claude-sonnet-4`. A version-numbered key
     /// (one ending in a digit) must not swallow a finer version: `claude-opus-4` stays
     /// distinct from `claude-opus-4-1`, while an 8-digit date suffix still matches.
-    private static func isSuffixVariant(_ model: String, of key: String) -> Bool {
+    private static func isVersionVariant(_ model: String, of key: String) -> Bool {
         guard model.hasPrefix(key) else {
             return false
         }

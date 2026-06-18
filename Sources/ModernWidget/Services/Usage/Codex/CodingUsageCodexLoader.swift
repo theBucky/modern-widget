@@ -2,7 +2,7 @@ import Foundation
 
 struct CodexUsageSource {
     let directory: URL
-    let dedupeScope: URL
+    let home: URL
 }
 
 struct CodexUsageFileKey: Hashable {
@@ -22,8 +22,7 @@ struct CodexUsageEvent {
             inputTokens: counts.inputTokens,
             outputTokens: counts.outputTokens,
             cacheReadTokens: counts.cacheReadTokens,
-            reasoningTokens: counts.reasoningTokens,
-            totalTokens: counts.totalTokens
+            reasoningTokens: counts.reasoningTokens
         )
     }
 }
@@ -35,7 +34,6 @@ struct CodexUsageEventKey: Hashable {
     let outputTokens: UInt64
     let cacheReadTokens: UInt64
     let reasoningTokens: UInt64
-    let totalTokens: UInt64
 }
 
 struct CodexScopedEventKey: Hashable {
@@ -56,9 +54,10 @@ struct CodexRawUsage: Equatable {
     }
 
     func tokenCounts(model: String, usesFastPricing: Bool) -> CodingTokenCounts {
-        CodingTokenCounts.codex(
+        let cachedInputTokens = min(cachedInputTokens, inputTokens)
+        return CodingTokenCounts.codex(
             inputTokens: inputTokens,
-            cachedInputTokens: min(cachedInputTokens, inputTokens),
+            cachedInputTokens: cachedInputTokens,
             outputTokens: outputTokens,
             reasoningTokens: reasoningTokens,
             costUSD: CodingUsagePricing.codexCost(
@@ -95,11 +94,11 @@ extension CodingUsageLoader {
 
         for source in codexUsageSources() {
             let usesFastPricing = codexConfigRequestsFastPricing(
-                source.dedupeScope.appendingPathComponent("config.toml"))
+                source.home.appendingPathComponent("config.toml"))
 
             for file in usageFiles(in: source.directory, modifiedSince: scope.history.start) {
                 let fileKey = CodexUsageFileKey(
-                    scope: source.dedupeScope.path,
+                    scope: source.home.path,
                     path: relativePath(file, from: source.directory)
                 )
                 guard seenFiles.insert(fileKey).inserted else {
@@ -108,12 +107,10 @@ extension CodingUsageLoader {
 
                 for event in readCodexUsageFile(file, usesFastPricing: usesFastPricing) {
                     let eventKey = CodexScopedEventKey(
-                        scope: source.dedupeScope.path,
+                        scope: source.home.path,
                         event: event.dedupeKey
                     )
-                    guard scope.historyDay(containing: event.timestamp) != nil,
-                        seenEvents.insert(eventKey).inserted
-                    else {
+                    guard seenEvents.insert(eventKey).inserted else {
                         continue
                     }
                     accumulator.add(.codex, counts: event.counts, at: event.timestamp)
@@ -130,13 +127,13 @@ extension CodingUsageLoader {
             var sources: [CodexUsageSource] = []
 
             if isDirectory(sessions) {
-                sources.append(CodexUsageSource(directory: sessions, dedupeScope: home))
+                sources.append(CodexUsageSource(directory: sessions, home: home))
             }
             if isDirectory(archivedSessions) {
-                sources.append(CodexUsageSource(directory: archivedSessions, dedupeScope: home))
+                sources.append(CodexUsageSource(directory: archivedSessions, home: home))
             }
             if sources.isEmpty {
-                sources.append(CodexUsageSource(directory: home, dedupeScope: home))
+                sources.append(CodexUsageSource(directory: home, home: home))
             }
             return sources
         }
@@ -175,9 +172,13 @@ extension CodingUsageLoader {
             if setting.hasPrefix("[") {
                 return false
             }
-            guard let (key, value) = setting.keyValuePair else {
+            guard let separator = setting.firstIndex(of: "=") else {
                 continue
             }
+            let key = setting[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = setting[setting.index(after: separator)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: ["\"", "'"])
             if key == "service_tier" {
                 return value == "fast" || value == "priority"
             }
@@ -285,15 +286,15 @@ extension CodingUsageLoader {
     ) -> CodexUsageEvent? {
         let containers = codexContainers(from: object)
         guard
-            let rawUsage = containers.lazy.compactMap({
+            let rawUsage = containers.compactMap({
                 codexRawUsage(from: dictionary($0["usage"]))
             }).first,
             !rawUsage.isEmpty
         else {
             return nil
         }
-        let timestamp = containers.lazy.compactMap(codexTimestamp).first ?? fallbackTimestamp
-        let model = containers.lazy.compactMap(codexModel).first ?? currentModel ?? "gpt-5"
+        let timestamp = containers.compactMap(codexTimestamp).first ?? fallbackTimestamp
+        let model = containers.compactMap(codexModel).first ?? currentModel ?? "gpt-5"
 
         currentModel = model
         return CodexUsageEvent(
@@ -357,20 +358,5 @@ extension CodingUsageLoader {
         parseTimestamp(object["timestamp"])
             ?? parseTimestamp(object["created_at"])
             ?? parseTimestamp(object["createdAt"])
-    }
-}
-
-extension String {
-    /// Splits a `key = "value"` config line, trimming whitespace and surrounding quotes.
-    var keyValuePair: (key: String, value: String)? {
-        guard let index = firstIndex(of: "=") else {
-            return nil
-        }
-        return (
-            self[..<index].trimmingCharacters(in: .whitespacesAndNewlines),
-            self[self.index(after: index)...]
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .trimmingCharacters(in: ["\"", "'"])
-        )
     }
 }

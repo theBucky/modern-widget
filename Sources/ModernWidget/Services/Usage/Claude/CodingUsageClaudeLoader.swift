@@ -6,16 +6,6 @@ struct ClaudeUsageEntry {
     let messageID: String?
     let requestID: String?
     let isSidechain: Bool
-    let hasSpeed: Bool
-}
-
-struct ClaudeCacheCreationTokens {
-    let ephemeral5m: UInt64
-    let ephemeral1h: UInt64
-
-    var total: UInt64 {
-        ephemeral5m + ephemeral1h
-    }
 }
 
 struct ClaudeDedupeKey: Hashable {
@@ -143,13 +133,15 @@ extension CodingUsageLoader {
         let outputTokens = unsignedInteger(usage["output_tokens"]) ?? 0
         let cacheCreationTokens = claudeCacheCreationTokens(from: usage)
         let cacheReadTokens = unsignedInteger(usage["cache_read_input_tokens"]) ?? 0
+        let speed = string(usage["speed"])
 
         return ClaudeUsageEntry(
             timestamp: timestamp,
             counts: .claude(
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                cacheCreationTokens: cacheCreationTokens.total,
+                cacheCreationTokens: cacheCreationTokens.ephemeral5m
+                    + cacheCreationTokens.ephemeral1h,
                 cacheReadTokens: cacheReadTokens,
                 costUSD: CodingUsagePricing.claudeCost(
                     model: string(message["model"]),
@@ -158,26 +150,26 @@ extension CodingUsageLoader {
                     cacheCreation5mTokens: cacheCreationTokens.ephemeral5m,
                     cacheCreation1hTokens: cacheCreationTokens.ephemeral1h,
                     cacheReadTokens: cacheReadTokens,
-                    usesFastPricing: string(usage["speed"]) == "fast"
+                    usesFastPricing: speed == "fast"
                 )
             ),
             messageID: string(message["id"]),
             requestID: string(requestIDValue),
-            isSidechain: bool(isSidechainValue) == true,
-            hasSpeed: string(usage["speed"]) != nil
+            isSidechain: bool(isSidechainValue) == true
         )
     }
 
-    func claudeCacheCreationTokens(from usage: JSONObject) -> ClaudeCacheCreationTokens {
+    func claudeCacheCreationTokens(from usage: JSONObject) -> (
+        ephemeral5m: UInt64, ephemeral1h: UInt64
+    ) {
         if let cacheCreation = dictionary(usage["cache_creation"]) {
-            return ClaudeCacheCreationTokens(
+            return (
                 ephemeral5m: unsignedInteger(cacheCreation["ephemeral_5m_input_tokens"]) ?? 0,
                 ephemeral1h: unsignedInteger(cacheCreation["ephemeral_1h_input_tokens"]) ?? 0
             )
         }
-        return ClaudeCacheCreationTokens(
-            ephemeral5m: unsignedInteger(usage["cache_creation_input_tokens"]) ?? 0,
-            ephemeral1h: 0
+        return (
+            ephemeral5m: unsignedInteger(usage["cache_creation_input_tokens"]) ?? 0, ephemeral1h: 0
         )
     }
 
@@ -198,11 +190,8 @@ extension CodingUsageLoader {
             let exactKey = ClaudeDedupeKey(messageID: messageID, requestID: entry.requestID)
             let existingIndex =
                 indexesByExactKey[exactKey]
-                ?? indexesByMessageID[messageID].flatMap { index in
-                    if entry.isSidechain || deduped[index].isSidechain {
-                        return index
-                    }
-                    return nil
+                ?? indexesByMessageID[messageID].flatMap {
+                    entry.isSidechain || deduped[$0].isSidechain ? $0 : nil
                 }
 
             if let existingIndex {
@@ -232,9 +221,6 @@ extension CodingUsageLoader {
         if candidate.counts.totalTokens != existing.counts.totalTokens {
             return candidate.counts.totalTokens > existing.counts.totalTokens
         }
-        if candidate.counts.costUSD != existing.counts.costUSD {
-            return candidate.counts.costUSD > existing.counts.costUSD
-        }
-        return candidate.hasSpeed && !existing.hasSpeed
+        return candidate.counts.costUSD > existing.counts.costUSD
     }
 }

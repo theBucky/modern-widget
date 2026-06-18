@@ -42,7 +42,7 @@ struct CodingUsageView: View {
 
     private func amountTable(_ summary: CodingUsageAgentSummary) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-            ForEach(amountRows(summary)) { row in
+            ForEach(amountRows(summary), id: \.title) { row in
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
@@ -59,9 +59,7 @@ struct CodingUsageView: View {
     }
 
     private func usageChart(_ summary: CodingUsageAgentSummary) -> some View {
-        let days = chartDays(summary)
-
-        return Chart(days, id: \.date) { day in
+        Chart(chartDays(summary), id: \.date) { day in
             BarMark(
                 x: .value("Day", day.date, unit: .day),
                 y: .value("Cost", isFetching ? 1 : day.counts.costUSD),
@@ -140,11 +138,7 @@ struct CodingUsageView: View {
     }
 }
 
-private struct CodingUsageAmountRow: Identifiable {
+private struct CodingUsageAmountRow {
     let title: String
     let costUSD: Double
-
-    var id: String {
-        title
-    }
 }

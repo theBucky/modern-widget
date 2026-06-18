@@ -1,6 +1,6 @@
 import Foundation
 
-enum CodingUsageAgent: String, CaseIterable, Hashable, Sendable {
+enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
     case claude
     case codex
 
@@ -24,7 +24,8 @@ struct CodingTokenCounts: Equatable, Sendable {
     var costUSD: Double = 0
 
     var hasUsage: Bool {
-        totalTokens > 0 || costUSD > 0
+        inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
+            || reasoningTokens > 0 || totalTokens > 0 || costUSD > 0
     }
 
     mutating func add(_ other: CodingTokenCounts) {
@@ -74,12 +75,12 @@ struct CodingTokenCounts: Equatable, Sendable {
 
 struct CodingUsageDaySummary: Equatable, Sendable {
     let date: Date
-    var counts: CodingTokenCounts
+    let counts: CodingTokenCounts
 }
 
 struct CodingUsageAgentSummary: Equatable, Sendable {
     let agent: CodingUsageAgent
-    var dailyCounts: [CodingUsageDaySummary]
+    let dailyCounts: [CodingUsageDaySummary]
 
     var totalCounts: CodingTokenCounts {
         dailyCounts.reduce(into: CodingTokenCounts()) { total, day in
@@ -116,11 +117,10 @@ struct CodingUsageDateScope: Equatable, Sendable {
 
     private let calendar: Calendar
 
-    init(now: Date = .now, calendar: Calendar = .current, rollingDayCount: Int = 30) {
+    init(now: Date = .now, calendar: Calendar = .current) {
         let todayStart = calendar.startOfDay(for: now)
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
-        let rollingStart = calendar.date(
-            byAdding: .day, value: 1 - max(rollingDayCount, 1), to: todayStart)!
+        let rollingStart = calendar.date(byAdding: .day, value: -29, to: todayStart)!
         let monthStart = calendar.dateInterval(of: .month, for: now)!.start
         let historyStart = min(rollingStart, monthStart)
         let dayCount = calendar.dateComponents([.day], from: historyStart, to: tomorrowStart).day!
