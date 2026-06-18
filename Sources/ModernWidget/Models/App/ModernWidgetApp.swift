@@ -1,10 +1,18 @@
 import SwiftUI
 
 @main
+@MainActor
 struct ModernWidgetApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var engine = ReminderEngine()
+    @State private var usageStore = CodingUsageStore()
 
     var body: some Scene {
-        Settings { EmptyView() }
+        MenuBarExtra {
+            MenuBarContentView(engine: engine, usageStore: usageStore)
+        } label: {
+            MenuBarIconView(engine: engine)
+                .accessibilityLabel("ModernWidget")
+        }
+        .menuBarExtraStyle(.window)
     }
 }

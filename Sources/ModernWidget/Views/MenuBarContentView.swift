@@ -6,16 +6,9 @@ struct MenuBarContentView: View {
 
     @State private var selectedPane = Pane.main
 
-    private let onSizeChange: (CGSize) -> Void
-
-    init(
-        engine: ReminderEngine,
-        usageStore: CodingUsageStore,
-        onSizeChange: @escaping (CGSize) -> Void
-    ) {
+    init(engine: ReminderEngine, usageStore: CodingUsageStore) {
         self.engine = engine
         self.usageStore = usageStore
-        self.onSizeChange = onSizeChange
     }
 
     private enum Pane {
@@ -26,8 +19,7 @@ struct MenuBarContentView: View {
 
     private enum Layout {
         static let mainPaneWidth: CGFloat = 180
-        static let calendarPaneWidth: CGFloat = 260
-        static let usagePaneWidth: CGFloat = 280
+        static let detailPaneWidth: CGFloat = 280
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
         static let toolbarIconSize: CGFloat = 22
@@ -37,12 +29,12 @@ struct MenuBarContentView: View {
         VStack(spacing: Layout.unitSpacing) {
             toolbar
             paneBody
+                .id(selectedPane)
+                .transition(.opacity)
         }
         .frame(width: paneWidth)
         .padding(Layout.borderPadding)
-        .onGeometryChange(for: CGSize.self, of: \.size) { size in
-            onSizeChange(size)
-        }
+        .animation(.smooth(duration: 0.18), value: selectedPane)
     }
 
     @ViewBuilder
@@ -64,10 +56,8 @@ struct MenuBarContentView: View {
         switch selectedPane {
         case .main:
             return Layout.mainPaneWidth
-        case .calendar:
-            return Layout.calendarPaneWidth
-        case .usage:
-            return Layout.usagePaneWidth
+        case .calendar, .usage:
+            return Layout.detailPaneWidth
         }
     }
 
@@ -77,7 +67,12 @@ struct MenuBarContentView: View {
             paneButton(.calendar, systemImage: "calendar")
             paneButton(.usage, systemImage: "chart.line.uptrend.xyaxis")
             Spacer()
-            intervalMenu
+            if selectedPane == .main {
+                intervalMenu
+            }
+        }
+        .transaction { transaction in
+            transaction.animation = nil
         }
     }
 

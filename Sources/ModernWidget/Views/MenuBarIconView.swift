@@ -9,20 +9,16 @@ struct MenuBarIconView: View {
         Group {
             switch snapshot.phase {
             case .paused:
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.primary)
-                    .symbolEffect(.bounce.down, options: .nonRepeating, value: snapshot.phase)
-            case .countingDown, .overdue:
-                ProgressRing(
-                    progress: snapshot.progress,
-                    secondsRemaining: snapshot.secondsRemaining,
-                    phase: snapshot.phase
-                )
-                .frame(width: ProgressRing.size, height: ProgressRing.size)
+                Image(systemName: "pause.circle.fill")
+            case .countingDown:
+                Image(systemName: "clock.circle", variableValue: snapshot.progress)
+            case .overdue:
+                Image(systemName: "exclamationmark.circle.fill")
             }
         }
-        .transition(.scale(scale: 0.6).combined(with: .opacity))
-        .animation(.smooth(duration: 0.22), value: snapshot.phase)
+        .symbolRenderingMode(.hierarchical)
+        .contentTransition(.symbolEffect(.replace))
+        .symbolEffect(.bounce.down, options: .nonRepeating, value: snapshot.phase)
+        .animation(.smooth(duration: 0.18), value: snapshot.progress)
     }
 }
