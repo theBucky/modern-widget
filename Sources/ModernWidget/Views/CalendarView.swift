@@ -103,10 +103,11 @@ struct CalendarView: View {
 
     @ViewBuilder
     private func dayLabel(_ date: Date) -> some View {
+        let calendar = Calendar.current
         let text = Text(date, format: .dateTime.day())
             .font(.system(size: 8, weight: .regular).monospacedDigit())
 
-        if Calendar.current.startOfDay(for: date) > Calendar.current.startOfDay(for: .now) {
+        if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
             text.foregroundStyle(.tertiary)
         } else if supplementStore.isTaken(on: date) {
             text.foregroundStyle(Color(red: 0, green: 0.45, blue: 0.12))
