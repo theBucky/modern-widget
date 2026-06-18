@@ -1,3 +1,4 @@
+import AppKit
 import Charts
 import SwiftUI
 
@@ -10,6 +11,7 @@ struct CodingUsageView: View {
         static let blockPadding: CGFloat = 8
         static let cornerRadius: CGFloat = 6
         static let labelWidth: CGFloat = 64
+        static let logoSize: CGFloat = 14
     }
 
     var body: some View {
@@ -26,8 +28,18 @@ struct CodingUsageView: View {
 
     private func agentSection(_ summary: CodingUsageAgentSummary) -> some View {
         VStack(alignment: .leading, spacing: Layout.rowSpacing) {
-            Text(summary.agent.title)
-                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 6) {
+                if let image = summary.agent.logoImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: Layout.logoSize, height: Layout.logoSize)
+                        .accessibilityHidden(true)
+                }
+
+                Text(summary.agent.title)
+                    .font(.subheadline.weight(.semibold))
+            }
 
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
                 amountTable(summary)
@@ -135,6 +147,28 @@ struct CodingUsageView: View {
             return String(format: "$%.4f", cost)
         }
         return String(format: "$%.2f", cost)
+    }
+}
+
+private extension CodingUsageAgent {
+    var logoImage: NSImage? {
+        let packageBundleURL = Bundle.main.bundleURL.appendingPathComponent(
+            "modern-widget_ModernWidget.bundle")
+        let url =
+            Bundle.main.url(forResource: logoResourceName, withExtension: "pdf")
+            ?? Bundle(url: packageBundleURL)?.url(
+                forResource: logoResourceName, withExtension: "pdf")
+
+        return url.flatMap(NSImage.init(contentsOf:))
+    }
+
+    var logoResourceName: String {
+        switch self {
+        case .claude:
+            return "ClaudeLogo"
+        case .codex:
+            return "CodexLogo"
+        }
     }
 }
 

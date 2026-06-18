@@ -15,7 +15,8 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "ModernWidget"
+            name: "ModernWidget",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "ModernWidgetTests",
