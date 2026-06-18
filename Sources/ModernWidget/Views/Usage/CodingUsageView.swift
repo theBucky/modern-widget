@@ -21,7 +21,7 @@ struct CodingUsageView: View {
     }
 
     private var isFetching: Bool {
-        store.report.generatedAt == nil || (store.isLoading && !store.report.hasUsage)
+        store.report.generatedAt == nil
     }
 
     private func agentSection(_ summary: CodingUsageAgentSummary) -> some View {

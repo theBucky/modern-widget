@@ -7,7 +7,6 @@ final class CodingUsageStore {
     private static let refreshInterval: TimeInterval = 600
 
     private(set) var report = CodingUsageReport.empty
-    private(set) var isLoading = false
 
     @ObservationIgnored
     private let loader: CodingUsageLoader
@@ -36,7 +35,6 @@ final class CodingUsageStore {
     }
 
     private func reload() async {
-        isLoading = true
         let loader = self.loader
         let scope = CodingUsageDateScope()
         let report = await Task.detached(priority: .utility) {
@@ -47,6 +45,5 @@ final class CodingUsageStore {
             return
         }
         self.report = report
-        isLoading = false
     }
 }
