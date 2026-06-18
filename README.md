@@ -1,90 +1,120 @@
 # ModernWidget
 
-macOS menu bar app that reminds you to get off your chair and move.
+Small macOS menu bar app for people who sit too long and spend too much time with coding agents.
 
 ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-blue)
 ![Swift 6.3](https://img.shields.io/badge/Swift-6.3-orange)
-![License](https://img.shields.io/badge/license-MIT-green)
 
-## Features
+## What it does
 
-- Countdown timer in the menu bar with a progress ring icon
-- Interval selector (60 or 120 min) exposed in the popover header
-- Pause and resume without losing elapsed progress
-- Walk history with a month calendar grid and per-day counts
-- Liquid glass popover panel backed by `NSStatusItem`, pane-aware sizing
-- Native notifications when the timer expires, repeating at interval until reset
+ModernWidget lives in the menu bar and opens a compact glass-style panel with three panes:
+
+- **Break timer**: 60 or 120 minute countdown, pause/resume, overdue state, and native reminders.
+- **Walk history**: monthly calendar with per-day walk counts and daily supplement status.
+- **AI usage**: local Claude and Codex usage cost summaries with a 30-day mini chart.
+
+Everything runs locally. State is stored with `UserDefaults`, and AI usage is read from local Claude/Codex JSONL logs.
 
 ## Screenshots
 
-| Timer | Calendar |
-|-------|----------|
-| ![Timer pane](.github/timer.png) | ![Calendar pane](.github/calendar.png) |
+| Break timer | Walk history | AI usage |
+| --- | --- | --- |
+| ![Break timer pane](.github/main.png) | ![Walk history calendar pane](.github/calendar.png) | ![AI usage pane](.github/ai_usage.png) |
+
+## Features
+
+### Break reminders
+
+- Menu bar status icon reflects running, paused, and overdue states.
+- Countdown presets: `60 min` and `120 min`.
+- Pause and resume preserve elapsed progress.
+- Reset completes a break, records a walk, and restarts the countdown.
+- Native macOS notifications repeat while the reminder stays overdue.
+- Timer state survives app restarts.
+
+### Health tracking
+
+- Walks are grouped by calendar day.
+- History calendar keeps the current month plus the previous two months.
+- Daily supplement checkbox is shown on the timer pane.
+- Calendar day labels indicate supplement completion for past days.
+
+### AI usage tracking
+
+- Claude usage is loaded from `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME/claude`, or `~/.claude`.
+- Codex usage is loaded from `CODEX_HOME` or `~/.codex`.
+- Active and archived Codex sessions are deduplicated.
+- Claude sidechain duplicates are collapsed.
+- Cost estimates support known Claude and GPT/Codex model pricing.
+- The panel refreshes usage roughly every 10 minutes.
 
 ## Requirements
 
 - macOS 26.0+
 - Swift 6.3+
+- `swift-format` for formatting
 
-## Build
+## Build and run
 
 ```bash
-# format sources
 swift-format format --in-place --recursive Sources/ Tests/
-
-# build
 swift build
-
-# build, sign, and run
+swift test
 script/build_and_run.sh
 ```
 
-Signed bundle lands in `dist/ModernWidget.app`.
+The app bundle is created at `dist/ModernWidget.app` and ad-hoc signed for local use.
 
 ### Build script modes
 
 | Mode | Description |
-|------|-------------|
-| `run` | Default. Build and launch the app |
-| `debug` | Launch in lldb |
-| `logs` | Launch and stream process logs |
-| `telemetry` | Launch and stream subsystem logs |
-| `verify` | Launch and verify process started |
+| --- | --- |
+| `run` | Build and launch the app. Default mode. |
+| `debug` | Build and launch the executable in `lldb`. |
+| `logs` | Launch the app and stream process logs. |
+| `telemetry` | Launch the app and stream subsystem logs. |
+| `verify` | Launch the app and verify the process started. |
 
 ```bash
 script/build_and_run.sh debug
 script/build_and_run.sh logs
+script/build_and_run.sh verify
 ```
 
-## Project Structure
+## Project structure
 
-```
+```text
 Sources/ModernWidget/
-├── Models/App/            # entry point, app delegate
-├── Models/MenuBar/        # panel placement model
-├── Models/Reminder/       # countdown state, schedule, snapshots
-├── Models/WalkHistory/    # month grid and retention rules
+├── App/
+│   └── ModernWidgetApp.swift          # SwiftUI app entry and MenuBarExtra scene
+├── Models/
+│   ├── HistoryRetention.swift         # shared three-month retention window
+│   ├── Reminder/                      # countdown state, snapshots, schedules
+│   ├── Usage/                         # coding agent usage report models
+│   └── WalkHistory/                   # month grid and weekday helpers
 ├── Services/
-│   ├── MenuBarController  # NSStatusItem + popover panel
-│   ├── ReminderEngine     # countdown logic, persistence
-│   ├── ReminderNotifier   # macOS notification delivery
-│   └── WalkHistoryStore   # walk log
+│   ├── DailySupplementStore.swift     # daily supplement persistence
+│   ├── Reminder/                      # timer engine and notification delivery
+│   ├── Usage/                         # Claude/Codex log loading and pricing
+│   └── WalkHistoryStore.swift         # walk persistence and day counts
 └── Views/
-    ├── MenuBarContentView # popover body
-    ├── MenuBarIconView    # status bar icon + title
-    ├── ProgressRing       # countdown ring
-    └── CalendarView       # month grid with counts
+    ├── MenuBarPanelView.swift         # tabbed menu bar panel shell
+    ├── ReminderPaneView.swift         # timer, controls, supplement checkbox
+    ├── WalkHistoryCalendarView.swift  # calendar pane
+    ├── CodingUsageView.swift          # AI usage pane
+    └── MenuBarIconView.swift          # menu bar status icon
+
+Tests/ModernWidgetTests/
+├── Reminder*                          # reminder state and schedule tests
+├── WalkHistory*                       # calendar and retention tests
+├── DailySupplementStoreTests.swift
+└── Usage/                             # Claude/Codex usage loader tests
 ```
 
-## How It Works
+## Data and privacy
 
-1. Timer counts down from the selected interval (default 60 min)
-2. Menu bar shows a progress ring and remaining time
-3. When the timer hits zero, a notification fires: "get off chair. short walk now."
-4. Notification repeats at the interval until reset
-5. Reset logs a walk to history and restarts the countdown
-6. State persists across app restarts via `UserDefaults`
-
-## License
-
-MIT
+- No server component.
+- No analytics.
+- No network calls for usage tracking.
+- Local app state is stored in `UserDefaults`.
+- AI usage summaries are computed from local Claude and Codex log files.

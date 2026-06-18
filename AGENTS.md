@@ -1,18 +1,26 @@
 # Project Context
 
-macOS menu bar app for break reminders. SwiftPM, Swift 6.3, macOS 26.0+.
+macOS menu bar app for break reminders, walk history, daily supplement tracking, and local AI usage summaries. SwiftPM, Swift 6.3, macOS 26.0+.
 
 ## Structure
 
 ```text
 Sources/ModernWidget/
-  Models/App/   entry point
-  Models/MenuBar/ panel placement
-  Models/Reminder/ countdown state and schedule
-  Models/WalkHistory/ month grid and retention rules
-  Services/     state, notifications
-  Views/        SwiftUI
-Tests/ModernWidgetTests/ focused model tests
+  App/                 SwiftUI app entry and MenuBarExtra scene
+  Models/
+    HistoryRetention   shared three-month retention window
+    Reminder/          countdown state, snapshots, schedules
+    Usage/             Claude/Codex usage report models
+    WalkHistory/       month grid and weekday helpers
+  Services/
+    DailySupplementStore daily supplement persistence
+    Reminder/          timer engine and notification delivery
+    Usage/             Claude/Codex log loading and pricing
+    WalkHistoryStore   walk persistence and day counts
+  Views/               tabbed menu bar panel, timer, calendar, usage panes
+Tests/ModernWidgetTests/
+  Usage/               Claude/Codex usage loader tests
+  *.swift              reminder, walk history, supplement, retention tests
 ```
 
 Build artifacts in `.build/`, signed bundle in `dist/`.
