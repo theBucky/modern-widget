@@ -23,12 +23,16 @@ struct ReminderScheduleTests {
 
     @Test("near whole second countdown waits for the next full second")
     func nearWholeSecondRefreshDelay() {
-        let countdown = ReminderCountdown(
-            phase: .countingDown,
-            remainingTime: 1200 + 1e-12,
-            secondsRemaining: 1201
+        let startedAt = Date(timeIntervalSinceReferenceDate: 0)
+        let schedule = ReminderSchedule(
+            reminderSeconds: 3600,
+            startedAt: startedAt,
+            mode: .running
         )
 
+        let countdown = schedule.countdown(at: startedAt.addingTimeInterval(2400 - 1e-12))
+
+        #expect(countdown.secondsRemaining == 1200)
         #expect(countdown.nextRefreshDelay == 1)
     }
 

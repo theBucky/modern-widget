@@ -35,27 +35,16 @@ struct ReminderState: Equatable {
         notificationIssue = nil
     }
 
-    mutating func pause(at date: Date) {
-        mode = .paused(secondsRemaining: schedule.countdown(at: date).secondsRemaining)
-        notificationIssue = nil
-    }
-
-    mutating func resume(at date: Date) {
-        if case let .paused(secondsRemaining) = mode {
-            let elapsedBeforePause = reminderSeconds - secondsRemaining
-            startedAt = date.addingTimeInterval(TimeInterval(-elapsedBeforePause))
-        }
-        mode = .running
-        notificationIssue = nil
-    }
-
     mutating func togglePause(at date: Date) {
         switch mode {
         case .running:
-            pause(at: date)
-        case .paused:
-            resume(at: date)
+            mode = .paused(secondsRemaining: schedule.countdown(at: date).secondsRemaining)
+        case let .paused(secondsRemaining):
+            let elapsedBeforePause = reminderSeconds - secondsRemaining
+            startedAt = date.addingTimeInterval(TimeInterval(-elapsedBeforePause))
+            mode = .running
         }
+        notificationIssue = nil
     }
 
     func snapshot(at date: Date) -> ReminderSnapshot {

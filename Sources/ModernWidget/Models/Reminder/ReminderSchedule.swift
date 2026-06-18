@@ -24,9 +24,10 @@ struct ReminderCountdown {
         }
 
         let fractional = remainingTime.truncatingRemainder(dividingBy: 1)
-        return remainingTime > secondBoundaryEpsilon && fractional <= secondBoundaryEpsilon
-            ? 1
-            : fractional
+        if remainingTime > secondBoundaryEpsilon && fractional <= secondBoundaryEpsilon {
+            return 1
+        }
+        return fractional
     }
 }
 
@@ -52,7 +53,7 @@ struct ReminderSchedule: Equatable {
         return ReminderCountdown(
             phase: .countingDown,
             remainingTime: remainingTime,
-            secondsRemaining: Int(ceil(remainingTime))
+            secondsRemaining: max(1, Int(ceil(remainingTime - secondBoundaryEpsilon)))
         )
     }
 

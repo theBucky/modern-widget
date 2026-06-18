@@ -142,7 +142,7 @@ private struct ReminderPaneView: View {
             Button {
                 engine.togglePause()
             } label: {
-                Image(systemName: pauseButtonSymbolName(for: snapshot.phase))
+                Image(systemName: snapshot.phase == .paused ? "play.fill" : "pause.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
             }
@@ -159,15 +159,6 @@ private struct ReminderPaneView: View {
             .buttonStyle(.borderedProminent)
             .clipShape(Circle())
             .keyboardShortcut(.defaultAction)
-        }
-    }
-
-    private func pauseButtonSymbolName(for phase: ReminderPhase) -> String {
-        switch phase {
-        case .paused:
-            return "play.fill"
-        case .countingDown, .overdue:
-            return "pause.fill"
         }
     }
 }

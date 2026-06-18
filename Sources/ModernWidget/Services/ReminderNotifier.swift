@@ -65,9 +65,9 @@ final class ReminderNotifier {
 
     private func issue(for error: Error) -> ReminderNotificationIssue {
         let nsError = error as NSError
-        let code = UNError.Code(rawValue: nsError.code)
 
-        return nsError.domain == UNErrorDomain && code == .notificationsNotAllowed
+        return nsError.domain == UNErrorDomain
+            && UNError.Code(rawValue: nsError.code) == .notificationsNotAllowed
             ? .notificationsBlocked
             : .deliveryFailure(error.localizedDescription)
     }

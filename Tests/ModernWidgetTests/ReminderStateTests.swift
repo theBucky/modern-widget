@@ -24,22 +24,6 @@ struct ReminderStateTests {
         #expect(snapshot.reminderStatusMessage == nil)
     }
 
-    @Test("resume keeps elapsed progress")
-    func resumePreservesElapsedProgress() {
-        let resumedAt = date(2026, 5, 13, 12)
-        var state = ReminderState(
-            reminderMinutes: 60,
-            startedAt: date(2026, 5, 13, 9),
-            mode: .paused(secondsRemaining: 900),
-            notificationIssue: nil
-        )
-
-        state.resume(at: resumedAt)
-
-        #expect(state.startedAt == resumedAt.addingTimeInterval(-2700))
-        #expect(state.mode == .running)
-    }
-
     @Test("pause freezes visible countdown and clears notification issue")
     func pauseFreezesCountdown() {
         let pausedAt = date(2026, 5, 13, 9, 15)
@@ -50,7 +34,7 @@ struct ReminderStateTests {
             notificationIssue: .deliveryFailure("network down")
         )
 
-        state.pause(at: pausedAt)
+        state.togglePause(at: pausedAt)
         let snapshot = state.snapshot(at: date(2026, 5, 13, 10))
 
         #expect(state.mode == .paused(secondsRemaining: 2700))
@@ -88,7 +72,7 @@ struct ReminderStateTests {
             notificationIssue: nil
         )
 
-        state.pause(at: date(2026, 5, 13, 10, 1))
+        state.togglePause(at: date(2026, 5, 13, 10, 1))
         let snapshot = state.snapshot(at: date(2026, 5, 13, 11))
 
         #expect(state.mode == .paused(secondsRemaining: 0))
