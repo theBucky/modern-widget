@@ -53,7 +53,7 @@ final class WalkHistoryStore {
     }
 
     private static func pruneOldEntries(in walks: inout [Date]) {
-        let cutoff = WalkHistoryCalendar.earliestRetainedMonth()
+        let cutoff = HistoryRetention.earliestMonth()
         walks.removeAll { $0 < cutoff }
     }
 }

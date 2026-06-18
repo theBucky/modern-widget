@@ -1,12 +1,6 @@
 import Foundation
 import UserNotifications
 
-enum ReminderNotificationIssue: Equatable {
-    case notificationsBlocked
-    case unknownPermissionState
-    case deliveryFailure(String)
-}
-
 @MainActor
 final class ReminderNotifier {
     private let notificationCenter: UNUserNotificationCenter

@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct CalendarView: View {
+struct WalkHistoryCalendarView: View {
     let historyStore: WalkHistoryStore
     let supplementStore: DailySupplementStore
     @State private var monthGrid = WalkHistoryMonth(containing: .now)
@@ -127,7 +127,7 @@ struct CalendarView: View {
     }
 
     private var canGoBack: Bool {
-        monthGrid.month > WalkHistoryCalendar.earliestRetainedMonth()
+        monthGrid.month > HistoryRetention.earliestMonth()
     }
 
     private var canGoForward: Bool {

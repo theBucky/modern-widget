@@ -35,7 +35,7 @@ final class DailySupplementStore {
     }
 
     private func pruneOldEntries() {
-        takenDays = takenDays.filter { $0 >= WalkHistoryCalendar.earliestRetainedMonth() }
+        takenDays = takenDays.filter { $0 >= HistoryRetention.earliestMonth() }
     }
 
     private static func load(from defaults: UserDefaults) -> Set<Date> {

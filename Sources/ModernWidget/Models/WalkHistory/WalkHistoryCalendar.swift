@@ -22,18 +22,8 @@ struct WalkHistoryMonth {
 }
 
 enum WalkHistoryCalendar {
-    private static let retentionMonths = 3
-
     static func startOfMonth(_ date: Date, calendar: Calendar = .current) -> Date {
         calendar.dateInterval(of: .month, for: date)!.start
-    }
-
-    static func earliestRetainedMonth(now: Date = .now, calendar: Calendar = .current) -> Date {
-        calendar.date(
-            byAdding: .month,
-            value: -(retentionMonths - 1),
-            to: startOfMonth(now, calendar: calendar)
-        )!
     }
 
     static func weekdaySymbols(calendar: Calendar = .current) -> [String] {
