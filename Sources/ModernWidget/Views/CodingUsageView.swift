@@ -217,6 +217,8 @@ private extension CodingUsageAgent {
             return "ClaudeLogo"
         case .codex:
             return "CodexLogo"
+        case .pi:
+            return "PiLogo"
         }
     }
 }

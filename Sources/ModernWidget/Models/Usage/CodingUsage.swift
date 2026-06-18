@@ -3,6 +3,7 @@ import Foundation
 enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
     case claude
     case codex
+    case pi
 
     var title: String {
         switch self {
@@ -10,6 +11,8 @@ enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
             return "Claude"
         case .codex:
             return "Codex"
+        case .pi:
+            return "Pi"
         }
     }
 }
@@ -56,18 +59,18 @@ struct CodingTokenCounts: Equatable, Sendable {
     }
 
     static func codex(
-        inputTokens: UInt64,
+        rawInputTokens: UInt64,
         cachedInputTokens: UInt64,
         outputTokens: UInt64,
         reasoningTokens: UInt64,
         costUSD: Double
     ) -> Self {
         Self(
-            inputTokens: inputTokens,
+            inputTokens: rawInputTokens.saturatingSubtract(cachedInputTokens),
             outputTokens: outputTokens,
             cacheReadTokens: cachedInputTokens,
             reasoningTokens: reasoningTokens,
-            totalTokens: inputTokens + outputTokens,
+            totalTokens: rawInputTokens + outputTokens,
             costUSD: costUSD
         )
     }

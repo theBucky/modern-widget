@@ -18,7 +18,7 @@ extension CodingUsageLoader {
         scope: CodingUsageDateScope,
         into accumulator: inout CodingUsageAccumulator
     ) {
-        let entries = claudeUsageFiles(modifiedSince: scope.history.start)
+        let entries = claudeUsageFiles()
             .flatMap(readClaudeUsageFile)
             .filter { scope.historyDay(containing: $0.timestamp) != nil }
 
@@ -27,12 +27,9 @@ extension CodingUsageLoader {
         }
     }
 
-    func claudeUsageFiles(modifiedSince: Date) -> [URL] {
+    func claudeUsageFiles() -> [URL] {
         claudeConfigDirectories().flatMap {
-            usageFiles(
-                in: $0.appendingPathComponent("projects"),
-                modifiedSince: modifiedSince
-            )
+            usageFiles(in: $0.appendingPathComponent("projects"))
         }
     }
 

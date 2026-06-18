@@ -3,14 +3,11 @@ import Foundation
 typealias JSONObject = [String: Any]
 
 extension CodingUsageLoader {
-    func usageFiles(
-        in directory: URL,
-        modifiedSince: Date
-    ) -> [URL] {
+    func usageFiles(in directory: URL) -> [URL] {
         guard
             let enumerator = FileManager.default.enumerator(
                 at: directory,
-                includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+                includingPropertiesForKeys: [.isRegularFileKey],
                 options: []
             )
         else {
@@ -23,14 +20,9 @@ extension CodingUsageLoader {
                 continue
             }
 
-            let values = try? file.resourceValues(forKeys: [
-                .contentModificationDateKey, .isRegularFileKey,
-            ])
+            let values = try? file.resourceValues(forKeys: [.isRegularFileKey])
             guard values?.isRegularFile == true
             else {
-                continue
-            }
-            if let modifiedAt = values?.contentModificationDate, modifiedAt < modifiedSince {
                 continue
             }
             files.append(file)

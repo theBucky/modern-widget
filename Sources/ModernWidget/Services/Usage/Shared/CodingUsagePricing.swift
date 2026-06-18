@@ -31,6 +31,26 @@ struct CodingUsagePricing {
                 + Double(cacheReadTokens) * pricing.cacheRead)
     }
 
+    static func cachedTokenCost(
+        model: String?,
+        inputTokens: UInt64,
+        outputTokens: UInt64,
+        cacheCreationTokens: UInt64,
+        cacheReadTokens: UInt64,
+        usesFastPricing: Bool = false
+    ) -> Double {
+        guard let model, let pricing = pricing(for: model) else {
+            return 0
+        }
+
+        let multiplier = usesFastPricing ? pricing.fastMultiplier : 1
+        return multiplier
+            * (Double(inputTokens) * pricing.input
+                + Double(outputTokens) * pricing.output
+                + Double(cacheCreationTokens) * pricing.cacheCreate
+                + Double(cacheReadTokens) * pricing.cacheRead)
+    }
+
     static func codexCost(
         model: String,
         inputTokens: UInt64,

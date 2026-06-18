@@ -16,6 +16,7 @@ struct CodingUsageLoader: Sendable {
         var accumulator = CodingUsageAccumulator(scope: scope)
         loadClaudeUsage(scope: scope, into: &accumulator)
         loadCodexUsage(scope: scope, into: &accumulator)
+        loadPiUsage(scope: scope, into: &accumulator)
 
         return CodingUsageReport(
             generatedAt: scope.now,

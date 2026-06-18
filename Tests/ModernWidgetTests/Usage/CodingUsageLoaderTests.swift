@@ -57,7 +57,7 @@ struct CodingUsageLoaderTests {
             .loadReport(scope: scope())
         let codex = report.agents.first { $0.agent == .codex }!
 
-        #expect(codex.totalCounts.inputTokens == 161)
+        #expect(codex.totalCounts.inputTokens == 130)
         #expect(codex.totalCounts.cacheReadTokens == 31)
         #expect(codex.totalCounts.outputTokens == 44)
         #expect(codex.totalCounts.reasoningTokens == 10)
@@ -70,16 +70,44 @@ struct CodingUsageLoaderTests {
         #expect(abs(dayCounts(codex, 2026, 6, 17).costUSD - 0.000143675) < 0.00000001)
     }
 
-    @Test("skips files outside the thirty day scan window")
-    func skipsFilesOutsideThirtyDayScanWindow() throws {
+    @Test("loads pi usage from assistant messages")
+    func loadsPiUsageFromAssistantMessages() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-Pi")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"user","usage":{"input":999,"output":999}}}"#,
+                #"{"type":"message","timestamp":"2026-06-18T01:02:03.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":100,"output":50,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
+                #"{"type":"message","timestamp":"2026-06-17T01:02:03.000Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","usage":{"totalTokens":333}}}"#,
+            ].joined(separator: "\n"),
+            to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let pi = report.agents.first { $0.agent == .pi }!
+
+        #expect(pi.totalCounts.inputTokens == 100)
+        #expect(pi.totalCounts.outputTokens == 383)
+        #expect(pi.totalCounts.cacheCreationTokens == 20)
+        #expect(pi.totalCounts.cacheReadTokens == 10)
+        #expect(pi.totalCounts.totalTokens == 513)
+        #expect(abs(pi.totalCounts.costUSD - 0.0060475) < 0.00000001)
+        #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 180)
+        #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
+    }
+
+    @Test("skips records outside the thirty day scan window")
+    func skipsRecordsOutsideThirtyDayScanWindow() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-ScanWindow")
         defer { try? FileManager.default.removeItem(at: home) }
 
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"total_tokens":48}}"#,
+            #"{"type":"turn.completed","timestamp":"2026-05-19T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"total_tokens":48}}"#,
             to: ".codex/sessions/session.jsonl",
-            in: home,
-            modifiedAt: date(2026, 5, 19, 23)
+            in: home
         )
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
@@ -140,8 +168,8 @@ struct CodingUsageLoaderTests {
         #expect(loader.unsignedInteger(NSNumber(value: 1.5)) == nil)
     }
 
-    @Test("skips unchanged codex token count snapshots")
-    func skipsUnchangedCodexTokenCountSnapshots() throws {
+    @Test("loads repeated codex token count snapshots")
+    func loadsRepeatedCodexTokenCountSnapshots() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSnapshots")
         defer { try? FileManager.default.removeItem(at: home) }
 
@@ -156,7 +184,7 @@ struct CodingUsageLoaderTests {
             .loadReport(scope: scope())
         let codex = report.agents.first { $0.agent == .codex }!
 
-        #expect(codex.totalCounts.totalTokens == 120)
+        #expect(codex.totalCounts.totalTokens == 240)
     }
 
     @Test("uses fast codex pricing from config")

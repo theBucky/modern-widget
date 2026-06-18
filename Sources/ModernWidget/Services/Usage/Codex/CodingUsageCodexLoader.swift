@@ -56,7 +56,7 @@ struct CodexRawUsage: Equatable {
     func tokenCounts(model: String, usesFastPricing: Bool) -> CodingTokenCounts {
         let cachedInputTokens = min(cachedInputTokens, inputTokens)
         return CodingTokenCounts.codex(
-            inputTokens: inputTokens,
+            rawInputTokens: inputTokens,
             cachedInputTokens: cachedInputTokens,
             outputTokens: outputTokens,
             reasoningTokens: reasoningTokens,
@@ -96,7 +96,7 @@ extension CodingUsageLoader {
             let usesFastPricing = codexConfigRequestsFastPricing(
                 source.home.appendingPathComponent("config.toml"))
 
-            for file in usageFiles(in: source.directory, modifiedSince: scope.history.start) {
+            for file in usageFiles(in: source.directory) {
                 let fileKey = CodexUsageFileKey(
                     scope: source.home.path,
                     path: relativePath(file, from: source.directory)
@@ -252,10 +252,6 @@ extension CodingUsageLoader {
         }
 
         let totalUsage = codexRawUsage(from: dictionary(info["total_token_usage"]))
-        if let totalUsage, totalUsage == previousTotals {
-            return nil
-        }
-
         let rawUsage =
             codexRawUsage(from: dictionary(info["last_token_usage"]))
             ?? totalUsage?.subtracting(previousTotals)
