@@ -31,12 +31,11 @@ struct MenuBarPanelView: View {
         static let detailPaneWidth: CGFloat = 280
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
-        static let tabIconSize: CGFloat = 22
     }
 
     var body: some View {
         VStack(spacing: Layout.unitSpacing) {
-            tabBar
+            panePicker
             paneBody
                 .id(selectedPane)
                 .transition(.opacity)
@@ -74,27 +73,17 @@ struct MenuBarPanelView: View {
         }
     }
 
-    private var tabBar: some View {
-        HStack(spacing: 6) {
-            paneButton(.main, systemImage: "timer")
-            paneButton(.calendar, systemImage: "calendar")
-            paneButton(.usage, systemImage: "chart.line.uptrend.xyaxis")
+    private var panePicker: some View {
+        Picker("Pane", selection: $selectedPane) {
+            Label("Timer", systemImage: "timer").tag(Pane.main)
+            Label("Calendar", systemImage: "calendar").tag(Pane.calendar)
+            Label("Usage", systemImage: "chart.line.uptrend.xyaxis").tag(Pane.usage)
         }
-        .frame(maxWidth: .infinity)
+        .pickerStyle(.segmented)
+        .labelStyle(.iconOnly)
+        .labelsHidden()
         .transaction { transaction in
             transaction.animation = nil
         }
-    }
-
-    private func paneButton(_ pane: Pane, systemImage: String) -> some View {
-        Button {
-            selectedPane = pane
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: Layout.tabIconSize, height: Layout.tabIconSize)
-                .foregroundStyle(selectedPane == pane ? Color.accentColor : .secondary)
-        }
-        .buttonStyle(.borderless)
     }
 }
