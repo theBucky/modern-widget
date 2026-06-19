@@ -3,7 +3,7 @@ import SwiftUI
 struct ReminderPaneView: View {
     let engine: ReminderEngine
     let walkHistoryStore: WalkHistoryStore
-    let dailySupplementStore: DailySupplementStore
+    @Bindable var dailySupplementStore: DailySupplementStore
 
     private enum Layout {
         static let unitSpacing: CGFloat = 20
@@ -17,16 +17,10 @@ struct ReminderPaneView: View {
             intervalMenu
             ReminderStatusView(snapshot: snapshot)
             actionsSection(snapshot: snapshot)
-            Toggle(
-                "took daily supplement today?",
-                isOn: Binding(
-                    get: { dailySupplementStore.isTaken(on: .now) },
-                    set: { dailySupplementStore.setTaken($0) }
-                )
-            )
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Toggle("took daily supplement today?", isOn: $dailySupplementStore.isTakenToday)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -51,9 +45,7 @@ struct ReminderPaneView: View {
             Button {
                 engine.togglePause()
             } label: {
-                Image(systemName: snapshot.phase == .paused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
+                actionIcon(snapshot.phase == .paused ? "play.fill" : "pause.fill")
             }
             .buttonStyle(.bordered)
             .clipShape(Circle())
@@ -63,14 +55,18 @@ struct ReminderPaneView: View {
                 engine.completeBreak(at: now)
                 walkHistoryStore.recordWalk(now)
             } label: {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
+                actionIcon("arrow.counterclockwise")
             }
             .buttonStyle(.borderedProminent)
             .clipShape(Circle())
             .keyboardShortcut(.defaultAction)
         }
+    }
+
+    private func actionIcon(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
     }
 }
 

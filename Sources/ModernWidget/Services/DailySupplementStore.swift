@@ -17,6 +17,11 @@ final class DailySupplementStore {
         pruneOldEntries()
     }
 
+    var isTakenToday: Bool {
+        get { isTaken(on: .now) }
+        set { setTaken(newValue) }
+    }
+
     func isTaken(on date: Date) -> Bool {
         takenDays.contains(Calendar.current.startOfDay(for: date))
     }
