@@ -105,6 +105,17 @@ struct JSONScanner {
 
     /// Reads a string value, returning `nil` (after skipping) for non-string values.
     mutating func readString() -> String? {
+        readStringValue()?.string
+    }
+
+    /// Reads a string and compares it to an ASCII literal without allocating on the
+    /// common unescaped path.
+    mutating func readStringEquals(_ literal: StaticString) -> Bool {
+        readStringValue()?.equals(literal) == true
+    }
+
+    /// Reads a borrowed string value, returning `nil` (after skipping) for non-strings.
+    mutating func readStringValue() -> JSONStringValue? {
         skipWhitespace()
         guard index < count, base[index] == .quote else {
             skipValue()
@@ -124,15 +135,8 @@ struct JSONScanner {
             cursor += 1
         }
         let end = min(cursor, count)
-        let bytes = UnsafeBufferPointer(start: base + start, count: end - start)
         index = min(cursor + 1, count)
-        if !hasEscape {
-            return String(decoding: bytes, as: UTF8.self)
-        }
-        // Re-quote and let the JSON parser unescape; hand-decoding escapes is error-prone.
-        let quoted = Data([.quote]) + Data(buffer: bytes) + Data([.quote])
-        return (try? JSONSerialization.jsonObject(with: quoted, options: [.fragmentsAllowed]))
-            as? String
+        return JSONStringValue(start: base + start, count: end - start, hasEscape: hasEscape)
     }
 
     /// Reads a JSON boolean, returning `nil` (after skipping) for non-boolean values.
@@ -208,6 +212,34 @@ struct JSONScanner {
                 }
             }
             index += 1
+        }
+    }
+}
+
+/// A borrowed JSON string payload, excluding the surrounding quotes.
+struct JSONStringValue {
+    let start: UnsafePointer<UInt8>
+    let count: Int
+    let hasEscape: Bool
+
+    var string: String? {
+        let bytes = UnsafeBufferPointer(start: start, count: count)
+        if !hasEscape {
+            return String(decoding: bytes, as: UTF8.self)
+        }
+        let quoted = Data([.quote]) + Data(buffer: bytes) + Data([.quote])
+        return (try? JSONSerialization.jsonObject(with: quoted, options: [.fragmentsAllowed]))
+            as? String
+    }
+
+    func equals(_ literal: StaticString) -> Bool {
+        literal.withUTF8Buffer { literalBytes in
+            if !hasEscape {
+                return count == literalBytes.count
+                    && memcmp(start, literalBytes.baseAddress!, count) == 0
+            }
+            guard let string else { return false }
+            return string == String(decoding: literalBytes, as: UTF8.self)
         }
     }
 }

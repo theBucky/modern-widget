@@ -27,7 +27,7 @@ private struct ClaudeMessageFields {
     var cacheCreation5m: UInt64 = 0
     var cacheCreation1h: UInt64 = 0
     var hasCacheCreationObject = false
-    var speed: String?
+    var usesFastPricing = false
 
     var cacheCreation5mResolved: UInt64 {
         hasCacheCreationObject ? cacheCreation5m : cacheCreationFallback
@@ -284,7 +284,7 @@ private func claudeUsageFields(_ scanner: inout JSONScanner, into fields: inout 
                 }
             }
         } else if key == "speed" {
-            fields.speed = scanner.readString()
+            fields.usesFastPricing = scanner.readStringEquals("fast")
         } else {
             scanner.skipValue()
         }
@@ -311,7 +311,7 @@ private func claudeEntry(from record: ClaudeRecordFields) -> ClaudeUsageEntry? {
                 cacheCreation5mTokens: cacheCreation5m,
                 cacheCreation1hTokens: cacheCreation1h,
                 cacheReadTokens: message.cacheRead,
-                usesFastPricing: message.speed == "fast"
+                usesFastPricing: message.usesFastPricing
             )
         ),
         messageID: message.id,

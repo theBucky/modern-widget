@@ -44,7 +44,7 @@ struct CodingUsageLoaderTests {
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
             #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
             #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cached_input_tokens":30,"output_tokens":35,"reasoning_output_tokens":10,"total_tokens":195}}}}"#,
-            #"{"type":"turn.completed","timestamp":"2026-06-17T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"prompt_tokens":11,"cached_tokens":1,"completion_tokens":9}}"#,
+            #"{"timestamp":"2026-06-17T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":11,"cached_input_tokens":1,"output_tokens":9,"reasoning_output_tokens":0,"total_tokens":20},"model":"gpt-5.2-codex"}}}"#,
         ].joined(separator: "\n")
         let archivedLog =
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":999,"cached_input_tokens":99,"output_tokens":99,"reasoning_output_tokens":9,"total_tokens":1107},"model":"gpt-5.2"}}}"#
@@ -68,6 +68,29 @@ struct CodingUsageLoaderTests {
         #expect(dayCounts(codex, 2026, 6, 17).totalTokens == 20)
         #expect(abs(dayCounts(codex, 2026, 6, 18).costUSD - 0.00070525) < 0.00000001)
         #expect(abs(dayCounts(codex, 2026, 6, 17).costUSD - 0.000143675) < 0.00000001)
+    }
+
+    @Test("skips codex subagent replayed parent token history")
+    func skipsCodexSubagentReplayedParentTokenHistory() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSubagent")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let log = [
+            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":0,"total_tokens":1200}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":150,"output_tokens":300,"reasoning_output_tokens":0,"total_tokens":1800}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":160,"output_tokens":320,"reasoning_output_tokens":0,"total_tokens":1920},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/subagent.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 90)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 20)
+        #expect(codex.totalCounts.totalTokens == 120)
     }
 
     @Test("loads pi usage from assistant messages")
@@ -128,7 +151,7 @@ struct CodingUsageLoaderTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-05-19T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"total_tokens":48}}"#,
+            #"{"timestamp":"2026-05-19T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
             in: home
         )
@@ -194,11 +217,11 @@ struct CodingUsageLoaderTests {
     func parsesCommonUTCLogTimestamps() {
         #expect(LogTimestamp.parse("2026-06-18T01:02:03Z") == date(2026, 6, 18, 1, 2, 3))
         #expect(LogTimestamp.parse("2026-06-18T01:02:03.000Z") == date(2026, 6, 18, 1, 2, 3))
-        #expect(LogTimestamp.parse(" 2026-06-18T01:02:03.000Z\n") == date(2026, 6, 18, 1, 2, 3))
         #expect(
             LogTimestamp.parse("2026-06-18T01:02:03.250Z")?
                 .timeIntervalSince(date(2026, 6, 18, 1, 2, 3)) == 0.25)
-        #expect(LogTimestamp.parse("2026-06-18T09:02:03+08:00") == date(2026, 6, 18, 1, 2, 3))
+        #expect(LogTimestamp.parse(" 2026-06-18T01:02:03.000Z\n") == nil)
+        #expect(LogTimestamp.parse("2026-06-18T09:02:03+08:00") == nil)
     }
 
     private func scanUInt64(_ json: String) -> UInt64? {
@@ -237,8 +260,8 @@ struct CodingUsageLoaderTests {
 
         let log = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125},"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
-            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125},"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
+            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
         ].joined(separator: "\n")
         try writeFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
@@ -256,7 +279,7 @@ struct CodingUsageLoaderTests {
 
         try writeFixture(#"service_tier = "fast""#, to: ".codex/config.toml", in: home)
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.5","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"total_tokens":105}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
             to: ".codex/sessions/session.jsonl",
             in: home
         )
@@ -279,7 +302,7 @@ struct CodingUsageLoaderTests {
             service_tier = "fast"
             """, to: ".codex/config.toml", in: home)
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.5","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"total_tokens":105}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
             to: ".codex/sessions/session.jsonl",
             in: home
         )
@@ -302,12 +325,12 @@ struct CodingUsageLoaderTests {
 
         try writeFixture(#"service_tier = "fast""#, to: ".codex/config.toml", in: home)
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.5","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"total_tokens":105}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
             to: ".codex/sessions/fast.jsonl",
             in: home
         )
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.5","usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"total_tokens":105}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
             to: ".codex/sessions/standard.jsonl",
             in: standardRoot
         )
@@ -363,7 +386,7 @@ struct CodingUsageLoaderTests {
             in: home
         )
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":999,"output_tokens":999}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":999,"cached_input_tokens":0,"output_tokens":999,"reasoning_output_tokens":0,"total_tokens":1998},"model":"gpt-5.2-codex"}}}"#,
             to: "random.jsonl",
             in: home
         )
@@ -373,7 +396,7 @@ struct CodingUsageLoaderTests {
             in: home
         )
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"total_tokens":48}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
             in: home
         )
@@ -412,7 +435,7 @@ struct CodingUsageLoaderTests {
         defer { try? FileManager.default.removeItem(at: home) }
 
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":40,"output_tokens":8}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
             in: home
         )
@@ -420,7 +443,7 @@ struct CodingUsageLoaderTests {
         let first = loader.usageScan(scope: scope()).fingerprint
 
         try writeFixture(
-            #"{"type":"turn.completed","timestamp":"2026-06-18T03:04:05.000Z","model":"gpt-5.2-codex","usage":{"input_tokens":41,"output_tokens":8}}"#,
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":41,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":49},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
             in: home,
             modifiedAt: date(2026, 6, 18, 12, 1)

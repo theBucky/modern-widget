@@ -59,13 +59,13 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         return nil
     }
 
-    var type: String?
+    var hasInvalidType = false
     var timestamp: Date?
     var fields = PiMessageFields()
 
     while let key = scanner.nextKey() {
         if key == "type" {
-            type = scanner.readString()
+            hasInvalidType = !scanner.readStringEquals("message")
         } else if key == "timestamp" {
             timestamp = scanner.readTimestamp()
         } else if key == "message" {
@@ -75,10 +75,10 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         }
     }
 
-    if let type, type != "message" {
+    if hasInvalidType {
         return nil
     }
-    guard let timestamp, fields.role == "assistant", fields.hasUsage else {
+    guard let timestamp, fields.isAssistant, fields.hasUsage else {
         return nil
     }
 
@@ -120,7 +120,7 @@ private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields {
     guard scanner.beginObject() else { return fields }
     while let key = scanner.nextKey() {
         if key == "role" {
-            fields.role = scanner.readString()
+            fields.isAssistant = scanner.readStringEquals("assistant")
         } else if key == "model" {
             fields.model = scanner.readString()
         } else if key == "usage" {
@@ -150,7 +150,7 @@ private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields {
 }
 
 private struct PiMessageFields {
-    var role: String?
+    var isAssistant = false
     var model: String?
     var hasUsage = false
     var input: UInt64 = 0

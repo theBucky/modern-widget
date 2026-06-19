@@ -1,17 +1,17 @@
-import Darwin
 import Foundation
 
-/// Parses the timestamp formats the agent logs emit: UTC ISO-8601 strings (the common
-/// case, handled by a `strptime` fast path), offset/ISO variants via `ISO8601DateFormatter`,
+/// Parses the canonical timestamp formats the agent logs emit: UTC ISO-8601 strings
 /// and numeric epoch seconds/milliseconds.
 enum LogTimestamp {
-    /// Parses a textual timestamp, retrying on a whitespace-trimmed copy.
+    /// Parses a textual timestamp.
     static func parse(_ value: String) -> Date? {
-        if let date = parseString(value) {
-            return date
+        let count = value.utf8.count
+        return value.withCString {
+            parseUTC(
+                start: UnsafeRawPointer($0).assumingMemoryBound(to: UInt8.self),
+                count: count
+            )
         }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == value ? nil : parseString(trimmed)
     }
 
     /// Interprets a numeric timestamp, treating large magnitudes as milliseconds.
@@ -21,60 +21,124 @@ enum LogTimestamp {
             : Date(timeIntervalSince1970: raw)
     }
 
-    private static func parseString(_ value: String) -> Date? {
-        if let date = parseUTC(value) {
-            return date
+    /// Parses a borrowed JSON string timestamp without allocating.
+    static func parse(_ value: JSONStringValue) -> Date? {
+        if value.hasEscape {
+            return nil
         }
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = parser.date(from: value) {
-            return date
-        }
-        parser.formatOptions = [.withInternetDateTime]
-        return parser.date(from: value)
+        return parseUTC(start: value.start, count: value.count)
     }
 
-    private static func parseUTC(_ value: String) -> Date? {
-        value.withCString { valuePointer in
-            var components = Darwin.tm()
-            guard let end = strptime(valuePointer, "%Y-%m-%dT%H:%M:%S", &components),
-                let fractionalSeconds = fractionalSeconds(after: end)
-            else {
-                return nil
-            }
-            let seconds = timegm(&components)
-            return Date(timeIntervalSince1970: TimeInterval(seconds) + fractionalSeconds)
-        }
-    }
-
-    private static func fractionalSeconds(after pointer: UnsafePointer<CChar>) -> TimeInterval? {
-        let dot = CChar(UInt8(ascii: "."))
-        let z = CChar(UInt8(ascii: "Z"))
-        if pointer.pointee == z {
-            return pointer.successor().pointee == 0 ? 0 : nil
-        }
-        guard pointer.pointee == dot else {
+    private static func parseUTC(start: UnsafePointer<UInt8>, count: Int) -> Date? {
+        guard count >= 20 else {
             return nil
         }
 
-        var cursor = pointer.successor()
-        var fraction = 0.0
-        var divisor = 10.0
-        while cursor.pointee >= CChar(UInt8(ascii: "0"))
-            && cursor.pointee <= CChar(UInt8(ascii: "9"))
-        {
-            if divisor <= 1_000_000_000 {
-                fraction += Double(cursor.pointee - CChar(UInt8(ascii: "0"))) / divisor
-                divisor *= 10
-            }
-            cursor = cursor.successor()
-        }
-        guard cursor > pointer.successor(), cursor.pointee == z, cursor.successor().pointee == 0
+        guard start[4] == .dash, start[7] == .dash, start[10] == .upperT,
+            start[13] == .colon, start[16] == .colon,
+            let year = digits(start, 0, 4),
+            let month = digits(start, 5, 2),
+            let day = digits(start, 8, 2),
+            let hour = digits(start, 11, 2),
+            let minute = digits(start, 14, 2),
+            let second = digits(start, 17, 2),
+            month >= 1, month <= 12,
+            day >= 1, day <= 31,
+            hour <= 23,
+            minute <= 59,
+            second <= 60
         else {
             return nil
         }
-        return fraction
+
+        var offset = 19
+        var fraction = 0.0
+        if start[offset] == .dot {
+            offset += 1
+            let fractionStart = offset
+            var divisor = 10.0
+            while offset < count, start[offset] >= .zero, start[offset] <= .nine {
+                if divisor <= 1_000_000_000 {
+                    fraction += Double(start[offset] - .zero) / divisor
+                    divisor *= 10
+                }
+                offset += 1
+            }
+            guard offset > fractionStart else {
+                return nil
+            }
+        }
+
+        guard offset + 1 == count, start[offset] == .upperZ else {
+            return nil
+        }
+
+        guard
+            let seconds = epochSeconds(
+                year: year,
+                month: month,
+                day: day,
+                hour: hour,
+                minute: minute,
+                second: second
+            )
+        else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: TimeInterval(seconds) + fraction)
     }
+
+    private static func digits(_ start: UnsafePointer<UInt8>, _ offset: Int, _ count: Int)
+        -> Int?
+    {
+        var value = 0
+        for index in offset..<(offset + count) {
+            guard start[index] >= .zero, start[index] <= .nine else {
+                return nil
+            }
+            value = value * 10 + Int(start[index] - .zero)
+        }
+        return value
+    }
+
+    private static func epochSeconds(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int,
+        minute: Int,
+        second: Int
+    ) -> Int64? {
+        guard day <= daysInMonth(month: month, year: year) else {
+            return nil
+        }
+
+        let adjustedYear = year - (month <= 2 ? 1 : 0)
+        let era = adjustedYear >= 0 ? adjustedYear / 400 : (adjustedYear - 399) / 400
+        let yearOfEra = adjustedYear - era * 400
+        let monthPrime = month + (month > 2 ? -3 : 9)
+        let dayOfYear = (153 * monthPrime + 2) / 5 + day - 1
+        let dayOfEra =
+            yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+        let days = Int64(era * 146_097 + dayOfEra - 719_468)
+        return days * 86_400 + Int64(hour * 3_600 + minute * 60 + second)
+    }
+
+    private static func daysInMonth(month: Int, year: Int) -> Int {
+        switch month {
+        case 2:
+            return isLeapYear(year) ? 29 : 28
+        case 4, 6, 9, 11:
+            return 30
+        default:
+            return 31
+        }
+    }
+
+    private static func isLeapYear(_ year: Int) -> Bool {
+        year.isMultiple(of: 4) && (!year.isMultiple(of: 100) || year.isMultiple(of: 400))
+    }
+
 }
 
 extension JSONScanner {
@@ -84,8 +148,18 @@ extension JSONScanner {
             return nil
         }
         if byte == 0x22 {
-            return readString().flatMap(LogTimestamp.parse)
+            return readStringValue().flatMap(LogTimestamp.parse)
         }
         return readDouble().map(LogTimestamp.fromEpoch)
     }
+}
+
+extension UInt8 {
+    fileprivate static let dash = UInt8(ascii: "-")
+    fileprivate static let dot = UInt8(ascii: ".")
+    fileprivate static let colon = UInt8(ascii: ":")
+    fileprivate static let upperT = UInt8(ascii: "T")
+    fileprivate static let upperZ = UInt8(ascii: "Z")
+    fileprivate static let zero = UInt8(ascii: "0")
+    fileprivate static let nine = UInt8(ascii: "9")
 }
