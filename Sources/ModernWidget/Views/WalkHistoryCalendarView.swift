@@ -17,6 +17,11 @@ struct WalkHistoryCalendarView: View {
         )
     }
 
+    private enum Palette {
+        static let supplementTaken = Color(red: 0, green: 0.45, blue: 0.12)
+        static let supplementMissed = Color(red: 0.75, green: 0, blue: 0)
+    }
+
     var body: some View {
         VStack(spacing: Layout.sectionSpacing) {
             monthHeader
@@ -110,9 +115,9 @@ struct WalkHistoryCalendarView: View {
         if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
             text.foregroundStyle(.tertiary)
         } else if supplementStore.isTaken(on: date) {
-            text.foregroundStyle(Color(red: 0, green: 0.45, blue: 0.12))
+            text.foregroundStyle(Palette.supplementTaken)
         } else {
-            text.foregroundStyle(Color(red: 0.75, green: 0, blue: 0))
+            text.foregroundStyle(Palette.supplementMissed)
         }
     }
 

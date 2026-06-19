@@ -43,7 +43,7 @@ struct CodingUsageView: View {
 
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
                 amountTable(summary)
-                usageChart(summary)
+                CodingUsageChart(days: chartDays(summary), isFetching: isFetching)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Layout.blockPadding)
@@ -59,18 +59,13 @@ struct CodingUsageView: View {
                     Text(row.title)
                         .foregroundStyle(.secondary)
                         .frame(width: Layout.labelWidth, alignment: .leading)
-                    Text(isFetching ? "fetching" : formatCodingUsageCost(row.costUSD))
-                        .foregroundStyle(isFetching || row.costUSD > 0 ? .primary : .tertiary)
+                    usageCostText(row.costUSD, isFetching: isFetching)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
         .font(.caption.monospacedDigit())
         .frame(maxWidth: .infinity)
-    }
-
-    private func usageChart(_ summary: CodingUsageAgentSummary) -> some View {
-        CodingUsageChart(days: chartDays(summary), isFetching: isFetching)
     }
 
     private func amountRows(_ summary: CodingUsageAgentSummary) -> [CodingUsageAmountRow] {
@@ -178,8 +173,7 @@ private struct CodingUsageChart: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
                 .foregroundStyle(.secondary)
-            Text(isFetching ? "fetching" : formatCodingUsageCost(day.counts.costUSD))
-                .foregroundStyle(isFetching || day.counts.costUSD > 0 ? .primary : .tertiary)
+            usageCostText(day.counts.costUSD, isFetching: isFetching)
         }
         .font(.caption2.monospacedDigit())
         .padding(.horizontal, 5)
@@ -187,6 +181,11 @@ private struct CodingUsageChart: View {
         .background(.regularMaterial, in: .rect(cornerRadius: 4))
         .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
     }
+}
+
+private func usageCostText(_ cost: Double, isFetching: Bool) -> Text {
+    Text(isFetching ? "fetching" : formatCodingUsageCost(cost))
+        .foregroundStyle(isFetching || cost > 0 ? .primary : .tertiary)
 }
 
 private func formatCodingUsageCost(_ cost: Double) -> String {
