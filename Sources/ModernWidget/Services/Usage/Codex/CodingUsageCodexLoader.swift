@@ -96,10 +96,14 @@ extension CodingUsageLoader {
 
         for source in sources {
             let homePath = source.home.path
-            let usesFastPricing =
-                fastPricingByHome[homePath]
-                ?? codexConfigRequestsFastPricing(source.home.appendingPathComponent("config.toml"))
-            fastPricingByHome[homePath] = usesFastPricing
+            let usesFastPricing: Bool
+            if let cached = fastPricingByHome[homePath] {
+                usesFastPricing = cached
+            } else {
+                usesFastPricing = codexConfigRequestsFastPricing(
+                    source.home.appendingPathComponent("config.toml"))
+                fastPricingByHome[homePath] = usesFastPricing
+            }
 
             for file in source.files {
                 let fileKey = CodexUsageFileKey(
@@ -115,10 +119,9 @@ extension CodingUsageLoader {
                         scope: homePath,
                         event: event.dedupeKey
                     )
-                    guard seenEvents.insert(eventKey).inserted else {
-                        return
+                    if seenEvents.insert(eventKey).inserted {
+                        accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                     }
-                    accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                 }
             }
         }
@@ -245,10 +248,10 @@ extension CodingUsageLoader {
         }
 
         forEachJSONLine(in: file) { line in
+            let hasTokenCount = line.contains(tokenCountNeedle)
+            let hasTurnContext = line.contains(turnContextNeedle)
             let isThreadSpawnLine = line.contains(threadSpawnNeedle)
-            if !line.contains(tokenCountNeedle), !line.contains(turnContextNeedle),
-                !isThreadSpawnLine
-            {
+            guard hasTokenCount || hasTurnContext || isThreadSpawnLine else {
                 return
             }
 
@@ -265,38 +268,42 @@ extension CodingUsageLoader {
                 return
             }
 
-            if fields.type == .eventMessage, fields.isTokenCount, let timestamp = fields.timestamp {
-                let second = codexSecond(timestamp)
+            guard fields.type == .eventMessage, fields.isTokenCount,
+                let timestamp = fields.timestamp
+            else {
+                return
+            }
 
-                if let activeReplaySecond = replaySecond {
-                    if activeReplaySecond == second {
-                        updatePreviousTotals(from: fields)
-                        return
-                    }
-                    replaySecond = nil
+            let second = codexSecond(timestamp)
+
+            if let activeReplaySecond = replaySecond {
+                if activeReplaySecond == second {
+                    updatePreviousTotals(from: fields)
+                    return
                 }
+                replaySecond = nil
+            }
 
-                if sawThreadSpawn {
-                    guard let previous = pendingReplay else {
-                        pendingReplay = (timestamp, fields)
-                        return
-                    }
-                    let previousSecond = codexSecond(previous.timestamp)
-                    if previousSecond == second {
-                        updatePreviousTotals(from: previous.fields)
-                        updatePreviousTotals(from: fields)
-                        pendingReplay = nil
-                        sawThreadSpawn = false
-                        replaySecond = second
-                        return
-                    }
-                    appendEvent(from: previous.fields, at: previous.timestamp)
+            if sawThreadSpawn {
+                guard let previous = pendingReplay else {
+                    pendingReplay = (timestamp, fields)
+                    return
+                }
+                let previousSecond = codexSecond(previous.timestamp)
+                if previousSecond == second {
+                    updatePreviousTotals(from: previous.fields)
+                    updatePreviousTotals(from: fields)
                     pendingReplay = nil
                     sawThreadSpawn = false
+                    replaySecond = second
+                    return
                 }
-
-                appendEvent(from: fields, at: timestamp)
+                appendEvent(from: previous.fields, at: previous.timestamp)
+                pendingReplay = nil
+                sawThreadSpawn = false
             }
+
+            appendEvent(from: fields, at: timestamp)
         }
 
         appendPendingReplayEvent()
