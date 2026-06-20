@@ -6,7 +6,8 @@ import Observation
 final class ReminderEngine {
     private enum Keys {
         static let reminderMinutes = "reminderMinutes"
-        static let startedAt = "lastWalkAt"
+        static let startedAt = "reminderStartedAt"
+        static let legacyStartedAt = "lastWalkAt"
         static let isPaused = "isPaused"
         static let pausedRemainingSeconds = "pausedRemainingSeconds"
     }
@@ -86,12 +87,25 @@ final class ReminderEngine {
             ? .paused(secondsRemaining: pausedSeconds)
             : .running
 
+        let startedAt = loadStartedAt(defaults: defaults)
         return ReminderState(
             reminderMinutes: storedReminderMinutes,
-            startedAt: defaults.object(forKey: Keys.startedAt) as? Date ?? .now,
+            startedAt: startedAt,
             mode: mode,
             notificationIssue: nil
         )
+    }
+
+    private static func loadStartedAt(defaults: UserDefaults) -> Date {
+        let storedStartedAt = defaults.object(forKey: Keys.startedAt) as? Date
+        let legacyStartedAt = defaults.object(forKey: Keys.legacyStartedAt) as? Date
+        let startedAt = storedStartedAt ?? legacyStartedAt ?? .now
+
+        if storedStartedAt == nil, legacyStartedAt != nil {
+            defaults.set(startedAt, forKey: Keys.startedAt)
+        }
+        defaults.removeObject(forKey: Keys.legacyStartedAt)
+        return startedAt
     }
 
     private func updateState(_ update: (inout ReminderState) -> Void) {
@@ -111,6 +125,7 @@ final class ReminderEngine {
     private func persistState() {
         defaults.set(state.reminderMinutes, forKey: Keys.reminderMinutes)
         defaults.set(state.startedAt, forKey: Keys.startedAt)
+        defaults.removeObject(forKey: Keys.legacyStartedAt)
 
         switch state.mode {
         case .running:

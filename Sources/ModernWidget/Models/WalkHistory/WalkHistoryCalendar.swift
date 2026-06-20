@@ -5,7 +5,7 @@ struct WalkHistoryMonth {
     let dayCells: [Date?]
 
     init(containing date: Date, calendar: Calendar = .current) {
-        let firstDay = WalkHistoryCalendar.startOfMonth(date, calendar: calendar)
+        let firstDay = calendar.startOfMonth(for: date)
         let dayCount = calendar.range(of: .day, in: .month, for: firstDay)!.count
         let firstWeekday = calendar.component(.weekday, from: firstDay)
         let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
@@ -22,10 +22,6 @@ struct WalkHistoryMonth {
 }
 
 enum WalkHistoryCalendar {
-    static func startOfMonth(_ date: Date, calendar: Calendar = .current) -> Date {
-        calendar.dateInterval(of: .month, for: date)!.start
-    }
-
     static func weekdaySymbols(calendar: Calendar = .current) -> [String] {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols
         let offset = calendar.firstWeekday - 1

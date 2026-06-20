@@ -136,7 +136,7 @@ struct WalkHistoryCalendarView: View {
     }
 
     private var canGoForward: Bool {
-        monthGrid.month < WalkHistoryCalendar.startOfMonth(.now)
+        monthGrid.month < Calendar.current.startOfMonth(for: .now)
     }
 
     private func shiftMonth(by delta: Int) {

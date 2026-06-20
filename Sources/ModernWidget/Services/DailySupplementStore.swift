@@ -40,7 +40,8 @@ final class DailySupplementStore {
     }
 
     private func pruneOldEntries() {
-        takenDays = takenDays.filter { $0 >= HistoryRetention.earliestMonth() }
+        let cutoff = HistoryRetention.earliestMonth()
+        takenDays = takenDays.filter { $0 >= cutoff }
     }
 
     private static func load(from defaults: UserDefaults) -> Set<Date> {
