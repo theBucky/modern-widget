@@ -92,27 +92,31 @@ extension CodingUsageLoader {
         // occurrence of a file or event wins, so archived duplicates are dropped.
         var seenFiles: Set<CodexUsageFileKey> = []
         var seenEvents: Set<CodexScopedEventKey> = []
+        var fastPricingByHome: [String: Bool] = [:]
 
         for source in sources {
-            let usesFastPricing = codexConfigRequestsFastPricing(
-                source.home.appendingPathComponent("config.toml"))
+            let homePath = source.home.path
+            let usesFastPricing =
+                fastPricingByHome[homePath]
+                ?? codexConfigRequestsFastPricing(source.home.appendingPathComponent("config.toml"))
+            fastPricingByHome[homePath] = usesFastPricing
 
             for file in source.files {
                 let fileKey = CodexUsageFileKey(
-                    scope: source.home.path,
+                    scope: homePath,
                     path: relativePath(file, from: source.directory)
                 )
                 guard seenFiles.insert(fileKey).inserted else {
                     continue
                 }
 
-                for event in readCodexUsageFile(file, usesFastPricing: usesFastPricing) {
+                forEachCodexUsageEvent(in: file, usesFastPricing: usesFastPricing) { event in
                     let eventKey = CodexScopedEventKey(
-                        scope: source.home.path,
+                        scope: homePath,
                         event: event.dedupeKey
                     )
                     guard seenEvents.insert(eventKey).inserted else {
-                        continue
+                        return
                     }
                     accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                 }
@@ -194,14 +198,14 @@ extension CodingUsageLoader {
         return false
     }
 
-    func readCodexUsageFile(
-        _ file: URL,
-        usesFastPricing: Bool
-    ) -> [CodexUsageEvent] {
+    func forEachCodexUsageEvent(
+        in file: URL,
+        usesFastPricing: Bool,
+        visit: (CodexUsageEvent) -> Void
+    ) {
         let tokenCountNeedle = [UInt8](#""token_count""#.utf8)
         let turnContextNeedle = [UInt8](#""turn_context""#.utf8)
         let threadSpawnNeedle = [UInt8](#""thread_spawn""#.utf8)
-        var events: [CodexUsageEvent] = []
         var previousTotals: CodexRawUsage?
         var currentModel: String?
         var sawThreadSpawn = false
@@ -223,7 +227,7 @@ extension CodingUsageLoader {
 
             let model = fields.payloadModel ?? fields.infoModel ?? currentModel ?? "gpt-5"
             currentModel = model
-            events.append(
+            visit(
                 CodexUsageEvent(
                     timestamp: timestamp,
                     model: model,
@@ -296,7 +300,6 @@ extension CodingUsageLoader {
         }
 
         appendPendingReplayEvent()
-        return events
     }
 }
 
