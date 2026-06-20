@@ -92,29 +92,36 @@ extension CodingUsageLoader {
         // occurrence of a file or event wins, so archived duplicates are dropped.
         var seenFiles: Set<CodexUsageFileKey> = []
         var seenEvents: Set<CodexScopedEventKey> = []
+        var fastPricingByHome: [String: Bool] = [:]
 
         for source in sources {
-            let usesFastPricing = codexConfigRequestsFastPricing(
-                source.home.appendingPathComponent("config.toml"))
+            let homePath = source.home.path
+            let usesFastPricing: Bool
+            if let cached = fastPricingByHome[homePath] {
+                usesFastPricing = cached
+            } else {
+                usesFastPricing = codexConfigRequestsFastPricing(
+                    source.home.appendingPathComponent("config.toml"))
+                fastPricingByHome[homePath] = usesFastPricing
+            }
 
             for file in source.files {
                 let fileKey = CodexUsageFileKey(
-                    scope: source.home.path,
+                    scope: homePath,
                     path: relativePath(file, from: source.directory)
                 )
                 guard seenFiles.insert(fileKey).inserted else {
                     continue
                 }
 
-                for event in readCodexUsageFile(file, usesFastPricing: usesFastPricing) {
+                forEachCodexUsageEvent(in: file, usesFastPricing: usesFastPricing) { event in
                     let eventKey = CodexScopedEventKey(
-                        scope: source.home.path,
+                        scope: homePath,
                         event: event.dedupeKey
                     )
-                    guard seenEvents.insert(eventKey).inserted else {
-                        continue
+                    if seenEvents.insert(eventKey).inserted {
+                        accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                     }
-                    accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                 }
             }
         }
@@ -194,14 +201,14 @@ extension CodingUsageLoader {
         return false
     }
 
-    func readCodexUsageFile(
-        _ file: URL,
-        usesFastPricing: Bool
-    ) -> [CodexUsageEvent] {
+    func forEachCodexUsageEvent(
+        in file: URL,
+        usesFastPricing: Bool,
+        visit: (CodexUsageEvent) -> Void
+    ) {
         let tokenCountNeedle = [UInt8](#""token_count""#.utf8)
         let turnContextNeedle = [UInt8](#""turn_context""#.utf8)
         let threadSpawnNeedle = [UInt8](#""thread_spawn""#.utf8)
-        var events: [CodexUsageEvent] = []
         var previousTotals: CodexRawUsage?
         var currentModel: String?
         var sawThreadSpawn = false
@@ -223,7 +230,7 @@ extension CodingUsageLoader {
 
             let model = fields.payloadModel ?? fields.infoModel ?? currentModel ?? "gpt-5"
             currentModel = model
-            events.append(
+            visit(
                 CodexUsageEvent(
                     timestamp: timestamp,
                     model: model,
@@ -241,10 +248,10 @@ extension CodingUsageLoader {
         }
 
         forEachJSONLine(in: file) { line in
+            let hasTokenCount = line.contains(tokenCountNeedle)
+            let hasTurnContext = line.contains(turnContextNeedle)
             let isThreadSpawnLine = line.contains(threadSpawnNeedle)
-            if !line.contains(tokenCountNeedle), !line.contains(turnContextNeedle),
-                !isThreadSpawnLine
-            {
+            guard hasTokenCount || hasTurnContext || isThreadSpawnLine else {
                 return
             }
 
@@ -261,42 +268,45 @@ extension CodingUsageLoader {
                 return
             }
 
-            if fields.type == .eventMessage, fields.isTokenCount, let timestamp = fields.timestamp {
-                let second = codexSecond(timestamp)
+            guard fields.type == .eventMessage, fields.isTokenCount,
+                let timestamp = fields.timestamp
+            else {
+                return
+            }
 
-                if let activeReplaySecond = replaySecond {
-                    if activeReplaySecond == second {
-                        updatePreviousTotals(from: fields)
-                        return
-                    }
-                    replaySecond = nil
+            let second = codexSecond(timestamp)
+
+            if let activeReplaySecond = replaySecond {
+                if activeReplaySecond == second {
+                    updatePreviousTotals(from: fields)
+                    return
                 }
+                replaySecond = nil
+            }
 
-                if sawThreadSpawn {
-                    guard let previous = pendingReplay else {
-                        pendingReplay = (timestamp, fields)
-                        return
-                    }
-                    let previousSecond = codexSecond(previous.timestamp)
-                    if previousSecond == second {
-                        updatePreviousTotals(from: previous.fields)
-                        updatePreviousTotals(from: fields)
-                        pendingReplay = nil
-                        sawThreadSpawn = false
-                        replaySecond = second
-                        return
-                    }
-                    appendEvent(from: previous.fields, at: previous.timestamp)
+            if sawThreadSpawn {
+                guard let previous = pendingReplay else {
+                    pendingReplay = (timestamp, fields)
+                    return
+                }
+                let previousSecond = codexSecond(previous.timestamp)
+                if previousSecond == second {
+                    updatePreviousTotals(from: previous.fields)
+                    updatePreviousTotals(from: fields)
                     pendingReplay = nil
                     sawThreadSpawn = false
+                    replaySecond = second
+                    return
                 }
-
-                appendEvent(from: fields, at: timestamp)
+                appendEvent(from: previous.fields, at: previous.timestamp)
+                pendingReplay = nil
+                sawThreadSpawn = false
             }
+
+            appendEvent(from: fields, at: timestamp)
         }
 
         appendPendingReplayEvent()
-        return events
     }
 }
 
