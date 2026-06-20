@@ -7,7 +7,13 @@ enum HistoryRetention {
         calendar.date(
             byAdding: .month,
             value: -(retainedMonthCount - 1),
-            to: calendar.dateInterval(of: .month, for: now)!.start
+            to: calendar.startOfMonth(for: now)
         )!
+    }
+}
+
+extension Calendar {
+    func startOfMonth(for date: Date) -> Date {
+        dateInterval(of: .month, for: date)!.start
     }
 }

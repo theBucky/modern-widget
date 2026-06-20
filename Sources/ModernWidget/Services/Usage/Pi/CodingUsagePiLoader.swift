@@ -19,24 +19,15 @@ extension CodingUsageLoader {
     }
 
     func piUsageDirectories() -> [URL] {
-        if let rawPaths = environment["PI_AGENT_DIR"],
-            !rawPaths.trimmingCharacters(in: .whitespaces).isEmpty
-        {
-            return
-                rawPaths
-                .split(separator: ",")
-                .map { expandHomePath(String($0).trimmingCharacters(in: .whitespaces)) }
-                .filter(isDirectory)
-                .uniquedByPath()
+        configuredDirectories(environmentKey: "PI_AGENT_DIR") {
+            [homeDirectory.appendingPathComponent(".pi/agent/sessions")]
         }
-
-        let sessions = homeDirectory.appendingPathComponent(".pi/agent/sessions")
-        return isDirectory(sessions) ? [sessions.standardizedFileURL] : []
+        .filter(isDirectory)
     }
 
     func readPiUsageFile(_ file: URL) -> [(timestamp: Date, counts: CodingTokenCounts)] {
-        let usageNeedle = [UInt8](#""usage""#.utf8)
-        let messageNeedle = [UInt8](#""message""#.utf8)
+        let usageNeedle = JSONLineNeedle(#""usage""#)
+        let messageNeedle = JSONLineNeedle(#""message""#)
         var records: [(timestamp: Date, counts: CodingTokenCounts)] = []
 
         forEachJSONLine(in: file) { line in
@@ -59,13 +50,13 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         return nil
     }
 
-    var hasInvalidType = false
+    var isMessage = true
     var timestamp: Date?
     var fields = PiMessageFields()
 
     while let key = scanner.nextKey() {
         if key == "type" {
-            hasInvalidType = !scanner.readStringEquals("message")
+            isMessage = scanner.readStringEquals("message")
         } else if key == "timestamp" {
             timestamp = scanner.readTimestamp()
         } else if key == "message" {
@@ -75,10 +66,7 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         }
     }
 
-    if hasInvalidType {
-        return nil
-    }
-    guard let timestamp, fields.isAssistant, fields.hasUsage else {
+    guard isMessage, let timestamp, fields.isAssistant, fields.hasUsage else {
         return nil
     }
 
@@ -104,11 +92,11 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
             cacheCreationTokens: fields.cacheWrite,
             cacheReadTokens: fields.cacheRead,
             totalTokens: totalTokens,
-            costUSD: CodingUsagePricing.cachedTokenCost(
+            costUSD: CodingUsagePricing.cachedCost(
                 model: model,
                 inputTokens: fields.input,
                 outputTokens: outputTokens,
-                cacheCreationTokens: fields.cacheWrite,
+                cacheCreation5mTokens: fields.cacheWrite,
                 cacheReadTokens: fields.cacheRead
             )
         )

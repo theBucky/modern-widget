@@ -216,6 +216,27 @@ struct JSONScanner {
     }
 }
 
+struct JSONLineNeedle {
+    fileprivate let bytes: UnsafeRawPointer
+    fileprivate let byteCount: Int
+
+    init(_ literal: StaticString) {
+        precondition(literal.hasPointerRepresentation && literal.utf8CodeUnitCount > 0)
+        bytes = UnsafeRawPointer(literal.utf8Start)
+        byteCount = literal.utf8CodeUnitCount
+    }
+}
+
+extension UnsafeRawBufferPointer {
+    /// Reports whether `needle` occurs in the buffer, via `memmem`.
+    func contains(_ needle: JSONLineNeedle) -> Bool {
+        guard let base = baseAddress, count >= needle.byteCount else {
+            return false
+        }
+        return memmem(base, count, needle.bytes, needle.byteCount) != nil
+    }
+}
+
 /// A borrowed JSON string payload, excluding the surrounding quotes.
 struct JSONStringValue {
     let start: UnsafePointer<UInt8>

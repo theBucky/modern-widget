@@ -30,10 +30,8 @@ struct CodingUsageLoader: Sendable {
         let claudeFiles = claudeUsageFiles(scope: scope)
         let codexSources = codexUsageSources(scope: scope)
         let piFiles = piUsageFiles(scope: scope)
-        let codexConfigFiles = codexHomeDirectories().map {
-            $0.appendingPathComponent("config.toml")
-        }
-        let files = (claudeFiles + codexSources.flatMap(\.files) + piFiles + codexConfigFiles)
+        let files =
+            (claudeFiles + codexSources.flatMap(\.files) + piFiles + codexFingerprintFiles())
             .uniquedByPath()
             .compactMap(usageFileFingerprint)
             .sorted { $0.path < $1.path }

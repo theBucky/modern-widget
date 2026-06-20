@@ -147,7 +147,7 @@ extension JSONScanner {
         guard let byte = peekByte() else {
             return nil
         }
-        if byte == 0x22 {
+        if byte == .quote {
             return readStringValue().flatMap(LogTimestamp.parse)
         }
         return readDouble().map(LogTimestamp.fromEpoch)
@@ -155,6 +155,7 @@ extension JSONScanner {
 }
 
 extension UInt8 {
+    fileprivate static let quote = UInt8(ascii: "\"")
     fileprivate static let dash = UInt8(ascii: "-")
     fileprivate static let dot = UInt8(ascii: ".")
     fileprivate static let colon = UInt8(ascii: ":")

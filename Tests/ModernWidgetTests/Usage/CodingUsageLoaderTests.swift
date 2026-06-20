@@ -93,6 +93,52 @@ struct CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 120)
     }
 
+    @Test("keeps pending codex replay when another spawn appears")
+    func keepsPendingCodexReplayWhenAnotherSpawnAppears() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexPendingSpawn")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let log = [
+            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-a"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:01.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-b"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1000},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:02.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1500},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1600},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/pending-spawn.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 200)
+        #expect(codex.totalCounts.totalTokens == 200)
+    }
+
+    @Test("keeps suppressing codex replay when another spawn appears")
+    func keepsSuppressingCodexReplayWhenAnotherSpawnAppears() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSuppressingSpawn")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let log = [
+            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-a"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1000},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1500},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.200Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-b"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.300Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1600},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1700,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1700},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/suppressing-spawn.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 100)
+        #expect(codex.totalCounts.totalTokens == 100)
+    }
+
     @Test("loads pi usage from assistant messages")
     func loadsPiUsageFromAssistantMessages() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-Pi")
@@ -211,6 +257,14 @@ struct CodingUsageLoaderTests {
         #expect(scanUInt64(#"{"v":-3}"#) == nil)
         #expect(scanUInt64(#"{"v":18446744073709551615}"#) == UInt64.max)
         #expect(scanUInt64(#"{"v":18446744073709551616}"#) == nil)
+    }
+
+    @Test("json line needles match raw buffers")
+    func jsonLineNeedlesMatchRawBuffers() {
+        Data("abc".utf8).withUnsafeBytes { buffer in
+            #expect(buffer.contains(JSONLineNeedle("bc")))
+            #expect(!buffer.contains(JSONLineNeedle("bd")))
+        }
     }
 
     @Test("parses common utc log timestamps")
@@ -347,6 +401,30 @@ struct CodingUsageLoaderTests {
         let codex = report.agents.first { $0.agent == .codex }!
 
         #expect(abs(codex.totalCounts.costUSD - 0.001645) < 0.00000001)
+    }
+
+    @Test("empty directory overrides fall back to defaults")
+    func emptyDirectoryOverridesFallBackToDefaults() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-EmptyDirectoryOverride")
+        let customHome = try makeFixtureRoot("CodingUsageLoaderTests-CustomDirectoryOverride")
+        defer {
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: customHome)
+        }
+
+        let defaultLoader = CodingUsageLoader(
+            environment: ["CODEX_HOME": " ,\n, \t"],
+            homeDirectory: home
+        )
+        #expect(
+            defaultLoader.codexHomeDirectories()
+                == [home.appendingPathComponent(".codex").standardizedFileURL])
+
+        let customLoader = CodingUsageLoader(
+            environment: ["CODEX_HOME": " , \(customHome.path) ,\n"],
+            homeDirectory: home
+        )
+        #expect(customLoader.codexHomeDirectories() == [customHome.standardizedFileURL])
     }
 
     @Test("keeps the full current month in the scan window")
