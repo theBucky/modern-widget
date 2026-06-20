@@ -86,30 +86,20 @@ extension CodingUsageLoader {
     }
 
     func claudeConfigDirectories() -> [URL] {
-        var directories: [URL] = []
+        let directories = configuredDirectories(
+            environmentKey: "CLAUDE_CONFIG_DIR",
+            defaults: {
+                let xdgConfigHome =
+                    environment["XDG_CONFIG_HOME"].map { expandHomePath($0) }
+                    ?? homeDirectory.appendingPathComponent(".config")
 
-        if let rawPaths = environment["CLAUDE_CONFIG_DIR"],
-            !rawPaths.trimmingCharacters(in: .whitespaces).isEmpty
-        {
-            directories.append(
-                contentsOf:
-                    rawPaths
-                    .split(separator: ",")
-                    .map {
-                        normalizeClaudeConfigPath(
-                            expandHomePath(String($0).trimmingCharacters(in: .whitespaces)))
-                    }
-            )
-        } else {
-            let xdgConfigHome =
-                environment["XDG_CONFIG_HOME"].map { expandHomePath($0) }
-                ?? homeDirectory.appendingPathComponent(".config")
-
-            directories.append(contentsOf: [
-                xdgConfigHome.appendingPathComponent("claude"),
-                homeDirectory.appendingPathComponent(".claude"),
-            ])
-        }
+                return [
+                    xdgConfigHome.appendingPathComponent("claude"),
+                    homeDirectory.appendingPathComponent(".claude"),
+                ]
+            },
+            normalize: normalizeClaudeConfigPath
+        )
 
         return
             directories
@@ -304,7 +294,7 @@ private func claudeEntry(from record: ClaudeRecordFields) -> ClaudeUsageEntry? {
             outputTokens: message.output,
             cacheCreationTokens: cacheCreation5m + cacheCreation1h,
             cacheReadTokens: message.cacheRead,
-            costUSD: CodingUsagePricing.claudeCost(
+            costUSD: CodingUsagePricing.cachedCost(
                 model: message.model,
                 inputTokens: message.input,
                 outputTokens: message.output,

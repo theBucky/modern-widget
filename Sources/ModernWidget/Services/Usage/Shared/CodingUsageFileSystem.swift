@@ -56,6 +56,26 @@ extension CodingUsageLoader {
         )
     }
 
+    func configuredDirectories(
+        environmentKey: String,
+        defaults: () -> [URL],
+        normalize: (URL) -> URL = { $0.standardizedFileURL }
+    ) -> [URL] {
+        if let rawPaths = environment[environmentKey],
+            !rawPaths.trimmingCharacters(in: .whitespaces).isEmpty
+        {
+            return
+                rawPaths
+                .split(separator: ",")
+                .map {
+                    normalize(expandHomePath(String($0).trimmingCharacters(in: .whitespaces)))
+                }
+                .uniquedByPath()
+        }
+
+        return defaults().map(normalize).uniquedByPath()
+    }
+
     /// Maps `file` and hands each non-empty line to `visit` as a borrowed byte slice of
     /// the mapping. Newlines are located with `memchr` over the raw pointer; slicing the
     /// `Data` per line instead is ~75x slower because every byte pays Collection witness
@@ -86,11 +106,6 @@ extension CodingUsageLoader {
         }
     }
 
-    func fileModifiedDate(_ url: URL) -> Date? {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-        return attributes?[.modificationDate] as? Date
-    }
-
     func isDirectory(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
@@ -114,27 +129,6 @@ extension CodingUsageLoader {
             return String(path.dropFirst(basePath.count + 1))
         }
         return url.lastPathComponent
-    }
-}
-
-extension UInt64 {
-    func saturatingSubtract(_ other: UInt64) -> UInt64 {
-        self >= other ? self - other : 0
-    }
-}
-
-extension String {
-    /// The string unless it is empty, mirroring the loaders' "treat blank as absent".
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-extension UnsafeRawBufferPointer {
-    /// Reports whether `needle` occurs in the buffer, via `memmem`.
-    func contains(_ needle: [UInt8]) -> Bool {
-        guard let base = baseAddress, count >= needle.count else {
-            return false
-        }
-        return needle.withUnsafeBytes { memmem(base, count, $0.baseAddress!, $0.count) != nil }
     }
 }
 

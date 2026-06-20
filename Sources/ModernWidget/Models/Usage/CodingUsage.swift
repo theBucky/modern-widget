@@ -15,6 +15,17 @@ enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
             return "Pi"
         }
     }
+
+    var logoResourceName: String {
+        switch self {
+        case .claude:
+            return "ClaudeLogo"
+        case .codex:
+            return "CodexLogo"
+        case .pi:
+            return "PiLogo"
+        }
+    }
 }
 
 struct CodingTokenCounts: Equatable, Sendable {
@@ -81,6 +92,11 @@ struct CodingUsageDaySummary: Equatable, Sendable {
     let counts: CodingTokenCounts
 }
 
+struct CodingUsageCostRow: Equatable, Sendable {
+    let title: String
+    let costUSD: Double
+}
+
 struct CodingUsageAgentSummary: Equatable, Sendable {
     let agent: CodingUsageAgent
     let dailyCounts: [CodingUsageDaySummary]
@@ -90,6 +106,62 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
             total.add(day.counts)
         }
     }
+
+    func costRows(now: Date, calendar: Calendar = .current) -> [CodingUsageCostRow] {
+        let todayStart = calendar.startOfDay(for: now)
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
+        let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
+        let week = calendar.dateInterval(of: .weekOfYear, for: now)!
+        let month = calendar.dateInterval(of: .month, for: now)!
+
+        return [
+            CodingUsageCostRow(
+                title: "Yesterday",
+                costUSD: cost(in: DateInterval(start: yesterdayStart, end: todayStart))
+            ),
+            CodingUsageCostRow(
+                title: "Today",
+                costUSD: cost(in: DateInterval(start: todayStart, end: tomorrowStart))
+            ),
+            CodingUsageCostRow(title: "Weekly", costUSD: cost(in: week)),
+            CodingUsageCostRow(title: "Monthly", costUSD: cost(in: month)),
+        ]
+    }
+
+    func cost(in interval: DateInterval) -> Double {
+        dailyCounts.reduce(0) { total, day in
+            guard day.date >= interval.start && day.date < interval.end else {
+                return total
+            }
+            return total + day.counts.costUSD
+        }
+    }
+
+    func chartDays(endingAt date: Date, calendar: Calendar = .current) -> [CodingUsageDaySummary] {
+        let dayCount = 30
+        if !dailyCounts.isEmpty {
+            return Array(dailyCounts.suffix(dayCount))
+        }
+        let today = calendar.startOfDay(for: date)
+        let start = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today)!
+
+        return (0..<dayCount).map { offset in
+            CodingUsageDaySummary(
+                date: calendar.date(byAdding: .day, value: offset, to: start)!,
+                counts: CodingTokenCounts()
+            )
+        }
+    }
+}
+
+func formatCodingUsageCost(_ cost: Double) -> String {
+    if cost <= 0 {
+        return "$0.00"
+    }
+    if cost < 0.01 {
+        return String(format: "$%.4f", cost)
+    }
+    return String(format: "$%.2f", cost)
 }
 
 struct CodingUsageReport: Equatable, Sendable {

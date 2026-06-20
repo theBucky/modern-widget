@@ -9,12 +9,12 @@ struct CodingUsagePricing {
         var fastMultiplier = 2.0
     }
 
-    static func claudeCost(
+    static func cachedCost(
         model: String?,
         inputTokens: UInt64,
         outputTokens: UInt64,
         cacheCreation5mTokens: UInt64,
-        cacheCreation1hTokens: UInt64,
+        cacheCreation1hTokens: UInt64 = 0,
         cacheReadTokens: UInt64,
         usesFastPricing: Bool = false
     ) -> Double {
@@ -28,26 +28,6 @@ struct CodingUsagePricing {
                 + Double(outputTokens) * pricing.output
                 + Double(cacheCreation5mTokens) * pricing.cacheCreate
                 + Double(cacheCreation1hTokens) * pricing.input * 2
-                + Double(cacheReadTokens) * pricing.cacheRead)
-    }
-
-    static func cachedTokenCost(
-        model: String?,
-        inputTokens: UInt64,
-        outputTokens: UInt64,
-        cacheCreationTokens: UInt64,
-        cacheReadTokens: UInt64,
-        usesFastPricing: Bool = false
-    ) -> Double {
-        guard let model, let pricing = pricing(for: model) else {
-            return 0
-        }
-
-        let multiplier = usesFastPricing ? pricing.fastMultiplier : 1
-        return multiplier
-            * (Double(inputTokens) * pricing.input
-                + Double(outputTokens) * pricing.output
-                + Double(cacheCreationTokens) * pricing.cacheCreate
                 + Double(cacheReadTokens) * pricing.cacheRead)
     }
 

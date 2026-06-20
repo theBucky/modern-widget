@@ -1,4 +1,3 @@
-import AppKit
 import Charts
 import SwiftUI
 
@@ -29,13 +28,7 @@ struct CodingUsageView: View {
     private func agentSection(_ summary: CodingUsageAgentSummary) -> some View {
         VStack(alignment: .leading, spacing: Layout.rowSpacing) {
             HStack(spacing: 6) {
-                if let image = summary.agent.logoImage {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: Layout.logoSize, height: Layout.logoSize)
-                        .accessibilityHidden(true)
-                }
+                CodingUsageAgentLogo(agent: summary.agent, size: Layout.logoSize)
 
                 Text(summary.agent.title)
                     .font(.subheadline.weight(.semibold))
@@ -43,7 +36,10 @@ struct CodingUsageView: View {
 
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
                 amountTable(summary)
-                CodingUsageChart(days: chartDays(summary), isFetching: isFetching)
+                CodingUsageChart(
+                    days: summary.chartDays(endingAt: reportDate),
+                    isFetching: isFetching
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Layout.blockPadding)
@@ -54,7 +50,7 @@ struct CodingUsageView: View {
 
     private func amountTable(_ summary: CodingUsageAgentSummary) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-            ForEach(amountRows(summary), id: \.title) { row in
+            ForEach(summary.costRows(now: reportDate), id: \.title) { row in
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
@@ -66,54 +62,6 @@ struct CodingUsageView: View {
         }
         .font(.caption.monospacedDigit())
         .frame(maxWidth: .infinity)
-    }
-
-    private func amountRows(_ summary: CodingUsageAgentSummary) -> [CodingUsageAmountRow] {
-        let calendar = Calendar.current
-        let now = reportDate
-        let todayStart = calendar.startOfDay(for: now)
-        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
-        let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
-        let week = calendar.dateInterval(of: .weekOfYear, for: now)!
-        let month = calendar.dateInterval(of: .month, for: now)!
-
-        return [
-            CodingUsageAmountRow(
-                title: "Yesterday",
-                costUSD: cost(in: DateInterval(start: yesterdayStart, end: todayStart), summary)
-            ),
-            CodingUsageAmountRow(
-                title: "Today",
-                costUSD: cost(in: DateInterval(start: todayStart, end: tomorrowStart), summary)
-            ),
-            CodingUsageAmountRow(title: "Weekly", costUSD: cost(in: week, summary)),
-            CodingUsageAmountRow(title: "Monthly", costUSD: cost(in: month, summary)),
-        ]
-    }
-
-    private func cost(in interval: DateInterval, _ summary: CodingUsageAgentSummary) -> Double {
-        summary.dailyCounts.reduce(0) { total, day in
-            guard day.date >= interval.start && day.date < interval.end else {
-                return total
-            }
-            return total + day.counts.costUSD
-        }
-    }
-
-    private func chartDays(_ summary: CodingUsageAgentSummary) -> [CodingUsageDaySummary] {
-        if !summary.dailyCounts.isEmpty {
-            return Array(summary.dailyCounts.suffix(30))
-        }
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: reportDate)
-        let start = calendar.date(byAdding: .day, value: -29, to: today)!
-
-        return (0..<30).map { offset in
-            CodingUsageDaySummary(
-                date: calendar.date(byAdding: .day, value: offset, to: start)!,
-                counts: CodingTokenCounts()
-            )
-        }
     }
 
     private var reportDate: Date {
@@ -186,43 +134,4 @@ private struct CodingUsageChart: View {
 private func usageCostText(_ cost: Double, isFetching: Bool) -> Text {
     Text(isFetching ? "fetching" : formatCodingUsageCost(cost))
         .foregroundStyle(isFetching || cost > 0 ? .primary : .tertiary)
-}
-
-private func formatCodingUsageCost(_ cost: Double) -> String {
-    if cost <= 0 {
-        return "$0.00"
-    }
-    if cost < 0.01 {
-        return String(format: "$%.4f", cost)
-    }
-    return String(format: "$%.2f", cost)
-}
-
-private extension CodingUsageAgent {
-    var logoImage: NSImage? {
-        let packageBundleURL = Bundle.main.bundleURL.appendingPathComponent(
-            "modern-widget_ModernWidget.bundle")
-        let url =
-            Bundle.main.url(forResource: logoResourceName, withExtension: "pdf")
-            ?? Bundle(url: packageBundleURL)?.url(
-                forResource: logoResourceName, withExtension: "pdf")
-
-        return url.flatMap(NSImage.init(contentsOf:))
-    }
-
-    var logoResourceName: String {
-        switch self {
-        case .claude:
-            return "ClaudeLogo"
-        case .codex:
-            return "CodexLogo"
-        case .pi:
-            return "PiLogo"
-        }
-    }
-}
-
-private struct CodingUsageAmountRow {
-    let title: String
-    let costUSD: Double
 }

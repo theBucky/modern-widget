@@ -155,25 +155,15 @@ extension CodingUsageLoader {
     }
 
     func codexHomeDirectories() -> [URL] {
-        var directories: [URL] = []
-
-        if let rawPaths = environment["CODEX_HOME"],
-            !rawPaths.trimmingCharacters(in: .whitespaces).isEmpty
-        {
-            directories.append(
-                contentsOf:
-                    rawPaths
-                    .split(separator: ",")
-                    .map {
-                        expandHomePath(String($0).trimmingCharacters(in: .whitespaces))
-                            .standardizedFileURL
-                    }
-            )
-        } else {
-            directories.append(homeDirectory.appendingPathComponent(".codex"))
+        configuredDirectories(environmentKey: "CODEX_HOME") {
+            [homeDirectory.appendingPathComponent(".codex")]
         }
+    }
 
-        return directories.uniquedByPath()
+    func codexFingerprintFiles() -> [URL] {
+        codexHomeDirectories().map {
+            $0.appendingPathComponent("config.toml")
+        }
     }
 
     func codexConfigRequestsFastPricing(_ file: URL) -> Bool {
@@ -211,9 +201,7 @@ extension CodingUsageLoader {
         let threadSpawnNeedle = [UInt8](#""thread_spawn""#.utf8)
         var previousTotals: CodexRawUsage?
         var currentModel: String?
-        var sawThreadSpawn = false
-        var pendingReplay: (timestamp: Date, fields: CodexLineFields)?
-        var replaySecond: Int64?
+        var replayState = CodexReplayState.idle
 
         func updatePreviousTotals(from fields: CodexLineFields) {
             if let totalUsage = fields.totalUsage {
@@ -240,11 +228,65 @@ extension CodingUsageLoader {
         }
 
         func appendPendingReplayEvent() {
-            if let pending = pendingReplay {
-                appendEvent(from: pending.fields, at: pending.timestamp)
-                pendingReplay = nil
+            switch replayState {
+            case let .pendingReplay(timestamp, fields):
+                appendEvent(from: fields, at: timestamp)
+                replayState = .idle
+            case .awaitingReplay:
+                replayState = .idle
+            case let .suppressingThenAwaitingReplay(second):
+                replayState = .suppressing(second: second)
+            case .idle, .suppressing:
+                break
             }
-            sawThreadSpawn = false
+        }
+
+        func beginReplay() {
+            switch replayState {
+            case .idle, .awaitingReplay:
+                replayState = .awaitingReplay
+            case let .pendingReplay(timestamp, fields):
+                appendEvent(from: fields, at: timestamp)
+                replayState = .awaitingReplay
+            case let .suppressing(second):
+                replayState = .suppressingThenAwaitingReplay(second: second)
+            case .suppressingThenAwaitingReplay:
+                break
+            }
+        }
+
+        func consumeReplay(_ fields: CodexLineFields, at timestamp: Date) -> Bool {
+            let second = codexSecond(timestamp)
+            switch replayState {
+            case let .suppressing(activeSecond):
+                if activeSecond == second {
+                    updatePreviousTotals(from: fields)
+                    return true
+                }
+                replayState = .idle
+            case let .suppressingThenAwaitingReplay(activeSecond):
+                if activeSecond == second {
+                    updatePreviousTotals(from: fields)
+                    return true
+                }
+                replayState = .pendingReplay(timestamp: timestamp, fields: fields)
+                return true
+            case .awaitingReplay:
+                replayState = .pendingReplay(timestamp: timestamp, fields: fields)
+                return true
+            case let .pendingReplay(previousTimestamp, previousFields):
+                if codexSecond(previousTimestamp) == second {
+                    updatePreviousTotals(from: previousFields)
+                    updatePreviousTotals(from: fields)
+                    replayState = .suppressing(second: second)
+                    return true
+                }
+                appendEvent(from: previousFields, at: previousTimestamp)
+                replayState = .idle
+            case .idle:
+                break
+            }
+            return false
         }
 
         forEachJSONLine(in: file) { line in
@@ -258,7 +300,7 @@ extension CodingUsageLoader {
             guard let fields = scanCodexLine(line) else { return }
 
             if isThreadSpawnLine, fields.type == .sessionMeta {
-                sawThreadSpawn = true
+                beginReplay()
                 return
             }
 
@@ -274,33 +316,8 @@ extension CodingUsageLoader {
                 return
             }
 
-            let second = codexSecond(timestamp)
-
-            if let activeReplaySecond = replaySecond {
-                if activeReplaySecond == second {
-                    updatePreviousTotals(from: fields)
-                    return
-                }
-                replaySecond = nil
-            }
-
-            if sawThreadSpawn {
-                guard let previous = pendingReplay else {
-                    pendingReplay = (timestamp, fields)
-                    return
-                }
-                let previousSecond = codexSecond(previous.timestamp)
-                if previousSecond == second {
-                    updatePreviousTotals(from: previous.fields)
-                    updatePreviousTotals(from: fields)
-                    pendingReplay = nil
-                    sawThreadSpawn = false
-                    replaySecond = second
-                    return
-                }
-                appendEvent(from: previous.fields, at: previous.timestamp)
-                pendingReplay = nil
-                sawThreadSpawn = false
+            if consumeReplay(fields, at: timestamp) {
+                return
             }
 
             appendEvent(from: fields, at: timestamp)
@@ -426,4 +443,12 @@ private struct CodexLineFields {
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
     var infoModel: String?
+}
+
+private enum CodexReplayState {
+    case idle
+    case awaitingReplay
+    case pendingReplay(timestamp: Date, fields: CodexLineFields)
+    case suppressing(second: Int64)
+    case suppressingThenAwaitingReplay(second: Int64)
 }

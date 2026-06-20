@@ -216,6 +216,16 @@ struct JSONScanner {
     }
 }
 
+extension UnsafeRawBufferPointer {
+    /// Reports whether `needle` occurs in the buffer, via `memmem`.
+    func contains(_ needle: [UInt8]) -> Bool {
+        guard let base = baseAddress, count >= needle.count else {
+            return false
+        }
+        return needle.withUnsafeBytes { memmem(base, count, $0.baseAddress!, $0.count) != nil }
+    }
+}
+
 /// A borrowed JSON string payload, excluding the surrounding quotes.
 struct JSONStringValue {
     let start: UnsafePointer<UInt8>
