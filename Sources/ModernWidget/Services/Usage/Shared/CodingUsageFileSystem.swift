@@ -61,16 +61,19 @@ extension CodingUsageLoader {
         defaults: () -> [URL],
         normalize: (URL) -> URL = { $0.standardizedFileURL }
     ) -> [URL] {
-        if let rawPaths = environment[environmentKey],
-            !rawPaths.trimmingCharacters(in: .whitespaces).isEmpty
-        {
-            return
+        if let rawPaths = environment[environmentKey] {
+            let configured =
                 rawPaths
                 .split(separator: ",")
-                .map {
-                    normalize(expandHomePath(String($0).trimmingCharacters(in: .whitespaces)))
+                .compactMap { token in
+                    let path = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return path.isEmpty ? nil : normalize(expandHomePath(path))
                 }
                 .uniquedByPath()
+
+            if !configured.isEmpty {
+                return configured
+            }
         }
 
         return defaults().map(normalize).uniquedByPath()

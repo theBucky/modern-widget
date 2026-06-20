@@ -26,8 +26,8 @@ extension CodingUsageLoader {
     }
 
     func readPiUsageFile(_ file: URL) -> [(timestamp: Date, counts: CodingTokenCounts)] {
-        let usageNeedle = [UInt8](#""usage""#.utf8)
-        let messageNeedle = [UInt8](#""message""#.utf8)
+        let usageNeedle = JSONLineNeedle(#""usage""#)
+        let messageNeedle = JSONLineNeedle(#""message""#)
         var records: [(timestamp: Date, counts: CodingTokenCounts)] = []
 
         forEachJSONLine(in: file) { line in

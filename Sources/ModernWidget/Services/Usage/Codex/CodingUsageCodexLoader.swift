@@ -196,9 +196,9 @@ extension CodingUsageLoader {
         usesFastPricing: Bool,
         visit: (CodexUsageEvent) -> Void
     ) {
-        let tokenCountNeedle = [UInt8](#""token_count""#.utf8)
-        let turnContextNeedle = [UInt8](#""turn_context""#.utf8)
-        let threadSpawnNeedle = [UInt8](#""thread_spawn""#.utf8)
+        let tokenCountNeedle = JSONLineNeedle(#""token_count""#)
+        let turnContextNeedle = JSONLineNeedle(#""turn_context""#)
+        let threadSpawnNeedle = JSONLineNeedle(#""thread_spawn""#)
         var previousTotals: CodexRawUsage?
         var currentModel: String?
         var replayState = CodexReplayState.idle

@@ -259,6 +259,14 @@ struct CodingUsageLoaderTests {
         #expect(scanUInt64(#"{"v":18446744073709551616}"#) == nil)
     }
 
+    @Test("json line needles match raw buffers")
+    func jsonLineNeedlesMatchRawBuffers() {
+        Data("abc".utf8).withUnsafeBytes { buffer in
+            #expect(buffer.contains(JSONLineNeedle("bc")))
+            #expect(!buffer.contains(JSONLineNeedle("bd")))
+        }
+    }
+
     @Test("parses common utc log timestamps")
     func parsesCommonUTCLogTimestamps() {
         #expect(LogTimestamp.parse("2026-06-18T01:02:03Z") == date(2026, 6, 18, 1, 2, 3))
@@ -393,6 +401,30 @@ struct CodingUsageLoaderTests {
         let codex = report.agents.first { $0.agent == .codex }!
 
         #expect(abs(codex.totalCounts.costUSD - 0.001645) < 0.00000001)
+    }
+
+    @Test("empty directory overrides fall back to defaults")
+    func emptyDirectoryOverridesFallBackToDefaults() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-EmptyDirectoryOverride")
+        let customHome = try makeFixtureRoot("CodingUsageLoaderTests-CustomDirectoryOverride")
+        defer {
+            try? FileManager.default.removeItem(at: home)
+            try? FileManager.default.removeItem(at: customHome)
+        }
+
+        let defaultLoader = CodingUsageLoader(
+            environment: ["CODEX_HOME": " ,\n, \t"],
+            homeDirectory: home
+        )
+        #expect(
+            defaultLoader.codexHomeDirectories()
+                == [home.appendingPathComponent(".codex").standardizedFileURL])
+
+        let customLoader = CodingUsageLoader(
+            environment: ["CODEX_HOME": " , \(customHome.path) ,\n"],
+            homeDirectory: home
+        )
+        #expect(customLoader.codexHomeDirectories() == [customHome.standardizedFileURL])
     }
 
     @Test("keeps the full current month in the scan window")

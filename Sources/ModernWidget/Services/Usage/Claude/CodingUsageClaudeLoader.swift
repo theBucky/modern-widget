@@ -116,7 +116,7 @@ extension CodingUsageLoader {
 
     func readClaudeUsageFile(_ file: URL) -> [ClaudeUsageEntry] {
         var entries: [ClaudeUsageEntry] = []
-        let usageNeedle = [UInt8](#""usage""#.utf8)
+        let usageNeedle = JSONLineNeedle(#""usage""#)
 
         forEachJSONLine(in: file) { line in
             guard line.contains(usageNeedle) else {
