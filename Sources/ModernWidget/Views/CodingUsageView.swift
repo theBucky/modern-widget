@@ -35,7 +35,7 @@ struct CodingUsageView: View {
             }
 
             VStack(alignment: .leading, spacing: Layout.rowSpacing) {
-                amountTable(summary)
+                usageTable(summary)
                 CodingUsageChart(
                     days: summary.chartDays(endingAt: reportDate),
                     isFetching: isFetching
@@ -48,14 +48,14 @@ struct CodingUsageView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func amountTable(_ summary: CodingUsageAgentSummary) -> some View {
+    private func usageTable(_ summary: CodingUsageAgentSummary) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-            ForEach(summary.costRows(now: reportDate), id: \.title) { row in
+            ForEach(summary.usageRows(now: reportDate), id: \.title) { row in
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
                         .frame(width: Layout.labelWidth, alignment: .leading)
-                    usageCostText(row.costUSD, isFetching: isFetching)
+                    CodingUsageValueText(counts: row.counts, isFetching: isFetching)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
@@ -120,8 +120,12 @@ private struct CodingUsageChart: View {
     private func chartHoverAnnotation(_ day: CodingUsageDaySummary) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
-                .foregroundStyle(.secondary)
-            usageCostText(day.counts.costUSD, isFetching: isFetching)
+                .foregroundStyle(Color.secondary)
+            CodingUsageValueText(
+                counts: day.counts,
+                isFetching: isFetching,
+                emphasizesCost: true
+            )
         }
         .font(.caption2.monospacedDigit())
         .padding(.horizontal, 5)
@@ -131,7 +135,34 @@ private struct CodingUsageChart: View {
     }
 }
 
-private func usageCostText(_ cost: Double, isFetching: Bool) -> Text {
-    Text(isFetching ? "fetching" : formatCodingUsageCost(cost))
-        .foregroundStyle(isFetching || cost > 0 ? .primary : .tertiary)
+private struct CodingUsageValueText: View {
+    let counts: CodingTokenCounts
+    let isFetching: Bool
+    var emphasizesCost = false
+
+    var body: some View {
+        if isFetching {
+            Text("fetching")
+                .foregroundColor(Self.costColor)
+        } else {
+            Text("\(tokenText) / \(costText)")
+        }
+    }
+
+    private var tokenText: Text {
+        Text(formatCodingUsageTokens(counts.totalTokens))
+            .fontWeight(.regular)
+            .foregroundColor(.secondary)
+    }
+
+    private var costText: Text {
+        let text = Text(formatCodingUsageCost(counts.costUSD))
+            .fontWeight(emphasizesCost ? .semibold : .regular)
+        if counts.hasUsage {
+            return text.foregroundColor(Self.costColor)
+        }
+        return text.foregroundColor(Color(nsColor: .tertiaryLabelColor))
+    }
+
+    private static let costColor = Color(nsColor: .textColor)
 }

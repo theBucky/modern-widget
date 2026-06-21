@@ -92,9 +92,9 @@ struct CodingUsageDaySummary: Equatable, Sendable {
     let counts: CodingTokenCounts
 }
 
-struct CodingUsageCostRow: Equatable, Sendable {
+struct CodingUsagePeriodRow: Equatable, Sendable {
     let title: String
-    let costUSD: Double
+    let counts: CodingTokenCounts
 }
 
 struct CodingUsageAgentSummary: Equatable, Sendable {
@@ -107,7 +107,7 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
         }
     }
 
-    func costRows(now: Date, calendar: Calendar = .current) -> [CodingUsageCostRow] {
+    func usageRows(now: Date, calendar: Calendar = .current) -> [CodingUsagePeriodRow] {
         let todayStart = calendar.startOfDay(for: now)
         let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
@@ -115,25 +115,25 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
         let month = calendar.dateInterval(of: .month, for: now)!
 
         return [
-            CodingUsageCostRow(
+            CodingUsagePeriodRow(
                 title: "Yesterday",
-                costUSD: cost(in: DateInterval(start: yesterdayStart, end: todayStart))
+                counts: counts(in: DateInterval(start: yesterdayStart, end: todayStart))
             ),
-            CodingUsageCostRow(
+            CodingUsagePeriodRow(
                 title: "Today",
-                costUSD: cost(in: DateInterval(start: todayStart, end: tomorrowStart))
+                counts: counts(in: DateInterval(start: todayStart, end: tomorrowStart))
             ),
-            CodingUsageCostRow(title: "Weekly", costUSD: cost(in: week)),
-            CodingUsageCostRow(title: "Monthly", costUSD: cost(in: month)),
+            CodingUsagePeriodRow(title: "Weekly", counts: counts(in: week)),
+            CodingUsagePeriodRow(title: "Monthly", counts: counts(in: month)),
         ]
     }
 
-    func cost(in interval: DateInterval) -> Double {
-        dailyCounts.reduce(0) { total, day in
+    func counts(in interval: DateInterval) -> CodingTokenCounts {
+        dailyCounts.reduce(into: CodingTokenCounts()) { total, day in
             guard day.date >= interval.start && day.date < interval.end else {
-                return total
+                return
             }
-            return total + day.counts.costUSD
+            total.add(day.counts)
         }
     }
 
@@ -162,6 +162,25 @@ func formatCodingUsageCost(_ cost: Double) -> String {
         return String(format: "$%.4f", cost)
     }
     return String(format: "$%.2f", cost)
+}
+
+func formatCodingUsageTokens(_ tokens: UInt64) -> String {
+    let units: [(threshold: Double, suffix: String)] = [
+        (1_000_000_000_000, "T"),
+        (1_000_000_000, "B"),
+        (1_000_000, "M"),
+        (1_000, "K"),
+    ]
+    let value = Double(tokens)
+
+    for unit in units {
+        guard value >= unit.threshold else {
+            continue
+        }
+        return String(format: "%.1f%@ tokens", value / unit.threshold, unit.suffix)
+    }
+
+    return String(format: "%.1f tokens", value)
 }
 
 struct CodingUsageReport: Equatable, Sendable {
