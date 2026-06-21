@@ -6,11 +6,14 @@ struct CodingUsageView: View {
 
     private enum Layout {
         static let spacing: CGFloat = 10
-        static let rowSpacing: CGFloat = 6
+        static let sectionSpacing: CGFloat = 8
+        static let contentSectionSpacing: CGFloat = 12
         static let blockPadding: CGFloat = 8
+        static let chartTopPadding: CGFloat = 2
         static let cornerRadius: CGFloat = 6
         static let labelWidth: CGFloat = 64
         static let logoSize: CGFloat = 14
+        static let chartHeight: CGFloat = 58
     }
 
     var body: some View {
@@ -26,7 +29,7 @@ struct CodingUsageView: View {
     }
 
     private func agentSection(_ summary: CodingUsageAgentSummary) -> some View {
-        VStack(alignment: .leading, spacing: Layout.rowSpacing) {
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             HStack(spacing: 6) {
                 CodingUsageAgentLogo(agent: summary.agent, size: Layout.logoSize)
 
@@ -34,12 +37,16 @@ struct CodingUsageView: View {
                     .font(.subheadline.weight(.semibold))
             }
 
-            VStack(alignment: .leading, spacing: Layout.rowSpacing) {
+            VStack(alignment: .leading, spacing: Layout.contentSectionSpacing) {
                 usageTable(summary)
+
                 CodingUsageChart(
                     days: summary.chartDays(endingAt: reportDate),
-                    isFetching: isFetching
+                    isFetching: isFetching,
+                    barColor: barColor(for: summary.agent),
+                    height: Layout.chartHeight
                 )
+                .padding(.top, Layout.chartTopPadding)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Layout.blockPadding)
@@ -67,11 +74,24 @@ struct CodingUsageView: View {
     private var reportDate: Date {
         store.report.generatedAt ?? .now
     }
+
+    private func barColor(for agent: CodingUsageAgent) -> Color {
+        switch agent {
+        case .claude:
+            return Color(red: 217 / 255, green: 119 / 255, blue: 87 / 255)
+        case .codex:
+            return Color(red: 13 / 255, green: 13 / 255, blue: 13 / 255)
+        case .pi:
+            return .accentColor
+        }
+    }
 }
 
 private struct CodingUsageChart: View {
     let days: [CodingUsageDaySummary]
     let isFetching: Bool
+    let barColor: Color
+    let height: CGFloat
 
     @State private var selectedDate: Date?
 
@@ -80,11 +100,11 @@ private struct CodingUsageChart: View {
             ForEach(days, id: \.date) { day in
                 BarMark(
                     x: .value("Day", day.date, unit: .day),
-                    y: .value("Cost", isFetching ? 1 : day.counts.costUSD),
+                    y: .value("Cost", barHeightValue(for: day)),
                     width: .ratio(0.7)
                 )
                 .foregroundStyle(
-                    isFetching ? Color.secondary.opacity(0.18) : Color.accentColor.opacity(0.8))
+                    isFetching ? Color.secondary.opacity(0.18) : barColor)
             }
 
             if let selectedDay {
@@ -104,8 +124,34 @@ private struct CodingUsageChart: View {
         .chartYAxis(.hidden)
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDate)
-        .frame(height: 44)
+        .chartYScale(domain: 0...chartUpperBound)
+        .frame(height: height)
         .frame(maxWidth: .infinity)
+    }
+
+    private var maxCost: Double {
+        days.map(\.counts.costUSD).max() ?? 0
+    }
+
+    private var minimumVisibleCost: Double {
+        maxCost > 0 ? maxCost * 0.08 : 0.08
+    }
+
+    private var chartUpperBound: Double {
+        if isFetching {
+            return 1
+        }
+        return max(maxCost, minimumVisibleCost)
+    }
+
+    private func barHeightValue(for day: CodingUsageDaySummary) -> Double {
+        if isFetching {
+            return 1
+        }
+        guard day.counts.hasUsage else {
+            return 0
+        }
+        return max(day.counts.costUSD, minimumVisibleCost)
     }
 
     private var selectedDay: CodingUsageDaySummary? {
