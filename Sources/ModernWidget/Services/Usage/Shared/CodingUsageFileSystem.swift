@@ -31,7 +31,6 @@ extension CodingUsageLoader {
             guard values?.isRegularFile == true else {
                 continue
             }
-            // ponytail: mtime is the cheap cutoff; per-line indexes if copied stale logs matter.
             if let modifiedAt = values?.contentModificationDate,
                 modifiedAt < modifiedSince
             {

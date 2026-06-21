@@ -19,9 +19,7 @@ struct WalkHistoryMonth {
             return calendar.date(byAdding: .day, value: dayOffset, to: firstDay)!
         }
     }
-}
 
-enum WalkHistoryCalendar {
     static func weekdaySymbols(calendar: Calendar = .current) -> [String] {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols
         let offset = calendar.firstWeekday - 1

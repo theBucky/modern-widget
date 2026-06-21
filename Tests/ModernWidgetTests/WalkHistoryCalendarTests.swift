@@ -36,7 +36,7 @@ struct WalkHistoryCalendarTests {
         let calendar = gregorianUTC(firstWeekday: 2)
 
         #expect(
-            WalkHistoryCalendar.weekdaySymbols(calendar: calendar)
+            WalkHistoryMonth.weekdaySymbols(calendar: calendar)
                 == ["M", "T", "W", "T", "F", "S", "S"]
         )
     }

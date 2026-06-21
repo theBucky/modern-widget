@@ -7,6 +7,10 @@ struct MenuBarPanelView: View {
     private let usageStore: CodingUsageStore
 
     @State private var selectedPane = Pane.main
+    @State private var displayedPane = Pane.main
+    @State private var panelWidth = Layout.mainPaneWidth
+    @State private var contentOpacity = 1.0
+    @State private var paneTransitionID = 0
 
     init(
         engine: ReminderEngine,
@@ -20,10 +24,41 @@ struct MenuBarPanelView: View {
         self.usageStore = usageStore
     }
 
-    private enum Pane {
+    private enum Pane: CaseIterable {
         case main
         case calendar
         case usage
+
+        var title: String {
+            switch self {
+            case .main:
+                return "Timer"
+            case .calendar:
+                return "Calendar"
+            case .usage:
+                return "Usage"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .main:
+                return "timer"
+            case .calendar:
+                return "calendar"
+            case .usage:
+                return "chart.line.uptrend.xyaxis"
+            }
+        }
+
+        var width: CGFloat {
+            switch self {
+            case .main:
+                return Layout.mainPaneWidth
+            case .calendar, .usage:
+                return Layout.detailPaneWidth
+            }
+        }
     }
 
     private enum Layout {
@@ -31,23 +66,27 @@ struct MenuBarPanelView: View {
         static let detailPaneWidth: CGFloat = 280
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
+        static let fadeOutAnimation = Animation.easeOut(duration: 0.08)
+        static let paneAnimation = Animation.smooth(duration: 0.14)
+        static let fadeInAnimation = Animation.easeIn(duration: 0.08)
     }
 
     var body: some View {
         VStack(spacing: Layout.unitSpacing) {
             panePicker
             paneBody
-                .id(selectedPane)
-                .transition(.opacity)
+                .opacity(contentOpacity)
         }
-        .frame(width: paneWidth)
+        .frame(width: panelWidth)
         .padding(Layout.borderPadding)
-        .animation(.smooth(duration: 0.18), value: selectedPane)
+        .onChange(of: selectedPane) { _, newPane in
+            switchPane(to: newPane)
+        }
     }
 
     @ViewBuilder
     private var paneBody: some View {
-        switch selectedPane {
+        switch displayedPane {
         case .main:
             ReminderPaneView(
                 engine: engine,
@@ -64,26 +103,55 @@ struct MenuBarPanelView: View {
         }
     }
 
-    private var paneWidth: CGFloat {
-        switch selectedPane {
-        case .main:
-            return Layout.mainPaneWidth
-        case .calendar, .usage:
-            return Layout.detailPaneWidth
-        }
-    }
-
     private var panePicker: some View {
         Picker("Pane", selection: $selectedPane) {
-            Label("Timer", systemImage: "timer").tag(Pane.main)
-            Label("Calendar", systemImage: "calendar").tag(Pane.calendar)
-            Label("Usage", systemImage: "chart.line.uptrend.xyaxis").tag(Pane.usage)
+            ForEach(Pane.allCases, id: \.self) { pane in
+                Label(pane.title, systemImage: pane.systemImage).tag(pane)
+            }
         }
         .pickerStyle(.segmented)
         .labelStyle(.iconOnly)
         .labelsHidden()
-        .transaction { transaction in
-            transaction.animation = nil
+    }
+
+    private func switchPane(to pane: Pane) {
+        if pane == displayedPane {
+            guard contentOpacity < 1 || panelWidth != pane.width else {
+                return
+            }
+
+            paneTransitionID += 1
+            withAnimation(Layout.paneAnimation) {
+                panelWidth = pane.width
+            }
+            withAnimation(Layout.fadeInAnimation) {
+                contentOpacity = 1
+            }
+            return
+        }
+
+        paneTransitionID += 1
+        let transitionID = paneTransitionID
+
+        withAnimation(Layout.fadeOutAnimation) {
+            contentOpacity = 0
+        } completion: {
+            guard paneTransitionID == transitionID else {
+                return
+            }
+
+            withAnimation(Layout.paneAnimation) {
+                displayedPane = pane
+                panelWidth = pane.width
+            } completion: {
+                guard paneTransitionID == transitionID else {
+                    return
+                }
+
+                withAnimation(Layout.fadeInAnimation) {
+                    contentOpacity = 1
+                }
+            }
         }
     }
 }

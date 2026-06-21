@@ -49,14 +49,27 @@ struct CodexRawUsage {
     let reasoningTokens: UInt64
     let totalTokens: UInt64
 
+    init(
+        inputTokens: UInt64,
+        cachedInputTokens: UInt64,
+        outputTokens: UInt64,
+        reasoningTokens: UInt64,
+        totalTokens: UInt64
+    ) {
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = min(cachedInputTokens, inputTokens)
+        self.outputTokens = outputTokens
+        self.reasoningTokens = reasoningTokens
+        self.totalTokens = totalTokens
+    }
+
     var isEmpty: Bool {
         inputTokens == 0 && cachedInputTokens == 0 && outputTokens == 0 && reasoningTokens == 0
             && totalTokens == 0
     }
 
     func tokenCounts(model: String, usesFastPricing: Bool) -> CodingTokenCounts {
-        let cachedInputTokens = min(cachedInputTokens, inputTokens)
-        return CodingTokenCounts.codex(
+        CodingTokenCounts.codex(
             rawInputTokens: inputTokens,
             cachedInputTokens: cachedInputTokens,
             outputTokens: outputTokens,

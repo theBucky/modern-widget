@@ -210,6 +210,50 @@ struct CodingUsageLoaderTests {
         #expect(dayCounts(codex, 2026, 6, 18).totalTokens == 0)
     }
 
+    @Test("normalizes codex cache tokens before pricing")
+    func normalizesCodexCacheTokensBeforePricing() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexCacheClamp")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":20,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15},"model":"gpt-5.2"}}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 0)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 5)
+        #expect(codex.totalCounts.totalTokens == 15)
+        #expect(abs(codex.totalCounts.costUSD - 0.00007175) < 0.00000001)
+    }
+
+    @Test("ignores malformed token counts without failing the load")
+    func ignoresMalformedTokenCountsWithoutFailingLoad() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-MalformedTokenCount")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":18446744073709551616,"output_tokens":7,"cache_creation_input_tokens":-1,"cache_read_input_tokens":1.5}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.inputTokens == 0)
+        #expect(claude.totalCounts.outputTokens == 7)
+        #expect(claude.totalCounts.cacheCreationTokens == 0)
+        #expect(claude.totalCounts.cacheReadTokens == 0)
+        #expect(claude.totalCounts.totalTokens == 7)
+    }
+
     @Test("calculates newer claude model pricing and fast multiplier")
     func calculatesNewerClaudeModelPricingAndFastMultiplier() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-NewClaudePricing")
@@ -250,23 +294,6 @@ struct CodingUsageLoaderTests {
         #expect(claude.totalCounts.costUSD == 0)
     }
 
-    @Test("rejects an out-of-range token count instead of trapping")
-    func rejectsOutOfRangeTokenCount() {
-        #expect(scanUInt64(#"{"v":42}"#) == 42)
-        #expect(scanUInt64(#"{"v":1.5}"#) == nil)
-        #expect(scanUInt64(#"{"v":-3}"#) == nil)
-        #expect(scanUInt64(#"{"v":18446744073709551615}"#) == UInt64.max)
-        #expect(scanUInt64(#"{"v":18446744073709551616}"#) == nil)
-    }
-
-    @Test("json line needles match raw buffers")
-    func jsonLineNeedlesMatchRawBuffers() {
-        Data("abc".utf8).withUnsafeBytes { buffer in
-            #expect(buffer.contains(JSONLineNeedle("bc")))
-            #expect(!buffer.contains(JSONLineNeedle("bd")))
-        }
-    }
-
     @Test("parses common utc log timestamps")
     func parsesCommonUTCLogTimestamps() {
         #expect(LogTimestamp.parse("2026-06-18T01:02:03Z") == date(2026, 6, 18, 1, 2, 3))
@@ -276,17 +303,6 @@ struct CodingUsageLoaderTests {
                 .timeIntervalSince(date(2026, 6, 18, 1, 2, 3)) == 0.25)
         #expect(LogTimestamp.parse(" 2026-06-18T01:02:03.000Z\n") == nil)
         #expect(LogTimestamp.parse("2026-06-18T09:02:03+08:00") == nil)
-    }
-
-    private func scanUInt64(_ json: String) -> UInt64? {
-        Data(json.utf8).withUnsafeBytes { buffer -> UInt64? in
-            guard var scanner = JSONScanner(buffer), scanner.beginObject(),
-                scanner.nextKey() != nil
-            else {
-                return nil
-            }
-            return scanner.readUInt64()
-        }
     }
 
     @Test("keeps codex events with different fractional timestamps")

@@ -5,8 +5,8 @@ import Testing
 
 @Suite("Coding usage summary")
 struct CodingUsageSummaryTests {
-    @Test("summarizes usage windows and chart days")
-    func summarizesUsageWindowsAndChartDays() {
+    @Test("summarizes usage windows")
+    func summarizesUsageWindows() {
         let calendar = gregorianUTC()
         let now = date(2026, 6, 18, 12)
         let summary = CodingUsageAgentSummary(
@@ -25,13 +25,36 @@ struct CodingUsageSummaryTests {
                 usage("Weekly", costUSD: 5, totalTokens: 5_000_000_000),
                 usage("Monthly", costUSD: 6, totalTokens: 6_000_000_000),
             ])
+    }
+
+    @Test("keeps chart days in source order")
+    func keepsChartDaysInSourceOrder() {
+        let calendar = gregorianUTC()
+        let now = date(2026, 6, 18, 12)
+        let summary = CodingUsageAgentSummary(
+            agent: .claude,
+            dailyCounts: [
+                day(2026, 6, 1, 1),
+                day(2026, 6, 17, 2),
+                day(2026, 6, 18, 3),
+            ]
+        )
+
         #expect(
             summary.chartDays(endingAt: now, calendar: calendar).map(\.date) == [
                 date(2026, 6, 1),
                 date(2026, 6, 17),
                 date(2026, 6, 18),
             ])
+    }
+
+    @Test("formats small costs with four decimals")
+    func formatsSmallCostsWithFourDecimals() {
         #expect(formatCodingUsageCost(0.0042) == "$0.0042")
+    }
+
+    @Test("formats token counts with compact units")
+    func formatsTokenCountsWithCompactUnits() {
         #expect(formatCodingUsageTokens(999) == "999.0 tokens")
         #expect(formatCodingUsageTokens(1_200) == "1.2K tokens")
         #expect(formatCodingUsageTokens(12_300_000_000) == "12.3B tokens")

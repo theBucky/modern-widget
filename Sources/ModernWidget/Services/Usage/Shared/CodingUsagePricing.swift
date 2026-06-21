@@ -42,7 +42,6 @@ struct CodingUsagePricing {
             return 0
         }
 
-        let cachedInputTokens = min(cachedInputTokens, inputTokens)
         let billedInputTokens = inputTokens - cachedInputTokens
         let multiplier = usesFastPricing ? pricing.fastMultiplier : 1
         return multiplier

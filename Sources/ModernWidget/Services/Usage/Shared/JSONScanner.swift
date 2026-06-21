@@ -8,8 +8,8 @@ import Foundation
 /// dominant cost, so the scanner steps over unwanted strings, arrays, and objects
 /// without allocating them.
 ///
-/// ponytail: assumes well-formed JSONL from the agent tools; malformed input yields a
-/// partial extraction that the per-agent guards reject rather than a hard error.
+/// Assumes well-formed JSONL from the agent tools; malformed input yields a partial
+/// extraction that the per-agent guards reject rather than a hard error.
 struct JSONScanner {
     private let base: UnsafePointer<UInt8>
     private let count: Int

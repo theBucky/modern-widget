@@ -57,7 +57,7 @@ struct WalkHistoryCalendarView: View {
     }
 
     private var weekdayHeader: some View {
-        let symbols = WalkHistoryCalendar.weekdaySymbols()
+        let symbols = WalkHistoryMonth.weekdaySymbols()
 
         return HStack(spacing: Layout.cellSpacing) {
             ForEach(symbols.indices, id: \.self) { index in

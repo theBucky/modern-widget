@@ -7,21 +7,14 @@ struct CodingUsageAgentLogo: View {
 
     @ViewBuilder
     var body: some View {
-        if let image = Self.image(for: agent) {
+        if let url = Bundle.main.url(forResource: agent.logoResourceName, withExtension: "pdf"),
+            let image = NSImage(contentsOf: url)
+        {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
         }
-    }
-
-    private static func image(for agent: CodingUsageAgent) -> NSImage? {
-        logoURL(for: agent).flatMap(NSImage.init(contentsOf:))
-    }
-
-    nonisolated static func logoURL(for agent: CodingUsageAgent, in bundle: Bundle = .main) -> URL?
-    {
-        bundle.url(forResource: agent.logoResourceName, withExtension: "pdf")?.standardizedFileURL
     }
 }
