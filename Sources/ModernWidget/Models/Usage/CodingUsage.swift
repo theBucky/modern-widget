@@ -194,6 +194,16 @@ struct CodingUsageReport: Equatable, Sendable {
         }
     }
 
+    func counts(in interval: DateInterval) -> CodingTokenCounts {
+        agents.reduce(into: CodingTokenCounts()) { total, summary in
+            total.add(summary.counts(in: interval))
+        }
+    }
+
+    func todayCounts(now: Date, calendar: Calendar = .current) -> CodingTokenCounts {
+        counts(in: calendar.dateInterval(of: .day, for: now)!)
+    }
+
     static var empty: Self {
         Self(
             generatedAt: nil,

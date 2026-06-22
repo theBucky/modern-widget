@@ -27,6 +27,34 @@ struct CodingUsageSummaryTests {
             ])
     }
 
+    @Test("summarizes today's report total across agents")
+    func summarizesTodayReportTotalAcrossAgents() {
+        let calendar = gregorianUTC()
+        let now = date(2026, 6, 18, 12)
+        let report = CodingUsageReport(
+            generatedAt: now,
+            agents: [
+                CodingUsageAgentSummary(
+                    agent: .claude,
+                    dailyCounts: [day(2026, 6, 18, 1), day(2026, 6, 17, 9)]
+                ),
+                CodingUsageAgentSummary(
+                    agent: .codex,
+                    dailyCounts: [day(2026, 6, 18, 2)]
+                ),
+                CodingUsageAgentSummary(
+                    agent: .pi,
+                    dailyCounts: [day(2026, 6, 18, 3)]
+                ),
+            ]
+        )
+
+        let counts = report.todayCounts(now: now, calendar: calendar)
+
+        #expect(counts.costUSD == 6)
+        #expect(counts.totalTokens == 6_000_000_000)
+    }
+
     @Test("keeps chart days in source order")
     func keepsChartDaysInSourceOrder() {
         let calendar = gregorianUTC()

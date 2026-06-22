@@ -13,15 +13,64 @@ struct CodingUsageView: View {
         static let cornerRadius: CGFloat = 6
         static let labelWidth: CGFloat = 64
         static let logoSize: CGFloat = 14
+        static let totalCostSize: CGFloat = 32
         static let chartHeight: CGFloat = 58
     }
 
     var body: some View {
         VStack(spacing: Layout.spacing) {
+            todayTotalSection
+            Divider()
             ForEach(store.report.agents, id: \.agent) { summary in
                 agentSection(summary)
             }
         }
+    }
+
+    private var todayTotalSection: some View {
+        HStack(alignment: .lastTextBaseline) {
+            totalCostText
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("Today (\(todayISODateText))")
+                Text(formatCodingUsageTokens(todayCounts.totalTokens))
+            }
+            .font(.caption.monospacedDigit().weight(.semibold))
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var totalCostText: some View {
+        let text = Text(isFetching ? "fetching" : formatCodingUsageCost(todayCounts.costUSD))
+            .font(.system(size: Layout.totalCostSize, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+
+        if isFetching {
+            text.foregroundStyle(.secondary)
+        } else if !todayCounts.hasUsage {
+            text.foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+        } else {
+            text.foregroundStyle(
+                LinearGradient(
+                    colors: [Color(nsColor: .textColor), Color(nsColor: .secondaryLabelColor)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+        }
+    }
+
+    private var todayCounts: CodingTokenCounts {
+        store.report.todayCounts(now: reportDate)
+    }
+
+    private var todayISODateText: String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: reportDate)
+        return String(
+            format: "%04d-%02d-%02d", components.year!, components.month!, components.day!)
     }
 
     private var isFetching: Bool {
