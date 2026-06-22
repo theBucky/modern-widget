@@ -97,6 +97,41 @@ struct CodingUsagePeriodRow: Equatable, Sendable {
     let counts: CodingTokenCounts
 }
 
+struct CodingUsageCostTrend: Equatable, Sendable {
+    enum Direction: Equatable, Sendable {
+        case up
+        case down
+        case flat
+    }
+
+    let percent: Double
+
+    var direction: Direction {
+        if percent > 0 {
+            return .up
+        }
+        if percent < 0 {
+            return .down
+        }
+        return .flat
+    }
+
+    init(currentCostUSD: Double, previousCostUSD: Double) {
+        guard previousCostUSD > 0 else {
+            self.percent = currentCostUSD > 0 ? 100 : 0
+            return
+        }
+
+        self.percent = (currentCostUSD - previousCostUSD) / previousCostUSD * 100
+    }
+}
+
+struct CodingUsageTodaySummary: Equatable, Sendable {
+    let date: Date
+    let counts: CodingTokenCounts
+    let costTrend: CodingUsageCostTrend
+}
+
 struct CodingUsageAgentSummary: Equatable, Sendable {
     let agent: CodingUsageAgent
     let dailyCounts: [CodingUsageDaySummary]
@@ -183,6 +218,10 @@ func formatCodingUsageTokens(_ tokens: UInt64) -> String {
     return String(format: "%.1f tokens", value)
 }
 
+func formatCodingUsageCostTrendMagnitude(_ trend: CodingUsageCostTrend) -> String {
+    String(format: "%.1f%%", abs(trend.percent))
+}
+
 struct CodingUsageReport: Equatable, Sendable {
     /// `nil` until the first load completes.
     let generatedAt: Date?
@@ -202,6 +241,23 @@ struct CodingUsageReport: Equatable, Sendable {
 
     func todayCounts(now: Date, calendar: Calendar = .current) -> CodingTokenCounts {
         counts(in: calendar.dateInterval(of: .day, for: now)!)
+    }
+
+    func todaySummary(now: Date, calendar: Calendar = .current) -> CodingUsageTodaySummary {
+        let todayInterval = calendar.dateInterval(of: .day, for: now)!
+        let todayStart = todayInterval.start
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
+        let today = counts(in: todayInterval)
+        let yesterday = counts(in: DateInterval(start: yesterdayStart, end: todayStart))
+
+        return CodingUsageTodaySummary(
+            date: todayStart,
+            counts: today,
+            costTrend: CodingUsageCostTrend(
+                currentCostUSD: today.costUSD,
+                previousCostUSD: yesterday.costUSD
+            )
+        )
     }
 
     static var empty: Self {

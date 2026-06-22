@@ -55,6 +55,31 @@ struct CodingUsageSummaryTests {
         #expect(counts.totalTokens == 6_000_000_000)
     }
 
+    @Test("summarizes today's cost trend across agents")
+    func summarizesTodayCostTrendAcrossAgents() {
+        let calendar = gregorianUTC()
+        let now = date(2026, 6, 18, 12)
+        let report = CodingUsageReport(
+            generatedAt: now,
+            agents: [
+                CodingUsageAgentSummary(
+                    agent: .claude,
+                    dailyCounts: [day(2026, 6, 17, 1), day(2026, 6, 18, 2)]
+                ),
+                CodingUsageAgentSummary(
+                    agent: .codex,
+                    dailyCounts: [day(2026, 6, 17, 3), day(2026, 6, 18, 4)]
+                ),
+                CodingUsageAgentSummary(agent: .pi, dailyCounts: []),
+            ]
+        )
+
+        let trend = report.todaySummary(now: now, calendar: calendar).costTrend
+
+        #expect(trend.percent == 50)
+        #expect(trend.direction == .up)
+    }
+
     @Test("keeps chart days in source order")
     func keepsChartDaysInSourceOrder() {
         let calendar = gregorianUTC()
@@ -87,6 +112,22 @@ struct CodingUsageSummaryTests {
         #expect(formatCodingUsageTokens(1_200) == "1.2K tokens")
         #expect(formatCodingUsageTokens(12_300_000_000) == "12.3B tokens")
         #expect(formatCodingUsageTokens(1_200_000_000_000) == "1.2T tokens")
+    }
+
+    @Test("formats cost trend magnitude")
+    func formatsCostTrendMagnitude() {
+        #expect(
+            formatCodingUsageCostTrendMagnitude(
+                CodingUsageCostTrend(currentCostUSD: 120, previousCostUSD: 100)) == "20.0%")
+        #expect(
+            formatCodingUsageCostTrendMagnitude(
+                CodingUsageCostTrend(currentCostUSD: 95, previousCostUSD: 100)) == "5.0%")
+        #expect(
+            formatCodingUsageCostTrendMagnitude(
+                CodingUsageCostTrend(currentCostUSD: 0, previousCostUSD: 0)) == "0.0%")
+        #expect(
+            formatCodingUsageCostTrendMagnitude(
+                CodingUsageCostTrend(currentCostUSD: 100, previousCostUSD: 0)) == "100.0%")
     }
 
     @Test("empty summary gets a thirty day chart window")
