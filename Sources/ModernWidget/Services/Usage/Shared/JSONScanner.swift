@@ -41,10 +41,12 @@ struct JSONScanner {
     mutating func nextKey() -> JSONKey? {
         skipWhitespace()
         guard index < count else { return nil }
+
         if base[index] == .closeBrace {
             index += 1
             return nil
         }
+
         if base[index] == .comma {
             index += 1
             skipWhitespace()
@@ -53,17 +55,14 @@ struct JSONScanner {
                 return nil
             }
         }
-        guard index < count, base[index] == .quote else {
+        guard let key = consumeStringPayload() else {
             return nil
         }
-        let start = index + 1
-        skipString()
-        let keyEnd = index - 1
         skipWhitespace()
         if index < count, base[index] == .colon {
             index += 1
         }
-        return JSONKey(start: base + start, count: keyEnd - start)
+        return JSONKey(start: key.start, count: key.count)
     }
 
     /// Reads an unsigned integer, returning `nil` for fractional, negative, or
@@ -73,7 +72,7 @@ struct JSONScanner {
         guard index < count else { return nil }
         guard base[index].isDigit else {
             if base[index].isNumberByte {
-                skipNumber()
+                _ = consumeNumberToken()
             }
             return nil
         }
@@ -89,7 +88,7 @@ struct JSONScanner {
         }
 
         guard index == count || !base[index].isNumberByte else {
-            skipNumber()
+            _ = consumeNumberToken()
             return nil
         }
         return overflow ? nil : value
@@ -98,10 +97,7 @@ struct JSONScanner {
     /// Reads a borrowed JSON number token.
     mutating func readNumberValue() -> JSONNumberValue? {
         skipWhitespace()
-        let start = index
-        skipNumber()
-        guard index > start else { return nil }
-        return JSONNumberValue(start: base + start, count: index - start)
+        return consumeNumberToken()
     }
 
     /// Reads a string value, returning `nil` (after skipping) for non-string values.
@@ -118,26 +114,11 @@ struct JSONScanner {
     /// Reads a borrowed string value, returning `nil` (after skipping) for non-strings.
     mutating func readStringValue() -> JSONStringValue? {
         skipWhitespace()
-        guard index < count, base[index] == .quote else {
+        guard let value = consumeStringPayload() else {
             skipValue()
             return nil
         }
-        let start = index + 1
-        var hasEscape = false
-        var cursor = start
-        while cursor < count {
-            let byte = base[cursor]
-            if byte == .backslash {
-                hasEscape = true
-                cursor += 2
-                continue
-            }
-            if byte == .quote { break }
-            cursor += 1
-        }
-        let end = min(cursor, count)
-        index = min(cursor + 1, count)
-        return JSONStringValue(start: base + start, count: end - start, hasEscape: hasEscape)
+        return value
     }
 
     /// Reads a JSON boolean, returning `nil` (after skipping) for non-boolean values.
@@ -165,17 +146,14 @@ struct JSONScanner {
     mutating func skipValue() {
         skipWhitespace()
         guard index < count else { return }
+
         switch base[index] {
         case .quote:
-            skipString()
-        case .openBrace:
-            skipContainer(open: .openBrace, close: .closeBrace)
-        case .openBracket:
-            skipContainer(open: .openBracket, close: .closeBracket)
+            _ = consumeStringPayload()
+        case .openBrace, .openBracket:
+            consumeContainer()
         default:
-            while index < count, !base[index].endsScalar {
-                index += 1
-            }
+            _ = consumeScalar()
         }
     }
 
@@ -185,54 +163,86 @@ struct JSONScanner {
         }
     }
 
-    private mutating func skipNumber() {
+    private mutating func consumeNumberToken() -> JSONNumberValue? {
+        let start = index
         while index < count, base[index].isNumberByte {
             index += 1
         }
+        guard index > start else {
+            return nil
+        }
+        return JSONNumberValue(start: base + start, count: index - start)
     }
 
     private mutating func readBareScalar(equals literal: StaticString) -> Bool {
+        let scalar = consumeScalar()
+        let scalarCount = scalar.count
+        return scalarCount == literal.utf8CodeUnitCount
+            && memcmp(scalar.start, literal.utf8Start, scalarCount) == 0
+    }
+
+    private mutating func consumeScalar() -> (start: UnsafePointer<UInt8>, count: Int) {
         let start = index
         while index < count, !base[index].endsScalar {
             index += 1
         }
-        let scalarCount = index - start
-        return scalarCount == literal.utf8CodeUnitCount
-            && memcmp(base + start, literal.utf8Start, scalarCount) == 0
+        return (base + start, index - start)
     }
 
-    /// Skips a string value; assumes the cursor is on the opening quote.
-    private mutating func skipString() {
-        index += 1
-        while index < count {
-            switch base[index] {
-            case .backslash: index += 2
-            case .quote: index += 1; return
-            default: index += 1
-            }
+    /// Consumes a quoted JSON string and returns its payload without the quotes.
+    private mutating func consumeStringPayload() -> JSONStringValue? {
+        guard index < count, base[index] == .quote else {
+            return nil
         }
-    }
 
-    /// Skips a balanced container, honoring quoted strings; assumes the cursor is on
-    /// the opening bracket.
-    private mutating func skipContainer(open: UInt8, close: UInt8) {
-        var depth = 0
-        while index < count {
-            let byte = base[index]
-            if byte == .quote {
-                skipString()
+        let start = index + 1
+        var cursor = start
+        var hasEscape = false
+
+        while cursor < count {
+            let byte = base[cursor]
+            if byte == .backslash {
+                hasEscape = true
+                cursor += 2
                 continue
             }
-            if byte == open {
+            if byte == .quote {
+                let value = JSONStringValue(
+                    start: base + start,
+                    count: cursor - start,
+                    hasEscape: hasEscape
+                )
+                index = cursor + 1
+                return value
+            }
+            cursor += 1
+        }
+
+        index = count
+        return JSONStringValue(start: base + start, count: count - start, hasEscape: hasEscape)
+    }
+
+    /// Consumes the object or array at the cursor, honoring nested containers and strings.
+    private mutating func consumeContainer() {
+        var depth = 1
+        index += 1
+
+        while index < count {
+            switch base[index] {
+            case .quote:
+                _ = consumeStringPayload()
+            case .openBrace, .openBracket:
                 depth += 1
-            } else if byte == close {
+                index += 1
+            case .closeBrace, .closeBracket:
                 depth -= 1
+                index += 1
                 if depth == 0 {
-                    index += 1
                     return
                 }
+            default:
+                index += 1
             }
-            index += 1
         }
     }
 }
