@@ -70,37 +70,38 @@ struct JSONScanner {
     /// overflowing numbers while still consuming the full numeric token.
     mutating func readUInt64() -> UInt64? {
         skipWhitespace()
-        var value: UInt64 = 0
-        var hasDigits = false
-        var invalid = false
-        while index < count, base[index].isNumberByte {
-            let byte = base[index]
-            index += 1
-            guard byte >= .zero, byte <= .nine else {
-                invalid = true  // a sign, dot, or exponent: not an unsigned integer
-                continue
+        guard index < count else { return nil }
+        guard base[index].isDigit else {
+            if base[index].isNumberByte {
+                skipNumber()
             }
-            let (scaled, overflowMul) = value.multipliedReportingOverflow(by: 10)
-            let (sum, overflowAdd) = scaled.addingReportingOverflow(UInt64(byte - .zero))
-            invalid = invalid || overflowMul || overflowAdd
-            value = sum
-            hasDigits = true
+            return nil
         }
-        return hasDigits && !invalid ? value : nil
+
+        var value: UInt64 = 0
+        var overflow = false
+        while index < count, base[index].isDigit {
+            let (scaled, overflowMul) = value.multipliedReportingOverflow(by: 10)
+            let (sum, overflowAdd) = scaled.addingReportingOverflow(UInt64(base[index] - .zero))
+            overflow = overflow || overflowMul || overflowAdd
+            value = sum
+            index += 1
+        }
+
+        guard index == count || !base[index].isNumberByte else {
+            skipNumber()
+            return nil
+        }
+        return overflow ? nil : value
     }
 
-    /// Reads any JSON number as a `Double`, consuming the full numeric token.
-    mutating func readDouble() -> Double? {
+    /// Reads a borrowed JSON number token.
+    mutating func readNumberValue() -> JSONNumberValue? {
         skipWhitespace()
         let start = index
-        while index < count, base[index].isNumberByte {
-            index += 1
-        }
+        skipNumber()
         guard index > start else { return nil }
-        let parsed = String(
-            decoding: UnsafeBufferPointer(start: base + start, count: index - start), as: UTF8.self
-        ).withCString { strtod($0, nil) }
-        return parsed.isFinite ? parsed : nil
+        return JSONNumberValue(start: base + start, count: index - start)
     }
 
     /// Reads a string value, returning `nil` (after skipping) for non-string values.
@@ -141,12 +142,16 @@ struct JSONScanner {
 
     /// Reads a JSON boolean, returning `nil` (after skipping) for non-boolean values.
     mutating func readBool() -> Bool? {
-        guard let byte = peekByte() else { return nil }
-        skipValue()
-        switch byte {
-        case .lowerT: return true
-        case .lowerF: return false
-        default: return nil
+        skipWhitespace()
+        guard index < count else { return nil }
+        switch base[index] {
+        case .lowerT:
+            return readBareScalar(equals: "true") ? true : nil
+        case .lowerF:
+            return readBareScalar(equals: "false") ? false : nil
+        default:
+            skipValue()
+            return nil
         }
     }
 
@@ -178,6 +183,22 @@ struct JSONScanner {
         while index < count, base[index].isWhitespace {
             index += 1
         }
+    }
+
+    private mutating func skipNumber() {
+        while index < count, base[index].isNumberByte {
+            index += 1
+        }
+    }
+
+    private mutating func readBareScalar(equals literal: StaticString) -> Bool {
+        let start = index
+        while index < count, !base[index].endsScalar {
+            index += 1
+        }
+        let scalarCount = index - start
+        return scalarCount == literal.utf8CodeUnitCount
+            && memcmp(base + start, literal.utf8Start, scalarCount) == 0
     }
 
     /// Skips a string value; assumes the cursor is on the opening quote.
@@ -237,6 +258,12 @@ extension UnsafeRawBufferPointer {
     }
 }
 
+/// A borrowed JSON number token.
+struct JSONNumberValue {
+    let start: UnsafePointer<UInt8>
+    let count: Int
+}
+
 /// A borrowed JSON string payload, excluding the surrounding quotes.
 struct JSONStringValue {
     let start: UnsafePointer<UInt8>
@@ -287,8 +314,13 @@ extension UInt8 {
     fileprivate static let closeBracket = UInt8(ascii: "]")
     fileprivate static let comma = UInt8(ascii: ",")
     fileprivate static let colon = UInt8(ascii: ":")
+    fileprivate static let dot = UInt8(ascii: ".")
+    fileprivate static let plus = UInt8(ascii: "+")
+    fileprivate static let minus = UInt8(ascii: "-")
     fileprivate static let zero = UInt8(ascii: "0")
     fileprivate static let nine = UInt8(ascii: "9")
+    fileprivate static let lowerE = UInt8(ascii: "e")
+    fileprivate static let upperE = UInt8(ascii: "E")
     fileprivate static let lowerT = UInt8(ascii: "t")
     fileprivate static let lowerF = UInt8(ascii: "f")
 
@@ -297,9 +329,13 @@ extension UInt8 {
             || self == UInt8(ascii: "\r")
     }
 
+    fileprivate var isDigit: Bool {
+        self >= .zero && self <= .nine
+    }
+
     fileprivate var isNumberByte: Bool {
-        (self >= .zero && self <= .nine) || self == UInt8(ascii: ".") || self == UInt8(ascii: "e")
-            || self == UInt8(ascii: "E") || self == UInt8(ascii: "-") || self == UInt8(ascii: "+")
+        isDigit || self == .dot || self == .lowerE || self == .upperE || self == .minus
+            || self == .plus
     }
 
     /// True at a byte that ends a bare scalar (number/`true`/`false`/`null`).

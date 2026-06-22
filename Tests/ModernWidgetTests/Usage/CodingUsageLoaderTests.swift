@@ -93,6 +93,26 @@ struct CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 120)
     }
 
+    @Test("ignores codex thread spawn text outside subagent source")
+    func ignoresCodexThreadSpawnTextOutsideSubagentSource() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexThreadSpawnText")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let log = [
+            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"note":"thread_spawn copied from a transcript"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":150},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/thread-spawn-text.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 150)
+        #expect(codex.totalCounts.totalTokens == 150)
+    }
+
     @Test("keeps pending codex replay when another spawn appears")
     func keepsPendingCodexReplayWhenAnotherSpawnAppears() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexPendingSpawn")

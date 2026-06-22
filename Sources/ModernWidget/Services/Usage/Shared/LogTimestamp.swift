@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Parses the canonical timestamp formats the agent logs emit: UTC ISO-8601 strings
@@ -14,11 +15,13 @@ enum LogTimestamp {
         }
     }
 
-    /// Interprets a numeric timestamp, treating large magnitudes as milliseconds.
-    static func fromEpoch(_ raw: Double) -> Date {
-        raw > 10_000_000_000
-            ? Date(timeIntervalSince1970: raw / 1_000)
-            : Date(timeIntervalSince1970: raw)
+    /// Parses a numeric timestamp, treating large magnitudes as milliseconds.
+    static func parseEpoch(_ value: JSONNumberValue) -> Date? {
+        parseDouble(start: value.start, count: value.count).map { raw in
+            raw > 10_000_000_000
+                ? Date(timeIntervalSince1970: raw / 1_000)
+                : Date(timeIntervalSince1970: raw)
+        }
     }
 
     /// Parses a borrowed JSON string timestamp without allocating.
@@ -27,6 +30,61 @@ enum LogTimestamp {
             return nil
         }
         return parseUTC(start: value.start, count: value.count)
+    }
+
+    private static func parseDouble(start: UnsafePointer<UInt8>, count: Int) -> Double? {
+        var cursor = 0
+        var sign = 1.0
+        if start[cursor] == .dash {
+            sign = -1
+            cursor += 1
+        } else if start[cursor] == .plus {
+            cursor += 1
+        }
+
+        var value = 0.0
+        let integerStart = cursor
+        while cursor < count, start[cursor] >= .zero, start[cursor] <= .nine {
+            value = value * 10 + Double(start[cursor] - .zero)
+            cursor += 1
+        }
+        guard cursor > integerStart else { return nil }
+
+        if cursor < count, start[cursor] == .dot {
+            cursor += 1
+            let fractionStart = cursor
+            var scale = 0.1
+            while cursor < count, start[cursor] >= .zero, start[cursor] <= .nine {
+                value += Double(start[cursor] - .zero) * scale
+                scale /= 10
+                cursor += 1
+            }
+            guard cursor > fractionStart else { return nil }
+        }
+
+        if cursor < count, start[cursor] == .lowerE || start[cursor] == .upperE {
+            cursor += 1
+            var exponentSign = 1
+            if cursor < count, start[cursor] == .dash {
+                exponentSign = -1
+                cursor += 1
+            } else if cursor < count, start[cursor] == .plus {
+                cursor += 1
+            }
+
+            var exponent = 0
+            let exponentStart = cursor
+            while cursor < count, start[cursor] >= .zero, start[cursor] <= .nine {
+                exponent = min(exponent * 10 + Int(start[cursor] - .zero), 1_000)
+                cursor += 1
+            }
+            guard cursor > exponentStart else { return nil }
+            value *= pow(10, Double(exponentSign * exponent))
+        }
+
+        guard cursor == count else { return nil }
+        let parsed = sign * value
+        return parsed.isFinite ? parsed : nil
     }
 
     private static func parseUTC(start: UnsafePointer<UInt8>, count: Int) -> Date? {
@@ -150,7 +208,7 @@ extension JSONScanner {
         if byte == .quote {
             return readStringValue().flatMap(LogTimestamp.parse)
         }
-        return readDouble().map(LogTimestamp.fromEpoch)
+        return readNumberValue().flatMap(LogTimestamp.parseEpoch)
     }
 }
 
@@ -158,7 +216,10 @@ extension UInt8 {
     fileprivate static let quote = UInt8(ascii: "\"")
     fileprivate static let dash = UInt8(ascii: "-")
     fileprivate static let dot = UInt8(ascii: ".")
+    fileprivate static let plus = UInt8(ascii: "+")
     fileprivate static let colon = UInt8(ascii: ":")
+    fileprivate static let lowerE = UInt8(ascii: "e")
+    fileprivate static let upperE = UInt8(ascii: "E")
     fileprivate static let upperT = UInt8(ascii: "T")
     fileprivate static let upperZ = UInt8(ascii: "Z")
     fileprivate static let zero = UInt8(ascii: "0")

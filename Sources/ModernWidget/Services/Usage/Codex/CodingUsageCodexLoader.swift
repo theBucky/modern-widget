@@ -312,7 +312,7 @@ extension CodingUsageLoader {
 
             guard let fields = scanCodexLine(line) else { return }
 
-            if isThreadSpawnLine, fields.type == .sessionMeta {
+            if isThreadSpawnLine, fields.type == .sessionMeta, fields.hasThreadSpawn {
                 beginReplay()
                 return
             }
@@ -372,10 +372,37 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
             codexInfo(&scanner, into: &fields)
         } else if key == "model" {
             fields.payloadModel = scanner.readString()
+        } else if key == "source" {
+            fields.hasThreadSpawn = codexSourceHasThreadSpawn(&scanner)
         } else {
             scanner.skipValue()
         }
     }
+}
+
+private func codexSourceHasThreadSpawn(_ scanner: inout JSONScanner) -> Bool {
+    guard scanner.beginObject() else { return false }
+    var hasThreadSpawn = false
+    while let key = scanner.nextKey() {
+        if key == "subagent" {
+            hasThreadSpawn = codexSubagentHasThreadSpawn(&scanner) || hasThreadSpawn
+        } else {
+            scanner.skipValue()
+        }
+    }
+    return hasThreadSpawn
+}
+
+private func codexSubagentHasThreadSpawn(_ scanner: inout JSONScanner) -> Bool {
+    guard scanner.beginObject() else { return false }
+    var hasThreadSpawn = false
+    while let key = scanner.nextKey() {
+        if key == "thread_spawn" {
+            hasThreadSpawn = true
+        }
+        scanner.skipValue()
+    }
+    return hasThreadSpawn
 }
 
 private func codexInfo(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) {
@@ -452,6 +479,7 @@ private struct CodexLineFields {
     var timestamp: Date?
 
     var isTokenCount = false
+    var hasThreadSpawn = false
     var payloadModel: String?
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
