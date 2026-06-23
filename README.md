@@ -71,6 +71,7 @@ The app bundle is created at `dist/ModernWidget.app` and ad-hoc signed for local
 | Mode | Description |
 | --- | --- |
 | `run` | Build and launch the app. Default mode. |
+| `bundle` | Build and self-sign the app bundle without launching. |
 | `debug` | Build and launch the executable in `lldb`. |
 | `logs` | Launch the app and stream process logs. |
 | `telemetry` | Launch the app and stream subsystem logs. |
@@ -108,29 +109,47 @@ script/benchmark_coding_usage.sh \
 ```text
 Sources/ModernWidget/
 ├── App/
-│   └── ModernWidgetApp.swift          # SwiftUI app entry and MenuBarExtra scene
+│   └── ModernWidgetApp.swift              # SwiftUI app entry and MenuBarExtra scene
 ├── Models/
-│   ├── HistoryRetention.swift         # shared three-month retention window
-│   ├── Reminder/                      # countdown state, snapshots, schedules
-│   ├── Usage/                         # coding agent usage report models
-│   └── WalkHistory/                   # month grid and weekday helpers
+│   ├── HistoryRetention.swift             # shared three-month retention window
+│   ├── Reminder/
+│   │   ├── ReminderNotificationIssue.swift  # notification permission and delivery issues
+│   │   ├── ReminderSchedule.swift           # countdown phases and reminder timing
+│   │   └── ReminderState.swift              # timer state, presets, and snapshots
+│   ├── Usage/
+│   │   └── CodingUsage.swift                # coding agent usage report models
+│   └── WalkHistory/
+│       └── WalkHistoryCalendar.swift        # month grid and weekday helpers
+├── Resources/                             # Claude, Codex, and Pi logo assets
 ├── Services/
-│   ├── DailySupplementStore.swift     # daily supplement persistence
-│   ├── Reminder/                      # timer engine and notification delivery
-│   ├── Usage/                         # Claude/Codex/Pi log loading and pricing
-│   └── WalkHistoryStore.swift         # walk persistence and day counts
+│   ├── DailySupplementStore.swift         # daily supplement persistence
+│   ├── Reminder/
+│   │   ├── ReminderEngine.swift           # timer engine and state persistence
+│   │   └── ReminderNotifier.swift         # native notification delivery
+│   ├── Usage/
+│   │   ├── CodingUsageLoader.swift        # scan and load orchestration
+│   │   ├── CodingUsageStore.swift         # observable store and refresh loop
+│   │   ├── Claude/                        # Claude log loading
+│   │   ├── Codex/                         # Codex log loading
+│   │   ├── Pi/                            # Pi log loading
+│   │   └── Shared/                        # file scanning, JSON parsing, pricing
+│   └── WalkHistoryStore.swift             # walk persistence and day counts
 └── Views/
-    ├── MenuBarPanelView.swift         # tabbed menu bar panel shell
-    ├── ReminderPaneView.swift         # timer, controls, supplement checkbox
-    ├── WalkHistoryCalendarView.swift  # calendar pane
-    ├── CodingUsageView.swift          # AI usage pane
-    └── MenuBarIconView.swift          # menu bar status icon
+    ├── MenuBarPanelView.swift             # tabbed menu bar panel shell
+    ├── ReminderPaneView.swift             # timer, controls, supplement checkbox
+    ├── WalkHistoryCalendarView.swift      # calendar pane
+    ├── CodingUsageView.swift              # AI usage pane and chart
+    └── MenuBarIconView.swift              # menu bar status icon
 
 Tests/ModernWidgetTests/
-├── Reminder*                          # reminder state and schedule tests
-├── WalkHistory*                       # calendar and retention tests
-├── DailySupplementStoreTests.swift
-└── Usage/                             # Claude/Codex/Pi usage loader tests
+├── ReminderScheduleTests.swift            # reminder schedule timing
+├── ReminderStateTests.swift               # reminder state transitions
+├── WalkHistoryCalendarTests.swift         # calendar grid
+├── WalkHistoryStoreTests.swift            # walk persistence
+├── HistoryRetentionTests.swift            # retention window
+├── DailySupplementStoreTests.swift        # supplement persistence
+├── TestSupport.swift                      # shared test helpers
+└── Usage/                                 # Claude/Codex/Pi loader, summary, benchmark tests
 ```
 
 ## Data and privacy
