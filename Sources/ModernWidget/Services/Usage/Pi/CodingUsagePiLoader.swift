@@ -5,8 +5,9 @@ extension CodingUsageLoader {
         files: [URL],
         into accumulator: inout CodingUsageAccumulator
     ) {
+        let needles = [JSONLineNeedle(#""usage""#), JSONLineNeedle(#""message""#)]
         for file in files {
-            for record in readPiUsageFile(file) {
+            for record in usageRecords(in: file, needles: needles, parse: piUsageRecord) {
                 accumulator.add(.pi, counts: record.counts, at: record.timestamp)
             }
         }
@@ -25,22 +26,6 @@ extension CodingUsageLoader {
         .filter(isDirectory)
     }
 
-    func readPiUsageFile(_ file: URL) -> [(timestamp: Date, counts: CodingTokenCounts)] {
-        let usageNeedle = JSONLineNeedle(#""usage""#)
-        let messageNeedle = JSONLineNeedle(#""message""#)
-        var records: [(timestamp: Date, counts: CodingTokenCounts)] = []
-
-        forEachJSONLine(in: file) { line in
-            guard line.contains(usageNeedle), line.contains(messageNeedle) else {
-                return
-            }
-            if let record = piUsageRecord(line) {
-                records.append(record)
-            }
-        }
-
-        return records
-    }
 }
 
 private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
@@ -50,14 +35,11 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         return nil
     }
 
-    var isMessage = true
     var timestamp: Date?
     var fields = PiMessageFields()
 
     while let key = scanner.nextKey() {
-        if key == "type" {
-            isMessage = scanner.readStringEquals("message")
-        } else if key == "timestamp" {
+        if key == "timestamp" {
             timestamp = scanner.readTimestamp()
         } else if key == "message" {
             fields = piMessageFields(&scanner)
@@ -66,7 +48,7 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         }
     }
 
-    guard isMessage, let timestamp, fields.isAssistant, fields.hasUsage else {
+    guard let timestamp, fields.isAssistant, fields.hasUsage else {
         return nil
     }
 
@@ -84,7 +66,7 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         return nil
     }
 
-    let model = fields.model?.nilIfEmpty
+    let model = fields.model
     return (
         timestamp,
         CodingTokenCounts(

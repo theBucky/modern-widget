@@ -72,7 +72,7 @@ struct JSONScanner {
         guard index < count else { return nil }
         guard base[index].isDigit else {
             if base[index].isNumberByte {
-                _ = consumeNumberToken()
+                skipNumberToken()
             }
             return nil
         }
@@ -88,16 +88,10 @@ struct JSONScanner {
         }
 
         guard index == count || !base[index].isNumberByte else {
-            _ = consumeNumberToken()
+            skipNumberToken()
             return nil
         }
         return overflow ? nil : value
-    }
-
-    /// Reads a borrowed JSON number token.
-    mutating func readNumberValue() -> JSONNumberValue? {
-        skipWhitespace()
-        return consumeNumberToken()
     }
 
     /// Reads a string value, returning `nil` (after skipping) for non-string values.
@@ -136,12 +130,6 @@ struct JSONScanner {
         }
     }
 
-    /// Returns the next non-whitespace byte without consuming it.
-    mutating func peekByte() -> UInt8? {
-        skipWhitespace()
-        return index < count ? base[index] : nil
-    }
-
     /// Skips the value at the cursor regardless of type.
     mutating func skipValue() {
         skipWhitespace()
@@ -163,15 +151,10 @@ struct JSONScanner {
         }
     }
 
-    private mutating func consumeNumberToken() -> JSONNumberValue? {
-        let start = index
+    private mutating func skipNumberToken() {
         while index < count, base[index].isNumberByte {
             index += 1
         }
-        guard index > start else {
-            return nil
-        }
-        return JSONNumberValue(start: base + start, count: index - start)
     }
 
     private mutating func readBareScalar(equals literal: StaticString) -> Bool {
@@ -266,12 +249,6 @@ extension UnsafeRawBufferPointer {
         }
         return memmem(base, count, needle.bytes, needle.byteCount) != nil
     }
-}
-
-/// A borrowed JSON number token.
-struct JSONNumberValue {
-    let start: UnsafePointer<UInt8>
-    let count: Int
 }
 
 /// A borrowed JSON string payload, excluding the surrounding quotes.

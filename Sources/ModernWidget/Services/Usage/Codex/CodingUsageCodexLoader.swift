@@ -11,35 +11,15 @@ struct CodexUsageFileKey: Hashable {
     let path: String
 }
 
-struct CodexUsageEvent {
+struct CodexUsageEvent: Hashable {
     let timestamp: Date
     let model: String
     let counts: CodingTokenCounts
-
-    var dedupeKey: CodexUsageEventKey {
-        CodexUsageEventKey(
-            timestamp: timestamp,
-            model: model,
-            inputTokens: counts.inputTokens,
-            outputTokens: counts.outputTokens,
-            cacheReadTokens: counts.cacheReadTokens,
-            reasoningTokens: counts.reasoningTokens
-        )
-    }
-}
-
-struct CodexUsageEventKey: Hashable {
-    let timestamp: Date
-    let model: String
-    let inputTokens: UInt64
-    let outputTokens: UInt64
-    let cacheReadTokens: UInt64
-    let reasoningTokens: UInt64
 }
 
 struct CodexScopedEventKey: Hashable {
     let scope: String
-    let event: CodexUsageEventKey
+    let event: CodexUsageEvent
 }
 
 struct CodexRawUsage {
@@ -47,25 +27,21 @@ struct CodexRawUsage {
     let cachedInputTokens: UInt64
     let outputTokens: UInt64
     let reasoningTokens: UInt64
-    let totalTokens: UInt64
 
     init(
         inputTokens: UInt64,
         cachedInputTokens: UInt64,
         outputTokens: UInt64,
-        reasoningTokens: UInt64,
-        totalTokens: UInt64
+        reasoningTokens: UInt64
     ) {
         self.inputTokens = inputTokens
         self.cachedInputTokens = min(cachedInputTokens, inputTokens)
         self.outputTokens = outputTokens
         self.reasoningTokens = reasoningTokens
-        self.totalTokens = totalTokens
     }
 
     var isEmpty: Bool {
         inputTokens == 0 && cachedInputTokens == 0 && outputTokens == 0 && reasoningTokens == 0
-            && totalTokens == 0
     }
 
     func tokenCounts(model: String, usesFastPricing: Bool) -> CodingTokenCounts {
@@ -90,8 +66,7 @@ struct CodexRawUsage {
             cachedInputTokens: cachedInputTokens.saturatingSubtract(
                 previous?.cachedInputTokens ?? 0),
             outputTokens: outputTokens.saturatingSubtract(previous?.outputTokens ?? 0),
-            reasoningTokens: reasoningTokens.saturatingSubtract(previous?.reasoningTokens ?? 0),
-            totalTokens: totalTokens.saturatingSubtract(previous?.totalTokens ?? 0)
+            reasoningTokens: reasoningTokens.saturatingSubtract(previous?.reasoningTokens ?? 0)
         )
     }
 }
@@ -128,10 +103,7 @@ extension CodingUsageLoader {
                 }
 
                 forEachCodexUsageEvent(in: file, usesFastPricing: usesFastPricing) { event in
-                    let eventKey = CodexScopedEventKey(
-                        scope: homePath,
-                        event: event.dedupeKey
-                    )
+                    let eventKey = CodexScopedEventKey(scope: homePath, event: event)
                     if seenEvents.insert(eventKey).inserted {
                         accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                     }
@@ -428,7 +400,6 @@ private func codexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
     var cachedInputTokens: UInt64 = 0
     var outputTokens: UInt64 = 0
     var reasoningTokens: UInt64 = 0
-    var totalTokens: UInt64 = 0
     while let key = scanner.nextKey() {
         if key == "input_tokens" {
             inputTokens = scanner.readUInt64() ?? 0
@@ -438,8 +409,6 @@ private func codexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
             outputTokens = scanner.readUInt64() ?? 0
         } else if key == "reasoning_output_tokens" {
             reasoningTokens = scanner.readUInt64() ?? 0
-        } else if key == "total_tokens" {
-            totalTokens = scanner.readUInt64() ?? 0
         } else {
             scanner.skipValue()
         }
@@ -448,8 +417,7 @@ private func codexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
         inputTokens: inputTokens,
         cachedInputTokens: cachedInputTokens,
         outputTokens: outputTokens,
-        reasoningTokens: reasoningTokens,
-        totalTokens: totalTokens
+        reasoningTokens: reasoningTokens
     )
 }
 

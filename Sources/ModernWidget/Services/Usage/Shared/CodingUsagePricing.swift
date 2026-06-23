@@ -1,6 +1,6 @@
 import Foundation
 
-struct CodingUsagePricing {
+enum CodingUsagePricing {
     private struct ModelPricing {
         let input: Double
         let output: Double

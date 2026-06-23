@@ -243,9 +243,7 @@ private struct CodingUsageChart: View {
         guard let selectedDate else {
             return nil
         }
-        return days.first { day in
-            Calendar.current.dateInterval(of: .day, for: day.date)!.contains(selectedDate)
-        }
+        return days.first { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
     }
 
     private func chartHoverAnnotation(_ day: CodingUsageDaySummary) -> some View {

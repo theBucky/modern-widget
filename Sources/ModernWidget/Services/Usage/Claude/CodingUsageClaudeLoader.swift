@@ -37,40 +37,16 @@ private struct ClaudeMessageFields {
     }
 }
 
-/// Timestamp, request id, sidechain flag, and message of one log record. The same
-/// shape appears at the top level and nested under `data.message` in exported
-/// transcripts, so a single reader serves both.
-private struct ClaudeRecordFields {
-    var timestamp: Date?
-    var requestID: String?
-    var isSidechain = false
-    var message: ClaudeMessageFields?
-
-    mutating func consume(key: JSONKey, from scanner: inout JSONScanner) -> Bool {
-        if key == "timestamp" {
-            timestamp = scanner.readTimestamp()
-        } else if key == "requestId" {
-            requestID = scanner.readString()
-        } else if key == "isSidechain" {
-            isSidechain = scanner.readBool() == true
-        } else if key == "message" {
-            message = claudeMessageFields(&scanner)
-        } else {
-            return false
-        }
-        return true
-    }
-}
-
 extension CodingUsageLoader {
     func loadClaudeUsage(
         files: [URL],
         scope: CodingUsageDateScope,
         into accumulator: inout CodingUsageAccumulator
     ) {
+        let usageNeedle = JSONLineNeedle(#""usage""#)
         let entries =
             files
-            .flatMap(readClaudeUsageFile)
+            .flatMap { usageRecords(in: $0, needles: [usageNeedle], parse: claudeUsageEntry) }
             .filter { scope.historyDay(containing: $0.timestamp) != nil }
 
         for entry in dedupeClaudeEntries(entries) {
@@ -112,22 +88,6 @@ extension CodingUsageLoader {
             return url.deletingLastPathComponent().standardizedFileURL
         }
         return url.standardizedFileURL
-    }
-
-    func readClaudeUsageFile(_ file: URL) -> [ClaudeUsageEntry] {
-        var entries: [ClaudeUsageEntry] = []
-        let usageNeedle = JSONLineNeedle(#""usage""#)
-
-        forEachJSONLine(in: file) { line in
-            guard line.contains(usageNeedle) else {
-                return
-            }
-            if let entry = claudeUsageEntry(line) {
-                entries.append(entry)
-            }
-        }
-
-        return entries
     }
 
     func dedupeClaudeEntries(_ entries: [ClaudeUsageEntry]) -> [ClaudeUsageEntry] {
@@ -182,51 +142,55 @@ extension CodingUsageLoader {
     }
 }
 
-/// Extracts one Claude entry, accepting both the top-level record and the
-/// `data.message` wrapper. The wrapper's record wins only when the top level carries
-/// no usage.
+/// Extracts one Claude entry from a top-level `~/.claude/projects` transcript record.
 private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEntry? {
     guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
         return nil
     }
-    var record = ClaudeRecordFields()
-    var wrapped: ClaudeRecordFields?
+    var timestamp: Date?
+    var requestID: String?
+    var isSidechain = false
+    var message: ClaudeMessageFields?
     while let key = scanner.nextKey() {
-        if record.consume(key: key, from: &scanner) {
-            continue
-        }
-        if key == "data" {
-            wrapped = claudeWrappedRecord(&scanner)
+        if key == "timestamp" {
+            timestamp = scanner.readTimestamp()
+        } else if key == "requestId" {
+            requestID = scanner.readString()
+        } else if key == "isSidechain" {
+            isSidechain = scanner.readBool() == true
+        } else if key == "message" {
+            message = claudeMessageFields(&scanner)
         } else {
             scanner.skipValue()
         }
     }
-    return claudeEntry(from: record) ?? wrapped.flatMap(claudeEntry)
-}
 
-/// Reads the `data` object and returns its `message` record.
-private func claudeWrappedRecord(_ scanner: inout JSONScanner) -> ClaudeRecordFields? {
-    guard scanner.beginObject() else { return nil }
-    var record: ClaudeRecordFields?
-    while let key = scanner.nextKey() {
-        if key == "message" {
-            record = claudeRecordFields(&scanner)
-        } else {
-            scanner.skipValue()
-        }
+    guard let timestamp, let message, message.hasUsage else {
+        return nil
     }
-    return record
-}
-
-private func claudeRecordFields(_ scanner: inout JSONScanner) -> ClaudeRecordFields {
-    var record = ClaudeRecordFields()
-    guard scanner.beginObject() else { return record }
-    while let key = scanner.nextKey() {
-        if !record.consume(key: key, from: &scanner) {
-            scanner.skipValue()
-        }
-    }
-    return record
+    let cacheCreation5m = message.cacheCreation5mResolved
+    let cacheCreation1h = message.cacheCreation1hResolved
+    return ClaudeUsageEntry(
+        timestamp: timestamp,
+        counts: .claude(
+            inputTokens: message.input,
+            outputTokens: message.output,
+            cacheCreationTokens: cacheCreation5m + cacheCreation1h,
+            cacheReadTokens: message.cacheRead,
+            costUSD: CodingUsagePricing.cachedCost(
+                model: message.model,
+                inputTokens: message.input,
+                outputTokens: message.output,
+                cacheCreation5mTokens: cacheCreation5m,
+                cacheCreation1hTokens: cacheCreation1h,
+                cacheReadTokens: message.cacheRead,
+                usesFastPricing: message.usesFastPricing
+            )
+        ),
+        messageID: message.id,
+        requestID: requestID,
+        isSidechain: isSidechain
+    )
 }
 
 private func claudeMessageFields(_ scanner: inout JSONScanner) -> ClaudeMessageFields? {
@@ -279,33 +243,4 @@ private func claudeUsageFields(_ scanner: inout JSONScanner, into fields: inout 
             scanner.skipValue()
         }
     }
-}
-
-private func claudeEntry(from record: ClaudeRecordFields) -> ClaudeUsageEntry? {
-    guard let timestamp = record.timestamp, let message = record.message, message.hasUsage else {
-        return nil
-    }
-    let cacheCreation5m = message.cacheCreation5mResolved
-    let cacheCreation1h = message.cacheCreation1hResolved
-    return ClaudeUsageEntry(
-        timestamp: timestamp,
-        counts: .claude(
-            inputTokens: message.input,
-            outputTokens: message.output,
-            cacheCreationTokens: cacheCreation5m + cacheCreation1h,
-            cacheReadTokens: message.cacheRead,
-            costUSD: CodingUsagePricing.cachedCost(
-                model: message.model,
-                inputTokens: message.input,
-                outputTokens: message.output,
-                cacheCreation5mTokens: cacheCreation5m,
-                cacheCreation1hTokens: cacheCreation1h,
-                cacheReadTokens: message.cacheRead,
-                usesFastPricing: message.usesFastPricing
-            )
-        ),
-        messageID: message.id,
-        requestID: record.requestID,
-        isSidechain: record.isSidechain
-    )
 }

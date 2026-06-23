@@ -12,8 +12,7 @@ extension CodingUsageLoader {
         guard
             let enumerator = FileManager.default.enumerator(
                 at: directory,
-                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
-                options: []
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey]
             )
         else {
             return []
@@ -106,6 +105,25 @@ extension CodingUsageLoader {
                 start = end + 1
             }
         }
+    }
+
+    /// Collects whatever `parse` extracts from each line of `file`, skipping lines that
+    /// lack any needle so the scanner only descends into candidate lines.
+    func usageRecords<Record>(
+        in file: URL,
+        needles: [JSONLineNeedle],
+        parse: (UnsafeRawBufferPointer) -> Record?
+    ) -> [Record] {
+        var records: [Record] = []
+        forEachJSONLine(in: file) { line in
+            guard needles.allSatisfy(line.contains) else {
+                return
+            }
+            if let record = parse(line) {
+                records.append(record)
+            }
+        }
+        return records
     }
 
     func isDirectory(_ url: URL) -> Bool {

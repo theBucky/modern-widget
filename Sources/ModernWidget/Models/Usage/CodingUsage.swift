@@ -28,7 +28,7 @@ enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
     }
 }
 
-struct CodingTokenCounts: Equatable, Sendable {
+struct CodingTokenCounts: Hashable, Sendable {
     var inputTokens: UInt64 = 0
     var outputTokens: UInt64 = 0
     var cacheCreationTokens: UInt64 = 0

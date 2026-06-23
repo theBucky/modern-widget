@@ -70,6 +70,28 @@ struct CodingUsageLoaderTests {
         #expect(abs(dayCounts(codex, 2026, 6, 17).costUSD - 0.000143675) < 0.00000001)
     }
 
+    @Test("dedupes identical codex events across differing active and archived paths")
+    func dedupesCodexEventsAcrossDifferingPaths() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexCrossPathDedupe")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let event =
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5},"model":"gpt-5.2"}}}"#
+
+        try writeFixture(event, to: ".codex/sessions/active/session.jsonl", in: home)
+        try writeFixture(event, to: ".codex/archived_sessions/old/session.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 90)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 20)
+        #expect(codex.totalCounts.reasoningTokens == 5)
+        #expect(codex.totalCounts.totalTokens == 120)
+    }
+
     @Test("skips codex subagent replayed parent token history")
     func skipsCodexSubagentReplayedParentTokenHistory() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSubagent")

@@ -15,11 +15,8 @@ final class CodingUsageStore {
     @ObservationIgnored
     private var lastFingerprint: CodingUsageFingerprint?
 
-    init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
-    ) {
-        loader = CodingUsageLoader(environment: environment, homeDirectory: homeDirectory)
+    init() {
+        loader = CodingUsageLoader()
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.reload()
