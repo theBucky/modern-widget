@@ -125,7 +125,6 @@ final class ReminderEngine {
     private func persistState() {
         defaults.set(state.reminderMinutes, forKey: Keys.reminderMinutes)
         defaults.set(state.startedAt, forKey: Keys.startedAt)
-        defaults.removeObject(forKey: Keys.legacyStartedAt)
 
         switch state.mode {
         case .running:
@@ -137,7 +136,8 @@ final class ReminderEngine {
         }
     }
 
-    private func refreshSnapshot(now: Date = .now) {
+    private func refreshSnapshot() {
+        let now = Date.now
         let nextSnapshot = state.snapshot(at: now)
         if nextSnapshot != snapshot {
             snapshot = nextSnapshot

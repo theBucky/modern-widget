@@ -19,8 +19,8 @@ struct ReminderStateTests {
         let snapshot = state.snapshot(at: restartedAt)
 
         #expect(state.mode == .running)
+        #expect(state.startedAt == restartedAt)
         #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.lastResetAt == restartedAt)
         #expect(snapshot.reminderStatusMessage == nil)
     }
 
@@ -39,7 +39,6 @@ struct ReminderStateTests {
 
         #expect(state.mode == .paused(secondsRemaining: 2700))
         #expect(snapshot.phase == .paused)
-        #expect(snapshot.secondsRemaining == 2700)
         #expect(snapshot.countdownLabel == "45:00")
         #expect(snapshot.reminderStatusMessage == nil)
     }
@@ -59,7 +58,6 @@ struct ReminderStateTests {
 
         #expect(state.startedAt == date(2026, 5, 13, 10, 50))
         #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.secondsRemaining == 3000)
         #expect(snapshot.countdownLabel == "50:00")
     }
 
@@ -77,7 +75,6 @@ struct ReminderStateTests {
 
         #expect(state.mode == .paused(secondsRemaining: 0))
         #expect(snapshot.phase == .paused)
-        #expect(snapshot.secondsRemaining == 0)
         #expect(snapshot.countdownLabel == "00:00")
     }
 
@@ -94,7 +91,6 @@ struct ReminderStateTests {
 
         #expect(snapshot.phase == .countingDown)
         #expect(snapshot.progress == 0.5)
-        #expect(snapshot.secondsRemaining == 1800)
         #expect(snapshot.countdownLabel == "30:00")
         #expect(snapshot.reminderStatusMessage == "notifications blocked in System Settings")
     }

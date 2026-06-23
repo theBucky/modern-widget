@@ -3,10 +3,8 @@ import Foundation
 struct ReminderSnapshot: Equatable {
     let phase: ReminderPhase
     let progress: Double
-    let secondsRemaining: Int
     let countdownLabel: String
     let reminderStatusMessage: String?
-    let lastResetAt: Date
 }
 
 struct ReminderState: Equatable {
@@ -53,10 +51,8 @@ struct ReminderState: Equatable {
         return ReminderSnapshot(
             phase: countdown.phase,
             progress: Double(countdown.secondsRemaining) / Double(reminderSeconds),
-            secondsRemaining: countdown.secondsRemaining,
             countdownLabel: Self.countdownLabel(for: countdown.secondsRemaining),
-            reminderStatusMessage: Self.statusMessage(for: notificationIssue),
-            lastResetAt: startedAt
+            reminderStatusMessage: Self.statusMessage(for: notificationIssue)
         )
     }
 
