@@ -5,6 +5,7 @@ MODE="${1:-run}"
 APP_NAME="ModernWidget"
 BUNDLE_ID="com.m5pbook.ModernWidget"
 MIN_SYSTEM_VERSION="26.0"
+CONFIGURATION="${CONFIGURATION:-debug}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -17,24 +18,25 @@ INFO_PLIST="$APP_CONTENTS/Info.plist"
 
 cd "$ROOT_DIR"
 
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+make_bundle() {
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-BUILD_DIR="$(swift build --show-bin-path)"
-RESOURCE_BUNDLE="$BUILD_DIR/modern-widget_ModernWidget.bundle"
-rm -rf "$RESOURCE_BUNDLE"
-swift build
-BUILD_BINARY="$BUILD_DIR/$APP_NAME"
+  BUILD_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
+  RESOURCE_BUNDLE="$BUILD_DIR/modern-widget_ModernWidget.bundle"
+  rm -rf "$RESOURCE_BUNDLE"
+  swift build -c "$CONFIGURATION"
+  BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
-rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
-cp "$BUILD_BINARY" "$APP_BINARY"
-chmod +x "$APP_BINARY"
+  rm -rf "$APP_BUNDLE"
+  mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+  cp "$BUILD_BINARY" "$APP_BINARY"
+  chmod +x "$APP_BINARY"
 
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
-  cp -R "$RESOURCE_BUNDLE"/. "$APP_RESOURCES/"
-fi
+  if [[ -d "$RESOURCE_BUNDLE" ]]; then
+    cp -R "$RESOURCE_BUNDLE"/. "$APP_RESOURCES/"
+  fi
 
-cat >"$INFO_PLIST" <<PLIST
+  cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -63,15 +65,21 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
-/usr/bin/codesign --force --deep --sign - "$APP_BUNDLE"
+  /usr/bin/codesign --force --deep --sign - "$APP_BUNDLE"
+}
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
 
+make_bundle
+
 case "$MODE" in
   run)
     open_app
+    ;;
+  bundle)
+    : # build and self-sign only; nothing to launch
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
@@ -90,7 +98,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|bundle|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac

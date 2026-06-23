@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint and test
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v5
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Lint
+        run: swift format lint --strict --parallel --recursive Sources Tests
+
+      - name: Test
+        run: swift test
+
+  release:
+    name: Build and publish DMG
+    needs: check
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build self-signed app bundle
+        env:
+          CONFIGURATION: release
+        run: script/build_and_run.sh bundle
+
+      - name: Package DMG
+        run: |
+          staging="$(mktemp -d)"
+          cp -R dist/ModernWidget.app "$staging/"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create \
+            -volname "ModernWidget" \
+            -srcfolder "$staging" \
+            -ov -format UDZO \
+            dist/ModernWidget.dmg
+
+      - name: Publish rolling latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest dist/ModernWidget.dmg \
+            --title "Latest (main)" \
+            --notes "Rolling release built from ${GITHUB_SHA}." \
+            --target "${GITHUB_SHA}" \
+            --latest
