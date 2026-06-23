@@ -55,4 +55,24 @@ struct DailySupplementStoreTests {
         #expect(!reloadedStore.isTaken(on: expiredDay))
         #expect(reloadedStore.isTaken(on: today))
     }
+
+    @Test("loading prunes expired persisted days")
+    func loadingPrunesExpiredPersistedDays() throws {
+        let defaults = makeDefaults("DailySupplementStoreTests")
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let expiredDay = calendar.date(byAdding: .month, value: -4, to: today)!
+        let storedDays: Set<Date> = [expiredDay, today]
+
+        defaults.set(
+            try JSONEncoder().encode(storedDays),
+            forKey: "dailySupplementTakenDays"
+        )
+
+        _ = DailySupplementStore(defaults: defaults)
+
+        let savedData = try #require(defaults.data(forKey: "dailySupplementTakenDays"))
+        let savedDays = try JSONDecoder().decode(Set<Date>.self, from: savedData)
+        #expect(savedDays == [today])
+    }
 }

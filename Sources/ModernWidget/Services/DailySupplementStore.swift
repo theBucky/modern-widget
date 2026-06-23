@@ -14,7 +14,9 @@ final class DailySupplementStore {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.takenDays = Self.load(from: defaults)
-        pruneOldEntries()
+        if pruneOldEntries() {
+            save()
+        }
     }
 
     var isTakenToday: Bool {
@@ -39,9 +41,12 @@ final class DailySupplementStore {
         save()
     }
 
-    private func pruneOldEntries() {
+    @discardableResult
+    private func pruneOldEntries() -> Bool {
+        let previousCount = takenDays.count
         let cutoff = HistoryRetention.earliestMonth()
         takenDays = takenDays.filter { $0 >= cutoff }
+        return takenDays.count != previousCount
     }
 
     private static func load(from defaults: UserDefaults) -> Set<Date> {
