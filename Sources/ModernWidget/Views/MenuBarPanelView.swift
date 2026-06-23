@@ -1,28 +1,16 @@
 import SwiftUI
 
 struct MenuBarPanelView: View {
-    private let engine: ReminderEngine
-    private let walkHistoryStore: WalkHistoryStore
-    private let dailySupplementStore: DailySupplementStore
-    private let usageStore: CodingUsageStore
+    let engine: ReminderEngine
+    let walkHistoryStore: WalkHistoryStore
+    let dailySupplementStore: DailySupplementStore
+    let usageStore: CodingUsageStore
 
     @State private var selectedPane = Pane.main
     @State private var displayedPane = Pane.main
     @State private var intervalMenuIdentity = 0
     @State private var contentOpacity = 1.0
     @State private var paneTransitionID = 0
-
-    init(
-        engine: ReminderEngine,
-        walkHistoryStore: WalkHistoryStore,
-        dailySupplementStore: DailySupplementStore,
-        usageStore: CodingUsageStore
-    ) {
-        self.engine = engine
-        self.walkHistoryStore = walkHistoryStore
-        self.dailySupplementStore = dailySupplementStore
-        self.usageStore = usageStore
-    }
 
     private enum Pane: CaseIterable {
         case main
