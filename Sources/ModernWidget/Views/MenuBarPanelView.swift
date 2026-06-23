@@ -8,6 +8,7 @@ struct MenuBarPanelView: View {
 
     @State private var selectedPane = Pane.main
     @State private var displayedPane = Pane.main
+    @State private var intervalMenuIdentity = 0
     @State private var contentOpacity = 1.0
     @State private var paneTransitionID = 0
 
@@ -90,7 +91,8 @@ struct MenuBarPanelView: View {
             ReminderPaneView(
                 engine: engine,
                 walkHistoryStore: walkHistoryStore,
-                dailySupplementStore: dailySupplementStore
+                dailySupplementStore: dailySupplementStore,
+                intervalMenuIdentity: intervalMenuIdentity
             )
         case .calendar:
             WalkHistoryCalendarView(
@@ -136,6 +138,11 @@ struct MenuBarPanelView: View {
             } completion: {
                 guard paneTransitionID == transitionID else {
                     return
+                }
+
+                if pane == .main {
+                    // Menu bridges to NSPopUpButton; recreate it after resize settles.
+                    intervalMenuIdentity += 1
                 }
 
                 withAnimation(Layout.fadeInAnimation) {

@@ -4,6 +4,7 @@ struct ReminderPaneView: View {
     let engine: ReminderEngine
     let walkHistoryStore: WalkHistoryStore
     @Bindable var dailySupplementStore: DailySupplementStore
+    let intervalMenuIdentity: Int
 
     private enum Layout {
         static let unitSpacing: CGFloat = 20
@@ -38,6 +39,7 @@ struct ReminderPaneView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .id(intervalMenuIdentity)
     }
 
     private func actionsSection(snapshot: ReminderSnapshot) -> some View {
