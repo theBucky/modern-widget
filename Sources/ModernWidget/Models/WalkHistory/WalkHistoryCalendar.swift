@@ -10,10 +10,9 @@ struct WalkHistoryMonth {
         let firstWeekday = calendar.component(.weekday, from: firstDay)
         let leadingBlanks = (firstWeekday - calendar.firstWeekday + 7) % 7
         let filledCells = leadingBlanks + dayCount
-        let cellCount = filledCells + (7 - filledCells % 7) % 7
 
         month = firstDay
-        dayCells = (0..<cellCount).map { cellIndex in
+        dayCells = (0..<filledCells).map { cellIndex in
             let dayOffset = cellIndex - leadingBlanks
             guard (0..<dayCount).contains(dayOffset) else { return nil }
             return calendar.date(byAdding: .day, value: dayOffset, to: firstDay)!
