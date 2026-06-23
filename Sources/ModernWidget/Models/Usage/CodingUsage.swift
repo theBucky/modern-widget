@@ -239,10 +239,6 @@ struct CodingUsageReport: Equatable, Sendable {
         }
     }
 
-    func todayCounts(now: Date, calendar: Calendar = .current) -> CodingTokenCounts {
-        counts(in: calendar.dateInterval(of: .day, for: now)!)
-    }
-
     func todaySummary(now: Date, calendar: Calendar = .current) -> CodingUsageTodaySummary {
         let todayInterval = calendar.dateInterval(of: .day, for: now)!
         let todayStart = todayInterval.start

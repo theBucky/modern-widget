@@ -61,14 +61,7 @@ struct ReminderState: Equatable {
     }
 
     static func normalizedReminderMinutes(_ minutes: Int) -> Int {
-        let presets = minutePresets.sorted()
-        for (lower, upper) in zip(presets, presets.dropFirst()) {
-            let midpoint = lower + (upper - lower) / 2
-            if minutes <= midpoint {
-                return lower
-            }
-        }
-        return presets.last!
+        minutes <= 90 ? 60 : 120
     }
 
     private static func countdownLabel(for secondsRemaining: Int) -> String {

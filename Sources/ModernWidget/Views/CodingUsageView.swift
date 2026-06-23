@@ -1,23 +1,12 @@
+import AppKit
 import Charts
 import SwiftUI
 
 struct CodingUsageView: View {
     let store: CodingUsageStore
 
-    private enum Layout {
-        static let spacing: CGFloat = 10
-        static let sectionSpacing: CGFloat = 8
-        static let contentSectionSpacing: CGFloat = 12
-        static let blockPadding: CGFloat = 8
-        static let chartTopPadding: CGFloat = 2
-        static let cornerRadius: CGFloat = 6
-        static let labelWidth: CGFloat = 64
-        static let logoSize: CGFloat = 14
-        static let chartHeight: CGFloat = 58
-    }
-
     var body: some View {
-        VStack(spacing: Layout.spacing) {
+        VStack(spacing: 10) {
             CodingUsageTodayTotalSection(
                 summary: store.report.todaySummary(now: reportDate),
                 isFetching: isFetching
@@ -34,28 +23,36 @@ struct CodingUsageView: View {
     }
 
     private func agentSection(_ summary: CodingUsageAgentSummary) -> some View {
-        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                CodingUsageAgentLogo(agent: summary.agent, size: Layout.logoSize)
+                if let url = Bundle.main.url(
+                    forResource: summary.agent.logoResourceName, withExtension: "pdf"),
+                    let image = NSImage(contentsOf: url)
+                {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
+                        .accessibilityHidden(true)
+                }
 
                 Text(summary.agent.title)
                     .font(.subheadline.weight(.semibold))
             }
 
-            VStack(alignment: .leading, spacing: Layout.contentSectionSpacing) {
+            VStack(alignment: .leading, spacing: 12) {
                 usageTable(summary)
 
                 CodingUsageChart(
                     days: summary.chartDays(endingAt: reportDate),
                     isFetching: isFetching,
-                    barColor: barColor(for: summary.agent),
-                    height: Layout.chartHeight
+                    barColor: barColor(for: summary.agent)
                 )
-                .padding(.top, Layout.chartTopPadding)
+                .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Layout.blockPadding)
-            .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: Layout.cornerRadius))
+            .padding(8)
+            .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 6))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -66,7 +63,7 @@ struct CodingUsageView: View {
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
-                        .frame(width: Layout.labelWidth, alignment: .leading)
+                        .frame(width: 64, alignment: .leading)
                     CodingUsageValueText(counts: row.counts, isFetching: isFetching)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
@@ -96,21 +93,11 @@ private struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
     let isFetching: Bool
 
-    private enum Layout {
-        static let groupMinSpacing: CGFloat = 16
-        static let dateTokenSpacing: CGFloat = 2
-        static let costTrendSpacing: CGFloat = 6
-        static let trendTopPadding: CGFloat = 7
-        static let trendHorizontalPadding: CGFloat = 6
-        static let trendVerticalPadding: CGFloat = 2
-        static let totalCostSize: CGFloat = 32
-    }
-
     var body: some View {
         HStack(alignment: .bottom) {
             costTrendGroup
 
-            Spacer(minLength: Layout.groupMinSpacing)
+            Spacer(minLength: 16)
 
             dateTokenGroup
         }
@@ -118,15 +105,15 @@ private struct CodingUsageTodayTotalSection: View {
     }
 
     private var costTrendGroup: some View {
-        HStack(alignment: .top, spacing: Layout.costTrendSpacing) {
+        HStack(alignment: .top, spacing: 6) {
             totalCostText
             trendBadge
-                .padding(.top, Layout.trendTopPadding)
+                .padding(.top, 7)
         }
     }
 
     private var dateTokenGroup: some View {
-        VStack(alignment: .trailing, spacing: Layout.dateTokenSpacing) {
+        VStack(alignment: .trailing, spacing: 2) {
             Text(dateText)
             Text(formatCodingUsageTokens(summary.counts.totalTokens))
         }
@@ -137,7 +124,7 @@ private struct CodingUsageTodayTotalSection: View {
     @ViewBuilder
     private var totalCostText: some View {
         let text = Text(isFetching ? "fetching" : formatCodingUsageCost(summary.counts.costUSD))
-            .font(.system(size: Layout.totalCostSize, weight: .semibold, design: .rounded))
+            .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
 
         if isFetching {
@@ -159,8 +146,8 @@ private struct CodingUsageTodayTotalSection: View {
             .font(.caption.monospacedDigit())
             .fontWeight(.regular)
             .foregroundStyle(.white)
-            .padding(.horizontal, Layout.trendHorizontalPadding)
-            .padding(.vertical, Layout.trendVerticalPadding)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
     }
 
@@ -190,7 +177,6 @@ private struct CodingUsageChart: View {
     let days: [CodingUsageDaySummary]
     let isFetching: Bool
     let barColor: Color
-    let height: CGFloat
 
     @State private var selectedDate: Date?
 
@@ -224,7 +210,7 @@ private struct CodingUsageChart: View {
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDate)
         .chartYScale(domain: 0...chartUpperBound)
-        .frame(height: height)
+        .frame(height: 58)
         .frame(maxWidth: .infinity)
     }
 

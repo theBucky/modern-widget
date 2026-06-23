@@ -1,12 +1,10 @@
 import Foundation
 
 enum HistoryRetention {
-    private static let retainedMonthCount = 3
-
     static func earliestMonth(now: Date = .now, calendar: Calendar = .current) -> Date {
         calendar.date(
             byAdding: .month,
-            value: -(retainedMonthCount - 1),
+            value: -2,
             to: calendar.startOfMonth(for: now)
         )!
     }

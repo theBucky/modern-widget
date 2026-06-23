@@ -8,7 +8,6 @@ struct MenuBarPanelView: View {
 
     @State private var selectedPane = Pane.main
     @State private var displayedPane = Pane.main
-    @State private var panelWidth = Layout.mainPaneWidth
     @State private var contentOpacity = 1.0
     @State private var paneTransitionID = 0
 
@@ -66,9 +65,9 @@ struct MenuBarPanelView: View {
         static let detailPaneWidth: CGFloat = 280
         static let borderPadding: CGFloat = 20
         static let unitSpacing: CGFloat = 20
-        static let fadeOutAnimation = Animation.easeOut(duration: 0.08)
-        static let paneAnimation = Animation.smooth(duration: 0.14)
-        static let fadeInAnimation = Animation.easeIn(duration: 0.08)
+        static let fadeOutAnimation = Animation.easeOut(duration: 0.06)
+        static let paneAnimation = Animation.smooth(duration: 0.11)
+        static let fadeInAnimation = Animation.easeIn(duration: 0.06)
     }
 
     var body: some View {
@@ -77,7 +76,7 @@ struct MenuBarPanelView: View {
             paneBody
                 .opacity(contentOpacity)
         }
-        .frame(width: panelWidth)
+        .frame(width: displayedPane.width)
         .padding(Layout.borderPadding)
         .onChange(of: selectedPane) { _, newPane in
             switchPane(to: newPane)
@@ -115,23 +114,15 @@ struct MenuBarPanelView: View {
     }
 
     private func switchPane(to pane: Pane) {
-        if pane == displayedPane {
-            guard contentOpacity < 1 || panelWidth != pane.width else {
-                return
-            }
+        paneTransitionID += 1
+        let transitionID = paneTransitionID
 
-            paneTransitionID += 1
-            withAnimation(Layout.paneAnimation) {
-                panelWidth = pane.width
-            }
+        guard pane != displayedPane else {
             withAnimation(Layout.fadeInAnimation) {
                 contentOpacity = 1
             }
             return
         }
-
-        paneTransitionID += 1
-        let transitionID = paneTransitionID
 
         withAnimation(Layout.fadeOutAnimation) {
             contentOpacity = 0
@@ -142,7 +133,6 @@ struct MenuBarPanelView: View {
 
             withAnimation(Layout.paneAnimation) {
                 displayedPane = pane
-                panelWidth = pane.width
             } completion: {
                 guard paneTransitionID == transitionID else {
                     return

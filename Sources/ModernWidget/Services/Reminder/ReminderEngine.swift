@@ -161,10 +161,6 @@ final class ReminderEngine {
                 return
             }
 
-            if Task.isCancelled {
-                return
-            }
-
             self?.refreshSnapshot()
         }
     }

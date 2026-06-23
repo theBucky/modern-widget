@@ -49,7 +49,7 @@ struct CodingUsageSummaryTests {
             ]
         )
 
-        let counts = report.todayCounts(now: now, calendar: calendar)
+        let counts = report.todaySummary(now: now, calendar: calendar).counts
 
         #expect(counts.costUSD == 6)
         #expect(counts.totalTokens == 6_000_000_000)
