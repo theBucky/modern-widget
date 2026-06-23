@@ -268,8 +268,7 @@ private struct CodingUsageChart: View {
                 .foregroundStyle(Color.secondary)
             CodingUsageValueText(
                 counts: day.counts,
-                isFetching: isFetching,
-                emphasizesCost: true
+                isFetching: isFetching
             )
         }
         .font(.caption2.monospacedDigit())
@@ -283,7 +282,6 @@ private struct CodingUsageChart: View {
 private struct CodingUsageValueText: View {
     let counts: CodingTokenCounts
     let isFetching: Bool
-    var emphasizesCost = false
 
     var body: some View {
         if isFetching {
@@ -301,12 +299,9 @@ private struct CodingUsageValueText: View {
     }
 
     private var costText: Text {
-        let text = Text(formatCodingUsageCost(counts.costUSD))
-            .fontWeight(emphasizesCost ? .semibold : .regular)
-        if counts.hasUsage {
-            return text.foregroundColor(Self.costColor)
-        }
-        return text.foregroundColor(Color(nsColor: .tertiaryLabelColor))
+        Text(formatCodingUsageCost(counts.costUSD))
+            .fontWeight(.semibold)
+            .foregroundColor(counts.hasUsage ? Self.costColor : Color(nsColor: .tertiaryLabelColor))
     }
 
     private static let costColor = Color(nsColor: .textColor)
