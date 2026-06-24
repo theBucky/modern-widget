@@ -66,6 +66,28 @@ script/build_and_run.sh
 
 The app bundle is created at `dist/ModernWidget.app` and ad-hoc signed for local use.
 
+## Auto updates
+
+Release builds use Sparkle and read their appcast from the rolling GitHub release:
+
+```text
+https://github.com/theBucky/modern-widget/releases/latest/download/appcast.xml
+```
+
+GitHub Actions publishes both `ModernWidget.dmg` and `appcast.xml` to the `latest` release. Configure these repository secrets before publishing:
+
+- `SPARKLE_PUBLIC_ED_KEY`: public key copied into `Info.plist`.
+- `SPARKLE_PRIVATE_ED_KEY`: private key consumed by Sparkle's `generate_appcast`.
+
+Generate and export keys after Sparkle has been resolved:
+
+```bash
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account modern-widget
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account modern-widget -x sparkle_private_key.txt
+```
+
+Use the printed public key for `SPARKLE_PUBLIC_ED_KEY`; use the exported file contents for `SPARKLE_PRIVATE_ED_KEY`.
+
 ### Build script modes
 
 | Mode | Description |

@@ -13,9 +13,15 @@ let package = Package(
             targets: ["ModernWidget"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.0.0"),
+    ],
     targets: [
         .executableTarget(
             name: "ModernWidget",
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             resources: [.process("Resources")]
         ),
         .testTarget(

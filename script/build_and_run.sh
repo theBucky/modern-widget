@@ -13,13 +13,23 @@ APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
+MARKETING_VERSION="${MARKETING_VERSION:-0.1.0}"
+BUILD_NUMBER="${BUILD_NUMBER:-1}"
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://github.com/theBucky/modern-widget/releases/latest/download/appcast.xml}"
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-}"
 
 cd "$ROOT_DIR"
 
 make_bundle() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+
+  if [[ "$CONFIGURATION" == "release" && -z "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+    echo "SPARKLE_PUBLIC_ED_KEY is required for release bundles" >&2
+    exit 1
+  fi
 
   BUILD_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
   RESOURCE_BUNDLE="$BUILD_DIR/modern-widget_ModernWidget.bundle"
@@ -28,13 +38,17 @@ make_bundle() {
   BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 
   rm -rf "$APP_BUNDLE"
-  mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+  mkdir -p "$APP_MACOS" "$APP_RESOURCES" "$APP_FRAMEWORKS"
   cp "$BUILD_BINARY" "$APP_BINARY"
   chmod +x "$APP_BINARY"
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 
   if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE"/. "$APP_RESOURCES/"
   fi
+
+  SPARKLE_FRAMEWORK="$(find "$BUILD_DIR" -path "*/Sparkle.framework" -type d | head -1)"
+  cp -R "$SPARKLE_FRAMEWORK" "$APP_FRAMEWORKS/"
 
   cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -52,15 +66,21 @@ make_bundle() {
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>$MARKETING_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>$BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSUIElement</key>
   <true/>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>SUFeedURL</key>
+  <string>$SPARKLE_FEED_URL</string>
+  <key>SUPublicEDKey</key>
+  <string>$SPARKLE_PUBLIC_ED_KEY</string>
+  <key>SUEnableInstallerLauncherService</key>
+  <true/>
 </dict>
 </plist>
 PLIST

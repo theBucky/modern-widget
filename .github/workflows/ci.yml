@@ -48,6 +48,8 @@ jobs:
       - name: Build self-signed app bundle
         env:
           CONFIGURATION: release
+          BUILD_NUMBER: ${{ github.run_number }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: script/build_and_run.sh bundle
 
       - name: Package DMG
@@ -61,12 +63,17 @@ jobs:
             -ov -format UDZO \
             dist/ModernWidget.dmg
 
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: script/generate_appcast.sh
+
       - name: Publish rolling latest release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --cleanup-tag --yes || true
-          gh release create latest dist/ModernWidget.dmg \
+          gh release create latest dist/ModernWidget.dmg dist/appcast.xml \
             --title "Latest (main)" \
             --notes "Rolling release built from ${GITHUB_SHA}." \
             --target "${GITHUB_SHA}" \

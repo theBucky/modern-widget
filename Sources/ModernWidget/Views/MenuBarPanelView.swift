@@ -64,6 +64,7 @@ struct MenuBarPanelView: View {
             panePicker
             paneBody
                 .opacity(contentOpacity)
+            UpdateAvailableButton()
         }
         .frame(width: displayedPane.width)
         .padding(Layout.borderPadding)
@@ -137,6 +138,33 @@ struct MenuBarPanelView: View {
                     contentOpacity = 1
                 }
             }
+        }
+    }
+}
+
+private struct UpdateAvailableButton: View {
+    @ObservedObject private var updaterManager = UpdaterManager.shared
+
+    var body: some View {
+        if updaterManager.isUpdateAvailable {
+            Button {
+                updaterManager.checkForUpdates()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle.fill")
+                    Text("Update Available")
+                }
+                .font(.caption)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.accentColor, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .contentShape(Capsule())
+            .disabled(!updaterManager.canCheckForUpdates)
+            .help("Update Available")
         }
     }
 }
