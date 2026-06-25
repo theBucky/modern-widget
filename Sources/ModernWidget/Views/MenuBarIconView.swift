@@ -19,6 +19,5 @@ struct MenuBarIconView: View {
         .symbolRenderingMode(.hierarchical)
         .contentTransition(.symbolEffect(.replace))
         .symbolEffect(.bounce.down, options: .nonRepeating, value: snapshot.phase)
-        .animation(.smooth(duration: 0.18), value: snapshot.progress)
     }
 }

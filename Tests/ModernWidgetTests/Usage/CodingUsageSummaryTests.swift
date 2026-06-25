@@ -18,12 +18,16 @@ struct CodingUsageSummaryTests {
             ]
         )
 
+        let rows = summary.usageRows(now: now, calendar: calendar)
+
+        #expect(rows.map(\.title) == ["Yesterday", "Today", "Weekly", "Monthly"])
+        #expect(rows.map(\.counts.costUSD) == [2, 3, 5, 6])
         #expect(
-            summary.usageRows(now: now, calendar: calendar) == [
-                usage("Yesterday", costUSD: 2, totalTokens: 2_000_000_000),
-                usage("Today", costUSD: 3, totalTokens: 3_000_000_000),
-                usage("Weekly", costUSD: 5, totalTokens: 5_000_000_000),
-                usage("Monthly", costUSD: 6, totalTokens: 6_000_000_000),
+            rows.map(\.counts.totalTokens) == [
+                2_000_000_000,
+                3_000_000_000,
+                5_000_000_000,
+                6_000_000_000,
             ])
     }
 
@@ -153,12 +157,4 @@ struct CodingUsageSummaryTests {
         )
     }
 
-    private func usage(_ title: String, costUSD: Double, totalTokens: UInt64)
-        -> CodingUsagePeriodRow
-    {
-        CodingUsagePeriodRow(
-            title: title,
-            counts: CodingTokenCounts(totalTokens: totalTokens, costUSD: costUSD)
-        )
-    }
 }

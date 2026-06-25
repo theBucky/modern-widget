@@ -3,7 +3,7 @@ import SwiftUI
 struct WalkHistoryCalendarView: View {
     let historyStore: WalkHistoryStore
     let supplementStore: DailySupplementStore
-    @State private var monthGrid = WalkHistoryMonth(containing: .now)
+    @State private var visibleMonth = Calendar.current.startOfMonth(for: .now)
 
     private enum Layout {
         static let sectionSpacing: CGFloat = 10
@@ -32,28 +32,40 @@ struct WalkHistoryCalendarView: View {
 
     private var monthHeader: some View {
         HStack(spacing: 0) {
-            chevron(systemImage: "chevron.left", delta: -1, disabled: !canGoBack)
+            Button {
+                shiftMonth(by: -1)
+            } label: {
+                Label("Previous month", systemImage: "chevron.left")
+                    .labelStyle(.iconOnly)
+                    .font(.caption.weight(.semibold))
+                    .frame(width: Layout.chevronSize, height: Layout.chevronSize)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canGoBack)
+            .opacity(canGoBack ? 1 : 0.4)
+
             Spacer()
+
             Text(monthGrid.month, format: .dateTime.month(.wide).year())
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
-            Spacer()
-            chevron(systemImage: "chevron.right", delta: 1, disabled: !canGoForward)
-        }
-    }
 
-    private func chevron(systemImage: String, delta: Int, disabled: Bool) -> some View {
-        Button {
-            shiftMonth(by: delta)
-        } label: {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .frame(width: Layout.chevronSize, height: Layout.chevronSize)
-                .foregroundStyle(.secondary)
-                .opacity(disabled ? 0.4 : 1)
+            Spacer()
+
+            Button {
+                shiftMonth(by: 1)
+            } label: {
+                Label("Next month", systemImage: "chevron.right")
+                    .labelStyle(.iconOnly)
+                    .font(.caption.weight(.semibold))
+                    .frame(width: Layout.chevronSize, height: Layout.chevronSize)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .disabled(!canGoForward)
+            .opacity(canGoForward ? 1 : 0.4)
         }
-        .buttonStyle(.borderless)
-        .disabled(disabled)
     }
 
     private var weekdayHeader: some View {
@@ -94,7 +106,9 @@ struct WalkHistoryCalendarView: View {
                     .padding(.top, 8)
             }
 
-            dayLabel(date)
+            Text(date, format: .dateTime.day())
+                .font(.system(size: 8, weight: .regular).monospacedDigit())
+                .foregroundStyle(dayLabelColor(for: date))
                 .padding(.top, 4)
                 .padding(.trailing, 5)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -106,19 +120,16 @@ struct WalkHistoryCalendarView: View {
         )
     }
 
-    @ViewBuilder
-    private func dayLabel(_ date: Date) -> some View {
+    private func dayLabelColor(for date: Date) -> Color {
         let calendar = Calendar.current
-        let text = Text(date, format: .dateTime.day())
-            .font(.system(size: 8, weight: .regular).monospacedDigit())
 
         if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
-            text.foregroundStyle(.tertiary)
-        } else if supplementStore.isTaken(on: date) {
-            text.foregroundStyle(Palette.supplementTaken)
-        } else {
-            text.foregroundStyle(Palette.supplementMissed)
+            return Color(nsColor: .tertiaryLabelColor)
         }
+        if supplementStore.isTaken(on: date) {
+            return Palette.supplementTaken
+        }
+        return Palette.supplementMissed
     }
 
     private func cellFill(today: Bool, hasWalks: Bool) -> Color {
@@ -140,7 +151,10 @@ struct WalkHistoryCalendarView: View {
     }
 
     private func shiftMonth(by delta: Int) {
-        let month = Calendar.current.date(byAdding: .month, value: delta, to: monthGrid.month)!
-        monthGrid = WalkHistoryMonth(containing: month)
+        visibleMonth = Calendar.current.date(byAdding: .month, value: delta, to: visibleMonth)!
+    }
+
+    private var monthGrid: WalkHistoryMonth {
+        WalkHistoryMonth(containing: visibleMonth)
     }
 }

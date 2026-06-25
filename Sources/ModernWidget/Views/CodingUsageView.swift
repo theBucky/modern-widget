@@ -9,7 +9,7 @@ struct CodingUsageView: View {
         VStack(spacing: 10) {
             CodingUsageTodayTotalSection(
                 summary: store.report.todaySummary(now: reportDate),
-                isFetching: isFetching
+                isLoading: isLoading
             )
             Divider()
             ForEach(store.report.agents, id: \.agent) { summary in
@@ -18,7 +18,7 @@ struct CodingUsageView: View {
         }
     }
 
-    private var isFetching: Bool {
+    private var isLoading: Bool {
         store.report.generatedAt == nil
     }
 
@@ -45,7 +45,7 @@ struct CodingUsageView: View {
 
                 CodingUsageChart(
                     days: summary.chartDays(endingAt: reportDate),
-                    isFetching: isFetching,
+                    isLoading: isLoading,
                     barColor: barColor(for: summary.agent)
                 )
                 .padding(.top, 2)
@@ -59,12 +59,12 @@ struct CodingUsageView: View {
 
     private func usageTable(_ summary: CodingUsageAgentSummary) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-            ForEach(summary.usageRows(now: reportDate), id: \.title) { row in
+            ForEach(summary.usageRows(now: reportDate)) { row in
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
                         .frame(width: 64, alignment: .leading)
-                    CodingUsageValueText(counts: row.counts, isFetching: isFetching)
+                    CodingUsageValueText(counts: row.counts, isLoading: isLoading)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
@@ -91,7 +91,7 @@ struct CodingUsageView: View {
 
 private struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
-    let isFetching: Bool
+    let isLoading: Bool
 
     @State private var displayedCostUSD = 0.0
 
@@ -105,7 +105,7 @@ private struct CodingUsageTodayTotalSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
-            updateDisplayedCost(animated: !isFetching)
+            updateDisplayedCost(animated: !isLoading)
         }
         .onChange(of: targetCostUSD) {
             updateDisplayedCost(animated: true)
@@ -117,7 +117,7 @@ private struct CodingUsageTodayTotalSection: View {
             costUSD: displayedCostUSD,
             costTrend: summary.costTrend,
             hasUsage: summary.counts.hasUsage,
-            isFetching: isFetching
+            isLoading: isLoading
         )
     }
 
@@ -131,17 +131,21 @@ private struct CodingUsageTodayTotalSection: View {
     }
 
     private var dateText: String {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: summary.date)
+        let calendar = Calendar.current
         return String(
-            format: "%04d-%02d-%02d", components.year!, components.month!, components.day!)
+            format: "%04d-%02d-%02d",
+            calendar.component(.year, from: summary.date),
+            calendar.component(.month, from: summary.date),
+            calendar.component(.day, from: summary.date)
+        )
     }
 
     private var targetCostUSD: Double {
-        isFetching ? 0 : summary.counts.costUSD
+        isLoading ? 0 : summary.counts.costUSD
     }
 
     private func updateDisplayedCost(animated: Bool) {
-        if animated, !isFetching {
+        if animated, !isLoading {
             withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
                 displayedCostUSD = targetCostUSD
             }
@@ -158,7 +162,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     var costUSD: Double
     let costTrend: CodingUsageCostTrend
     let hasUsage: Bool
-    let isFetching: Bool
+    let isLoading: Bool
 
     var animatableData: Double {
         get { costUSD }
@@ -175,11 +179,11 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
 
     @ViewBuilder
     private var totalCostText: some View {
-        let text = Text(isFetching ? "fetching" : formatCodingUsageCost(costUSD))
+        let text = Text(isLoading ? "loading" : formatCodingUsageCost(costUSD))
             .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
 
-        if isFetching {
+        if isLoading {
             text.foregroundStyle(.secondary)
         } else if !hasUsage {
             text.foregroundStyle(Color(nsColor: .tertiaryLabelColor))
@@ -194,7 +198,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     }
 
     private var trendBadge: some View {
-        Text(isFetching ? "fetching" : formatCodingUsageCostTrendMagnitude(costTrend))
+        Text(isLoading ? "loading" : formatCodingUsageCostTrendMagnitude(costTrend))
             .font(.caption.monospacedDigit())
             .fontWeight(.regular)
             .foregroundStyle(.white)
@@ -205,7 +209,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     }
 
     private var trendColor: Color {
-        if isFetching {
+        if isLoading {
             return .secondary
         }
 
@@ -222,7 +226,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
 
 private struct CodingUsageChart: View {
     let days: [CodingUsageDaySummary]
-    let isFetching: Bool
+    let isLoading: Bool
     let barColor: Color
 
     @State private var selectedDate: Date?
@@ -236,7 +240,7 @@ private struct CodingUsageChart: View {
                     width: .ratio(0.7)
                 )
                 .foregroundStyle(
-                    isFetching ? Color.secondary.opacity(0.18) : barColor)
+                    isLoading ? Color.secondary.opacity(0.18) : barColor)
             }
 
             if let selectedDay {
@@ -270,14 +274,14 @@ private struct CodingUsageChart: View {
     }
 
     private var chartUpperBound: Double {
-        if isFetching {
+        if isLoading {
             return 1
         }
         return max(maxCost, minimumVisibleCost)
     }
 
     private func barHeightValue(for day: CodingUsageDaySummary) -> Double {
-        if isFetching {
+        if isLoading {
             return 1
         }
         guard day.counts.hasUsage else {
@@ -299,7 +303,7 @@ private struct CodingUsageChart: View {
                 .foregroundStyle(Color.secondary)
             CodingUsageValueText(
                 counts: day.counts,
-                isFetching: isFetching
+                isLoading: isLoading
             )
         }
         .font(.caption2.monospacedDigit())
@@ -312,11 +316,11 @@ private struct CodingUsageChart: View {
 
 private struct CodingUsageValueText: View {
     let counts: CodingTokenCounts
-    let isFetching: Bool
+    let isLoading: Bool
 
     var body: some View {
-        if isFetching {
-            Text("fetching")
+        if isLoading {
+            Text("loading")
                 .foregroundColor(Self.costColor)
         } else {
             Text("\(tokenText) / \(costText)")

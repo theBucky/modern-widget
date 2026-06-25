@@ -92,9 +92,33 @@ struct CodingUsageDaySummary: Equatable, Sendable {
     let counts: CodingTokenCounts
 }
 
-struct CodingUsagePeriodRow: Equatable, Sendable {
-    let title: String
+struct CodingUsagePeriodRow: Equatable, Identifiable, Sendable {
+    enum ID: Hashable, Sendable {
+        case yesterday
+        case today
+        case weekly
+        case monthly
+
+        var title: String {
+            switch self {
+            case .yesterday:
+                return "Yesterday"
+            case .today:
+                return "Today"
+            case .weekly:
+                return "Weekly"
+            case .monthly:
+                return "Monthly"
+            }
+        }
+    }
+
+    let id: ID
     let counts: CodingTokenCounts
+
+    var title: String {
+        id.title
+    }
 }
 
 struct CodingUsageCostTrend: Equatable, Sendable {
@@ -151,15 +175,15 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
 
         return [
             CodingUsagePeriodRow(
-                title: "Yesterday",
+                id: .yesterday,
                 counts: counts(in: DateInterval(start: yesterdayStart, end: todayStart))
             ),
             CodingUsagePeriodRow(
-                title: "Today",
+                id: .today,
                 counts: counts(in: DateInterval(start: todayStart, end: tomorrowStart))
             ),
-            CodingUsagePeriodRow(title: "Weekly", counts: counts(in: week)),
-            CodingUsagePeriodRow(title: "Monthly", counts: counts(in: month)),
+            CodingUsagePeriodRow(id: .weekly, counts: counts(in: week)),
+            CodingUsagePeriodRow(id: .monthly, counts: counts(in: month)),
         ]
     }
 

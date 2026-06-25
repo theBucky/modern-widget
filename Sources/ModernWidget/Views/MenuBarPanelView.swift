@@ -6,20 +6,19 @@ struct MenuBarPanelView: View {
     let dailySupplementStore: DailySupplementStore
     let usageStore: CodingUsageStore
 
-    @State private var selectedPane = Pane.main
-    @State private var displayedPane = Pane.main
-    @State private var intervalMenuIdentity = 0
+    @State private var selectedPane = Pane.timer
+    @State private var displayedPane = Pane.timer
     @State private var contentOpacity = 1.0
     @State private var paneTransitionID = 0
 
     private enum Pane: CaseIterable {
-        case main
+        case timer
         case calendar
         case usage
 
         var title: String {
             switch self {
-            case .main:
+            case .timer:
                 return "Timer"
             case .calendar:
                 return "Calendar"
@@ -30,7 +29,7 @@ struct MenuBarPanelView: View {
 
         var systemImage: String {
             switch self {
-            case .main:
+            case .timer:
                 return "timer"
             case .calendar:
                 return "calendar"
@@ -41,7 +40,7 @@ struct MenuBarPanelView: View {
 
         var width: CGFloat {
             switch self {
-            case .main:
+            case .timer:
                 return Layout.mainPaneWidth
             case .calendar, .usage:
                 return Layout.detailPaneWidth
@@ -76,12 +75,11 @@ struct MenuBarPanelView: View {
     @ViewBuilder
     private var paneBody: some View {
         switch displayedPane {
-        case .main:
+        case .timer:
             ReminderPaneView(
                 engine: engine,
                 walkHistoryStore: walkHistoryStore,
-                dailySupplementStore: dailySupplementStore,
-                intervalMenuIdentity: intervalMenuIdentity
+                dailySupplementStore: dailySupplementStore
             )
         case .calendar:
             WalkHistoryCalendarView(
@@ -129,11 +127,6 @@ struct MenuBarPanelView: View {
                     return
                 }
 
-                if pane == .main {
-                    // Menu bridges to NSPopUpButton; recreate it after resize settles.
-                    intervalMenuIdentity += 1
-                }
-
                 withAnimation(Layout.fadeInAnimation) {
                     contentOpacity = 1
                 }
@@ -150,19 +143,11 @@ private struct UpdateAvailableButton: View {
             Button {
                 updaterManager.checkForUpdates()
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.down.circle.fill")
-                    Text("Update Available")
-                }
-                .font(.caption)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.accentColor, in: Capsule())
+                Label("Update Available", systemImage: "arrow.down.circle.fill")
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.plain)
-            .contentShape(Capsule())
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
             .disabled(!updaterManager.canCheckForUpdates)
             .help("Update Available")
         }
