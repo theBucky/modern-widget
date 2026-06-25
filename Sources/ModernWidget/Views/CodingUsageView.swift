@@ -93,6 +93,8 @@ private struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
     let isFetching: Bool
 
+    @State private var displayedCostUSD = 0.0
+
     var body: some View {
         HStack(alignment: .bottom) {
             costTrendGroup
@@ -102,14 +104,21 @@ private struct CodingUsageTodayTotalSection: View {
             dateTokenGroup
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            updateDisplayedCost(animated: !isFetching)
+        }
+        .onChange(of: targetCostUSD) {
+            updateDisplayedCost(animated: true)
+        }
     }
 
     private var costTrendGroup: some View {
-        HStack(alignment: .top, spacing: 6) {
-            totalCostText
-            trendBadge
-                .padding(.top, 7)
-        }
+        CodingUsageCostTrendGroup(
+            costUSD: displayedCostUSD,
+            costTrend: summary.costTrend,
+            hasUsage: summary.counts.hasUsage,
+            isFetching: isFetching
+        )
     }
 
     private var dateTokenGroup: some View {
@@ -121,15 +130,58 @@ private struct CodingUsageTodayTotalSection: View {
         .foregroundStyle(.secondary)
     }
 
+    private var dateText: String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: summary.date)
+        return String(
+            format: "%04d-%02d-%02d", components.year!, components.month!, components.day!)
+    }
+
+    private var targetCostUSD: Double {
+        isFetching ? 0 : summary.counts.costUSD
+    }
+
+    private func updateDisplayedCost(animated: Bool) {
+        if animated, !isFetching {
+            withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
+                displayedCostUSD = targetCostUSD
+            }
+            return
+        }
+
+        displayedCostUSD = targetCostUSD
+    }
+
+    private static let costAnimationDuration = 1.0
+}
+
+private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
+    var costUSD: Double
+    let costTrend: CodingUsageCostTrend
+    let hasUsage: Bool
+    let isFetching: Bool
+
+    var animatableData: Double {
+        get { costUSD }
+        set { costUSD = newValue }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            totalCostText
+            trendBadge
+                .padding(.top, 7)
+        }
+    }
+
     @ViewBuilder
     private var totalCostText: some View {
-        let text = Text(isFetching ? "fetching" : formatCodingUsageCost(summary.counts.costUSD))
+        let text = Text(isFetching ? "fetching" : formatCodingUsageCost(costUSD))
             .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
 
         if isFetching {
             text.foregroundStyle(.secondary)
-        } else if !summary.counts.hasUsage {
+        } else if !hasUsage {
             text.foregroundStyle(Color(nsColor: .tertiaryLabelColor))
         } else {
             text.foregroundStyle(
@@ -142,13 +194,14 @@ private struct CodingUsageTodayTotalSection: View {
     }
 
     private var trendBadge: some View {
-        Text(isFetching ? "fetching" : formatCodingUsageCostTrendMagnitude(summary.costTrend))
+        Text(isFetching ? "fetching" : formatCodingUsageCostTrendMagnitude(costTrend))
             .font(.caption.monospacedDigit())
             .fontWeight(.regular)
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
+            .contentTransition(.numericText(value: costTrend.percent))
     }
 
     private var trendColor: Color {
@@ -156,7 +209,7 @@ private struct CodingUsageTodayTotalSection: View {
             return .secondary
         }
 
-        switch summary.costTrend.direction {
+        switch costTrend.direction {
         case .up:
             return Color(red: 0, green: 128 / 255, blue: 9 / 255)
         case .down:
@@ -164,12 +217,6 @@ private struct CodingUsageTodayTotalSection: View {
         case .flat:
             return Color(nsColor: .systemGray)
         }
-    }
-
-    private var dateText: String {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: summary.date)
-        return String(
-            format: "%04d-%02d-%02d", components.year!, components.month!, components.day!)
     }
 }
 
