@@ -191,6 +191,7 @@ struct CodingUsageLoaderTests {
                 #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"user","usage":{"input":999,"output":999}}}"#,
                 #"{"type":"message","timestamp":"2026-06-18T01:02:03.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":100,"output":50,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
                 #"{"type":"message","timestamp":"2026-06-17T01:02:03.000Z","message":{"role":"assistant","model":"claude-sonnet-4-20250514","usage":{"totalTokens":333}}}"#,
+                #"{"type":"message","timestamp":"2026-06-18T02:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":100,"output":50,"cacheRead":10,"cacheWrite":20,"cacheWrite1h":8,"totalTokens":180}}}"#,
             ].joined(separator: "\n"),
             to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
             in: home
@@ -200,13 +201,13 @@ struct CodingUsageLoaderTests {
             .loadReport(scope: scope())
         let pi = report.agents.first { $0.agent == .pi }!
 
-        #expect(pi.totalCounts.inputTokens == 100)
-        #expect(pi.totalCounts.outputTokens == 383)
-        #expect(pi.totalCounts.cacheCreationTokens == 20)
-        #expect(pi.totalCounts.cacheReadTokens == 10)
-        #expect(pi.totalCounts.totalTokens == 513)
-        #expect(abs(pi.totalCounts.costUSD - 0.0060475) < 0.00000001)
-        #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 180)
+        #expect(pi.totalCounts.inputTokens == 200)
+        #expect(pi.totalCounts.outputTokens == 433)
+        #expect(pi.totalCounts.cacheCreationTokens == 40)
+        #expect(pi.totalCounts.cacheReadTokens == 20)
+        #expect(pi.totalCounts.totalTokens == 693)
+        #expect(abs(pi.totalCounts.costUSD - 0.00712) < 0.00000001)
+        #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 360)
         #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
     }
 

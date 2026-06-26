@@ -9,7 +9,7 @@ struct ReminderStateTests {
     func restartResumesCountdown() {
         let restartedAt = date(2026, 5, 13, 11)
         var state = ReminderState(
-            reminderMinutes: 60,
+            reminderInterval: .sixtyMinutes,
             startedAt: date(2026, 5, 13, 9),
             mode: .paused(secondsRemaining: 300),
             notificationIssue: .notificationsBlocked
@@ -21,14 +21,14 @@ struct ReminderStateTests {
         #expect(state.mode == .running)
         #expect(state.startedAt == restartedAt)
         #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.reminderStatusMessage == nil)
+        #expect(snapshot.notificationIssue == nil)
     }
 
     @Test("pause freezes visible countdown and clears notification issue")
     func pauseFreezesCountdown() {
         let pausedAt = date(2026, 5, 13, 9, 15)
         var state = ReminderState(
-            reminderMinutes: 60,
+            reminderInterval: .sixtyMinutes,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: .deliveryFailure("network down")
@@ -39,14 +39,14 @@ struct ReminderStateTests {
 
         #expect(state.mode == .paused(secondsRemaining: 2700))
         #expect(snapshot.phase == .paused)
-        #expect(snapshot.countdownLabel == "45:00")
-        #expect(snapshot.reminderStatusMessage == nil)
+        #expect(snapshot.secondsRemaining == 2700)
+        #expect(snapshot.notificationIssue == nil)
     }
 
     @Test("toggle pause resumes from the frozen value")
     func togglePauseResumesFromFrozenValue() {
         var state = ReminderState(
-            reminderMinutes: 60,
+            reminderInterval: .sixtyMinutes,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: nil
@@ -58,13 +58,13 @@ struct ReminderStateTests {
 
         #expect(state.startedAt == date(2026, 5, 13, 10, 50))
         #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.countdownLabel == "50:00")
+        #expect(snapshot.secondsRemaining == 3000)
     }
 
     @Test("pausing an overdue timer freezes zero remaining")
     func pausingOverdueTimerFreezesZeroRemaining() {
         var state = ReminderState(
-            reminderMinutes: 60,
+            reminderInterval: .sixtyMinutes,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: nil
@@ -75,13 +75,13 @@ struct ReminderStateTests {
 
         #expect(state.mode == .paused(secondsRemaining: 0))
         #expect(snapshot.phase == .paused)
-        #expect(snapshot.countdownLabel == "00:00")
+        #expect(snapshot.secondsRemaining == 0)
     }
 
     @Test("snapshot reports progress, label, and notification issue")
     func snapshotReportsVisibleState() {
         let state = ReminderState(
-            reminderMinutes: 60,
+            reminderInterval: .sixtyMinutes,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: .notificationsBlocked
@@ -91,16 +91,16 @@ struct ReminderStateTests {
 
         #expect(snapshot.phase == .countingDown)
         #expect(snapshot.progress == 0.5)
-        #expect(snapshot.countdownLabel == "30:00")
-        #expect(snapshot.reminderStatusMessage == "notifications blocked in System Settings")
+        #expect(snapshot.secondsRemaining == 1800)
+        #expect(snapshot.notificationIssue == .notificationsBlocked)
     }
 
     @Test("minute input snaps to supported options")
-    func normalizedReminderMinutes() {
-        #expect(ReminderState.normalizedReminderMinutes(45) == 60)
-        #expect(ReminderState.normalizedReminderMinutes(90) == 60)
-        #expect(ReminderState.normalizedReminderMinutes(100) == 120)
-        #expect(ReminderState.normalizedReminderMinutes(Int.min) == 60)
-        #expect(ReminderState.normalizedReminderMinutes(Int.max) == 120)
+    func reminderIntervalSnapsMinuteInput() {
+        #expect(ReminderInterval(minutes: 45) == .sixtyMinutes)
+        #expect(ReminderInterval(minutes: 90) == .sixtyMinutes)
+        #expect(ReminderInterval(minutes: 100) == .twoHours)
+        #expect(ReminderInterval(minutes: Int.min) == .sixtyMinutes)
+        #expect(ReminderInterval(minutes: Int.max) == .twoHours)
     }
 }

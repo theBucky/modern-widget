@@ -32,8 +32,8 @@ struct ReminderPaneView: View {
                 set: { engine.setReminderMinutes($0) }
             )
         ) {
-            ForEach(ReminderState.minutePresets, id: \.self) { minutes in
-                Text("\(minutes) min").tag(minutes)
+            ForEach(ReminderInterval.allCases, id: \.self) { interval in
+                Text("\(interval.minutes) min").tag(interval.minutes)
             }
         }
         .pickerStyle(.menu)
@@ -96,7 +96,7 @@ private struct ReminderStatusView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let reminderStatusMessage = snapshot.reminderStatusMessage {
+            if let reminderStatusMessage {
                 Text(reminderStatusMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -108,11 +108,30 @@ private struct ReminderStatusView: View {
     private var status: (title: String, message: String, tint: Color) {
         switch snapshot.phase {
         case .countingDown:
-            return (snapshot.countdownLabel, "until next break", .primary)
+            return (countdownLabel, "until next break", .primary)
         case .paused:
-            return (snapshot.countdownLabel, "paused", .secondary)
+            return (countdownLabel, "paused", .secondary)
         case .overdue:
             return ("MOVE", "muscles atrophy, circulation stops, you know...", .red)
+        }
+    }
+
+    private var countdownLabel: String {
+        String(format: "%02d:%02d", snapshot.secondsRemaining / 60, snapshot.secondsRemaining % 60)
+    }
+
+    private var reminderStatusMessage: String? {
+        guard let issue = snapshot.notificationIssue else {
+            return nil
+        }
+
+        switch issue {
+        case .notificationsBlocked:
+            return "notifications blocked in System Settings"
+        case .unknownPermissionState:
+            return "unknown notification permission state"
+        case let .deliveryFailure(message):
+            return message
         }
     }
 }

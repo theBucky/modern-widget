@@ -66,6 +66,8 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         return nil
     }
 
+    let cacheWrite1h = min(fields.cacheWrite1h, fields.cacheWrite)
+    let cacheWrite5m = fields.cacheWrite - cacheWrite1h
     let model = fields.model
     return (
         timestamp,
@@ -75,12 +77,15 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
             cacheCreationTokens: fields.cacheWrite,
             cacheReadTokens: fields.cacheRead,
             totalTokens: totalTokens,
-            costUSD: CodingUsagePricing.cachedCost(
+            costUSD: CodingUsagePricing.cost(
                 model: model,
-                inputTokens: fields.input,
-                outputTokens: outputTokens,
-                cacheCreation5mTokens: fields.cacheWrite,
-                cacheReadTokens: fields.cacheRead
+                tokens: CodingUsageBillableTokens(
+                    input: fields.input,
+                    output: outputTokens,
+                    cacheCreation5m: cacheWrite5m,
+                    cacheCreation1h: cacheWrite1h,
+                    cacheRead: fields.cacheRead
+                )
             )
         )
     )
@@ -106,6 +111,8 @@ private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields {
                         fields.cacheWrite = scanner.readUInt64() ?? 0
                     } else if inner == "cacheRead" {
                         fields.cacheRead = scanner.readUInt64() ?? 0
+                    } else if inner == "cacheWrite1h" {
+                        fields.cacheWrite1h = scanner.readUInt64() ?? 0
                     } else if inner == "totalTokens" {
                         fields.totalTokens = scanner.readUInt64() ?? 0
                     } else {
@@ -127,6 +134,7 @@ private struct PiMessageFields {
     var input: UInt64 = 0
     var rawOutput: UInt64 = 0
     var cacheWrite: UInt64 = 0
+    var cacheWrite1h: UInt64 = 0
     var cacheRead: UInt64 = 0
     var totalTokens: UInt64 = 0
 }

@@ -2,21 +2,36 @@ import Foundation
 
 struct ReminderSnapshot: Equatable {
     let phase: ReminderPhase
+    let secondsRemaining: Int
     let progress: Double
-    let countdownLabel: String
-    let reminderStatusMessage: String?
+    let notificationIssue: ReminderNotificationIssue?
+}
+
+enum ReminderInterval: Int, CaseIterable {
+    case sixtyMinutes = 60
+    case twoHours = 120
+
+    var minutes: Int {
+        rawValue
+    }
+
+    var seconds: Int {
+        minutes * 60
+    }
+
+    init(minutes: Int) {
+        self = minutes <= 90 ? .sixtyMinutes : .twoHours
+    }
 }
 
 struct ReminderState: Equatable {
-    static let minutePresets = [60, 120]
-
-    var reminderMinutes: Int
+    var reminderInterval: ReminderInterval
     var startedAt: Date
     var mode: ReminderMode
     var notificationIssue: ReminderNotificationIssue?
 
     var reminderSeconds: Int {
-        reminderMinutes * 60
+        reminderInterval.seconds
     }
 
     var schedule: ReminderSchedule {
@@ -50,32 +65,9 @@ struct ReminderState: Equatable {
 
         return ReminderSnapshot(
             phase: countdown.phase,
+            secondsRemaining: countdown.secondsRemaining,
             progress: Double(countdown.secondsRemaining) / Double(reminderSeconds),
-            countdownLabel: Self.countdownLabel(for: countdown.secondsRemaining),
-            reminderStatusMessage: Self.statusMessage(for: notificationIssue)
+            notificationIssue: notificationIssue
         )
-    }
-
-    static func normalizedReminderMinutes(_ minutes: Int) -> Int {
-        minutes <= 90 ? 60 : 120
-    }
-
-    private static func countdownLabel(for secondsRemaining: Int) -> String {
-        String(format: "%02d:%02d", secondsRemaining / 60, secondsRemaining % 60)
-    }
-
-    private static func statusMessage(for issue: ReminderNotificationIssue?) -> String? {
-        guard let issue else {
-            return nil
-        }
-
-        switch issue {
-        case .notificationsBlocked:
-            return "notifications blocked in System Settings"
-        case .unknownPermissionState:
-            return "unknown notification permission state"
-        case let .deliveryFailure(message):
-            return message
-        }
     }
 }

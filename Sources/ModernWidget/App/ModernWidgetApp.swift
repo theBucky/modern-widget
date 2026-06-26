@@ -9,6 +9,7 @@ struct ModernWidgetApp: App {
     @State private var walkHistoryStore = WalkHistoryStore()
     @State private var dailySupplementStore = DailySupplementStore()
     @State private var usageStore = CodingUsageStore()
+    private let updaterManager = UpdaterManager.shared
 
     var body: some Scene {
         MenuBarExtra {
@@ -16,7 +17,8 @@ struct ModernWidgetApp: App {
                 engine: engine,
                 walkHistoryStore: walkHistoryStore,
                 dailySupplementStore: dailySupplementStore,
-                usageStore: usageStore
+                usageStore: usageStore,
+                updaterManager: updaterManager
             )
         } label: {
             MenuBarIconView(engine: engine)

@@ -40,14 +40,12 @@ private struct ClaudeMessageFields {
 extension CodingUsageLoader {
     func loadClaudeUsage(
         files: [URL],
-        scope: CodingUsageDateScope,
         into accumulator: inout CodingUsageAccumulator
     ) {
         let usageNeedle = JSONLineNeedle(#""usage""#)
         let entries =
             files
             .flatMap { usageRecords(in: $0, needles: [usageNeedle], parse: claudeUsageEntry) }
-            .filter { scope.historyDay(containing: $0.timestamp) != nil }
 
         for entry in dedupeClaudeEntries(entries) {
             accumulator.add(.claude, counts: entry.counts, at: entry.timestamp)
@@ -172,19 +170,23 @@ private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEn
     let cacheCreation1h = message.cacheCreation1hResolved
     return ClaudeUsageEntry(
         timestamp: timestamp,
-        counts: .claude(
+        counts: CodingTokenCounts(
             inputTokens: message.input,
             outputTokens: message.output,
             cacheCreationTokens: cacheCreation5m + cacheCreation1h,
             cacheReadTokens: message.cacheRead,
-            costUSD: CodingUsagePricing.cachedCost(
+            totalTokens: message.input + message.output + cacheCreation5m + cacheCreation1h
+                + message.cacheRead,
+            costUSD: CodingUsagePricing.cost(
                 model: message.model,
-                inputTokens: message.input,
-                outputTokens: message.output,
-                cacheCreation5mTokens: cacheCreation5m,
-                cacheCreation1hTokens: cacheCreation1h,
-                cacheReadTokens: message.cacheRead,
-                usesFastPricing: message.usesFastPricing
+                tokens: CodingUsageBillableTokens(
+                    input: message.input,
+                    output: message.output,
+                    cacheCreation5m: cacheCreation5m,
+                    cacheCreation1h: cacheCreation1h,
+                    cacheRead: message.cacheRead,
+                    usesFastPricing: message.usesFastPricing
+                )
             )
         ),
         messageID: message.id,

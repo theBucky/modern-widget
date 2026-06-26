@@ -1,53 +1,68 @@
 import Foundation
 
+struct CodingUsageBillableTokens {
+    let input: UInt64
+    let output: UInt64
+    let cacheCreation5m: UInt64
+    let cacheCreation1h: UInt64
+    let cacheRead: UInt64
+    let usesFastPricing: Bool
+
+    init(
+        input: UInt64,
+        output: UInt64,
+        cacheCreation5m: UInt64 = 0,
+        cacheCreation1h: UInt64 = 0,
+        cacheRead: UInt64 = 0,
+        usesFastPricing: Bool = false
+    ) {
+        self.input = input
+        self.output = output
+        self.cacheCreation5m = cacheCreation5m
+        self.cacheCreation1h = cacheCreation1h
+        self.cacheRead = cacheRead
+        self.usesFastPricing = usesFastPricing
+    }
+}
+
 enum CodingUsagePricing {
     private struct ModelPricing {
         let input: Double
         let output: Double
         let cacheCreate: Double
         let cacheRead: Double
-        var fastMultiplier = 2.0
+        let fastMultiplier: Double
+
+        init(
+            input: Double,
+            output: Double,
+            cacheCreate: Double,
+            cacheRead: Double,
+            fastMultiplier: Double = 2.0
+        ) {
+            self.input = input
+            self.output = output
+            self.cacheCreate = cacheCreate
+            self.cacheRead = cacheRead
+            self.fastMultiplier = fastMultiplier
+        }
     }
 
-    static func cachedCost(
+    static func cost(
         model: String?,
-        inputTokens: UInt64,
-        outputTokens: UInt64,
-        cacheCreation5mTokens: UInt64,
-        cacheCreation1hTokens: UInt64 = 0,
-        cacheReadTokens: UInt64,
-        usesFastPricing: Bool = false
+        tokens: CodingUsageBillableTokens
     ) -> Double {
         guard let model, let pricing = pricing(for: model) else {
             return 0
         }
 
-        let multiplier = usesFastPricing ? pricing.fastMultiplier : 1
+        let multiplier = tokens.usesFastPricing ? pricing.fastMultiplier : 1
         return multiplier
-            * (Double(inputTokens) * pricing.input
-                + Double(outputTokens) * pricing.output
-                + Double(cacheCreation5mTokens) * pricing.cacheCreate
-                + Double(cacheCreation1hTokens) * pricing.input * 2
-                + Double(cacheReadTokens) * pricing.cacheRead)
-    }
-
-    static func codexCost(
-        model: String,
-        inputTokens: UInt64,
-        cachedInputTokens: UInt64,
-        outputTokens: UInt64,
-        usesFastPricing: Bool
-    ) -> Double {
-        guard let pricing = pricing(for: model) else {
-            return 0
-        }
-
-        let billedInputTokens = inputTokens - cachedInputTokens
-        let multiplier = usesFastPricing ? pricing.fastMultiplier : 1
-        return multiplier
-            * (Double(billedInputTokens) * pricing.input
-                + Double(cachedInputTokens) * pricing.cacheRead
-                + Double(outputTokens) * pricing.output)
+            * (Double(tokens.input) * pricing.input
+                + Double(tokens.output) * pricing.output
+                + Double(tokens.cacheCreation5m) * pricing.cacheCreate
+                + Double(tokens.cacheCreation1h) * pricing.input * 2
+                + Double(tokens.cacheRead) * pricing.cacheRead)
     }
 
     private static func pricing(for model: String) -> ModelPricing? {

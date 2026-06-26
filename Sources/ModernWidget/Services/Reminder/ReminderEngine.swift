@@ -27,7 +27,7 @@ final class ReminderEngine {
     private var state: ReminderState
 
     var reminderMinutes: Int {
-        state.reminderMinutes
+        state.reminderInterval.minutes
     }
 
     init(defaults: UserDefaults = .standard, notifier: ReminderNotifier = ReminderNotifier()) {
@@ -47,15 +47,15 @@ final class ReminderEngine {
     }
 
     func setReminderMinutes(_ minutes: Int) {
-        let normalizedMinutes = ReminderState.normalizedReminderMinutes(minutes)
-        if normalizedMinutes == state.reminderMinutes {
+        let interval = ReminderInterval(minutes: minutes)
+        if interval == state.reminderInterval {
             return
         }
 
         let now = Date.now
         lastReminderAt = nil
         updateState {
-            $0.reminderMinutes = normalizedMinutes
+            $0.reminderInterval = interval
             $0.restart(at: now)
         }
     }
@@ -75,10 +75,8 @@ final class ReminderEngine {
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        let storedReminderMinutes = ReminderState.normalizedReminderMinutes(
-            defaults.integer(forKey: Keys.reminderMinutes)
-        )
-        let reminderSeconds = storedReminderMinutes * 60
+        let interval = ReminderInterval(minutes: defaults.integer(forKey: Keys.reminderMinutes))
+        let reminderSeconds = interval.seconds
         let storedPausedSeconds =
             defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? reminderSeconds
         let pausedSeconds = min(max(storedPausedSeconds, 0), reminderSeconds)
@@ -89,7 +87,7 @@ final class ReminderEngine {
 
         let startedAt = loadStartedAt(defaults: defaults)
         return ReminderState(
-            reminderMinutes: storedReminderMinutes,
+            reminderInterval: interval,
             startedAt: startedAt,
             mode: mode,
             notificationIssue: nil
@@ -123,13 +121,13 @@ final class ReminderEngine {
     }
 
     private func persistState() {
-        defaults.set(state.reminderMinutes, forKey: Keys.reminderMinutes)
+        defaults.set(state.reminderInterval.minutes, forKey: Keys.reminderMinutes)
         defaults.set(state.startedAt, forKey: Keys.startedAt)
 
         switch state.mode {
         case .running:
             defaults.set(false, forKey: Keys.isPaused)
-            defaults.set(state.reminderSeconds, forKey: Keys.pausedRemainingSeconds)
+            defaults.removeObject(forKey: Keys.pausedRemainingSeconds)
         case let .paused(secondsRemaining):
             defaults.set(true, forKey: Keys.isPaused)
             defaults.set(secondsRemaining, forKey: Keys.pausedRemainingSeconds)

@@ -56,7 +56,7 @@ struct CodingUsageLoader: Sendable {
 
     func loadReport(scan: CodingUsageScan) -> CodingUsageReport {
         var accumulator = CodingUsageAccumulator(scope: scan.scope)
-        loadClaudeUsage(files: scan.claudeFiles, scope: scan.scope, into: &accumulator)
+        loadClaudeUsage(files: scan.claudeFiles, into: &accumulator)
         loadCodexUsage(sources: scan.codexSources, into: &accumulator)
         loadPiUsage(files: scan.piFiles, into: &accumulator)
 
