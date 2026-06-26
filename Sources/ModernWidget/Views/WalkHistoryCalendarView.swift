@@ -85,7 +85,7 @@ struct WalkHistoryCalendarView: View {
         LazyVGrid(columns: Layout.columns, spacing: Layout.cellSpacing) {
             ForEach(monthGrid.dayCells.indices, id: \.self) { index in
                 if let date = monthGrid.dayCells[index] {
-                    dayCell(for: date, count: historyStore.walkCountsByDay[date] ?? 0)
+                    dayCell(for: date, count: historyStore.walkCount(on: date))
                 } else {
                     Color.clear.frame(height: Layout.cellHeight)
                 }

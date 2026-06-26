@@ -19,8 +19,8 @@ struct WalkHistoryStoreTests {
         store.recordWalk(evening)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults)
-        #expect(store.walkCountsByDay[today] == 2)
-        #expect(reloadedStore.walkCountsByDay[today] == 2)
+        #expect(store.walkCount(on: today) == 2)
+        #expect(reloadedStore.walkCount(on: today) == 2)
     }
 
     @Test("walks outside the retention window are ignored")
@@ -35,8 +35,8 @@ struct WalkHistoryStoreTests {
         store.recordWalk(today)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults)
-        #expect(reloadedStore.walkCountsByDay[calendar.startOfDay(for: expiredDay)] == nil)
-        #expect(reloadedStore.walkCountsByDay[today] == 1)
+        #expect(reloadedStore.walkCount(on: expiredDay) == 0)
+        #expect(reloadedStore.walkCount(on: today) == 1)
     }
 
     @Test("legacy walk dates are folded by day and migrated")
@@ -54,12 +54,43 @@ struct WalkHistoryStoreTests {
         let savedData = try #require(defaults.data(forKey: "walkHistory"))
         let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
 
-        #expect(store.walkCountsByDay[today] == 2)
-        #expect(reloadedStore.walkCountsByDay[today] == 2)
-        #expect(savedDays == [StoredWalkDay(day: today, count: 2)])
+        #expect(store.walkCount(on: today) == 2)
+        #expect(reloadedStore.walkCount(on: today) == 2)
+        #expect(savedDays == [StoredWalkDay(day: today, count: 2, calendar: calendar)])
+    }
+
+    @Test("stored walk dates are migrated to stable day keys")
+    func storedWalkDatesAreMigratedToStableDayKeys() throws {
+        let defaults = makeDefaults("WalkHistoryStoreTests")
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let oldData = try JSONEncoder().encode([LegacyStoredWalkDay(day: today, count: 3)])
+        defaults.set(oldData, forKey: "walkHistory")
+
+        let store = WalkHistoryStore(defaults: defaults)
+        let savedData = try #require(defaults.data(forKey: "walkHistory"))
+        let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
+
+        #expect(store.walkCount(on: today) == 3)
+        #expect(savedDays == [StoredWalkDay(day: today, count: 3, calendar: calendar)])
     }
 
     private struct StoredWalkDay: Codable, Equatable {
+        let year: Int
+        let month: Int
+        let day: Int
+        let count: Int
+
+        init(day: Date, count: Int, calendar: Calendar) {
+            let components = calendar.dateComponents([.year, .month, .day], from: day)
+            self.year = components.year!
+            self.month = components.month!
+            self.day = components.day!
+            self.count = count
+        }
+    }
+
+    private struct LegacyStoredWalkDay: Codable {
         let day: Date
         let count: Int
     }
