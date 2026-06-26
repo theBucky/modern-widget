@@ -137,7 +137,7 @@ struct JSONScanner {
 
         switch base[index] {
         case .quote:
-            _ = consumeStringPayload()
+            skipStringPayload()
         case .openBrace, .openBracket:
             consumeContainer()
         default:
@@ -205,6 +205,34 @@ struct JSONScanner {
         return JSONStringValue(start: base + start, count: count - start, hasEscape: hasEscape)
     }
 
+    /// Skips a quoted string on the discard path without materializing its payload,
+    /// jumping quote-to-quote with `memchr` instead of walking every byte. Megabytes of
+    /// thinking text and base64 between the token counts dominate the scan, and SIMD
+    /// `memchr` clears them far faster than a per-byte loop. A quote terminates only when
+    /// preceded by an even backslash run; the read path keeps `consumeStringPayload` so it
+    /// can still report `hasEscape`. The cursor lands past the closing quote, or at the end
+    /// for an unterminated string.
+    private mutating func skipStringPayload() {
+        var cursor = index + 1
+        while cursor < count,
+            let hit = memchr(base + cursor, Int32(UInt8.quote), count - cursor)
+        {
+            let quoteIndex = UnsafeRawPointer(hit) - UnsafeRawPointer(base)
+            var escaped = false
+            var scan = quoteIndex - 1
+            while scan >= cursor, base[scan] == .backslash {
+                escaped.toggle()
+                scan -= 1
+            }
+            if !escaped {
+                index = quoteIndex + 1
+                return
+            }
+            cursor = quoteIndex + 1
+        }
+        index = count
+    }
+
     /// Consumes the object or array at the cursor, honoring nested containers and strings.
     private mutating func consumeContainer() {
         var depth = 1
@@ -213,7 +241,7 @@ struct JSONScanner {
         while index < count {
             switch base[index] {
             case .quote:
-                _ = consumeStringPayload()
+                skipStringPayload()
             case .openBrace, .openBracket:
                 depth += 1
                 index += 1
