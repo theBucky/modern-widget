@@ -135,6 +135,17 @@ struct CodingUsageSummaryTests {
                 CodingUsageCostTrend(currentCostUSD: 100, previousCostUSD: 0)) == "+100.0%")
     }
 
+    @Test("rounds cost trend direction to displayed precision")
+    func roundsCostTrendDirectionToDisplayedPrecision() {
+        #expect(
+            CodingUsageCostTrend(currentCostUSD: 100.04, previousCostUSD: 100).direction == .flat)
+        #expect(
+            CodingUsageCostTrend(currentCostUSD: 99.96, previousCostUSD: 100).direction == .flat)
+        #expect(CodingUsageCostTrend(currentCostUSD: 100.06, previousCostUSD: 100).direction == .up)
+        #expect(
+            CodingUsageCostTrend(currentCostUSD: 99.94, previousCostUSD: 100).direction == .down)
+    }
+
     @Test("empty summary gets a thirty day chart window")
     func emptySummaryGetsChartWindow() {
         let calendar = gregorianUTC()

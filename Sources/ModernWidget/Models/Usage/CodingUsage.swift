@@ -107,12 +107,15 @@ struct CodingUsageCostTrend: Equatable, Sendable {
     }
 
     init(currentCostUSD: Double, previousCostUSD: Double) {
-        guard previousCostUSD > 0 else {
-            self.percent = currentCostUSD > 0 ? 100 : 0
-            return
+        let rawPercent: Double
+        if previousCostUSD > 0 {
+            rawPercent = (currentCostUSD - previousCostUSD) / previousCostUSD * 100
+        } else {
+            rawPercent = currentCostUSD > 0 ? 100 : 0
         }
 
-        self.percent = (currentCostUSD - previousCostUSD) / previousCostUSD * 100
+        let rounded = (rawPercent * 10).rounded(.toNearestOrEven) / 10
+        self.percent = rounded == 0 ? 0 : rounded
     }
 }
 
