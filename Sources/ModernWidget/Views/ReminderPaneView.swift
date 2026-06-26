@@ -32,8 +32,8 @@ struct ReminderPaneView: View {
                 set: { engine.setReminderMinutes($0) }
             )
         ) {
-            ForEach(ReminderInterval.allCases, id: \.self) { interval in
-                Text("\(interval.minutes) min").tag(interval.minutes)
+            ForEach(ReminderState.minutePresets, id: \.self) { minutes in
+                Text("\(minutes) min").tag(minutes)
             }
         }
         .pickerStyle(.menu)

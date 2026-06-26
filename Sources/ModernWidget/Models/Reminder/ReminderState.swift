@@ -7,31 +7,32 @@ struct ReminderSnapshot: Equatable {
     let notificationIssue: ReminderNotificationIssue?
 }
 
-enum ReminderInterval: Int, CaseIterable {
-    case sixtyMinutes = 60
-    case twoHours = 120
-
-    var minutes: Int {
-        rawValue
-    }
-
-    var seconds: Int {
-        minutes * 60
-    }
-
-    init(minutes: Int) {
-        self = minutes <= 90 ? .sixtyMinutes : .twoHours
-    }
-}
-
 struct ReminderState: Equatable {
-    var reminderInterval: ReminderInterval
+    static let minutePresets = [60, 120]
+
+    private(set) var reminderMinutes: Int
     var startedAt: Date
     var mode: ReminderMode
     var notificationIssue: ReminderNotificationIssue?
 
+    init(
+        reminderMinutes: Int,
+        startedAt: Date,
+        mode: ReminderMode,
+        notificationIssue: ReminderNotificationIssue?
+    ) {
+        self.reminderMinutes = Self.supportedReminderMinutes(for: reminderMinutes)
+        self.startedAt = startedAt
+        self.mode = mode
+        self.notificationIssue = notificationIssue
+    }
+
+    nonisolated static func supportedReminderMinutes(for minutes: Int) -> Int {
+        minutes <= 90 ? 60 : 120
+    }
+
     var reminderSeconds: Int {
-        reminderInterval.seconds
+        reminderMinutes * 60
     }
 
     var schedule: ReminderSchedule {
@@ -46,6 +47,10 @@ struct ReminderState: Equatable {
         startedAt = date
         mode = .running
         notificationIssue = nil
+    }
+
+    mutating func setReminderMinutes(_ minutes: Int) {
+        reminderMinutes = Self.supportedReminderMinutes(for: minutes)
     }
 
     mutating func togglePause(at date: Date) {

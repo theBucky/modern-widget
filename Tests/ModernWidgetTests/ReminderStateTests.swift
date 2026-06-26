@@ -9,7 +9,7 @@ struct ReminderStateTests {
     func restartResumesCountdown() {
         let restartedAt = date(2026, 5, 13, 11)
         var state = ReminderState(
-            reminderInterval: .sixtyMinutes,
+            reminderMinutes: 60,
             startedAt: date(2026, 5, 13, 9),
             mode: .paused(secondsRemaining: 300),
             notificationIssue: .notificationsBlocked
@@ -28,7 +28,7 @@ struct ReminderStateTests {
     func pauseFreezesCountdown() {
         let pausedAt = date(2026, 5, 13, 9, 15)
         var state = ReminderState(
-            reminderInterval: .sixtyMinutes,
+            reminderMinutes: 60,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: .deliveryFailure("network down")
@@ -46,7 +46,7 @@ struct ReminderStateTests {
     @Test("toggle pause resumes from the frozen value")
     func togglePauseResumesFromFrozenValue() {
         var state = ReminderState(
-            reminderInterval: .sixtyMinutes,
+            reminderMinutes: 60,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: nil
@@ -64,7 +64,7 @@ struct ReminderStateTests {
     @Test("pausing an overdue timer freezes zero remaining")
     func pausingOverdueTimerFreezesZeroRemaining() {
         var state = ReminderState(
-            reminderInterval: .sixtyMinutes,
+            reminderMinutes: 60,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: nil
@@ -81,7 +81,7 @@ struct ReminderStateTests {
     @Test("snapshot reports progress, label, and notification issue")
     func snapshotReportsVisibleState() {
         let state = ReminderState(
-            reminderInterval: .sixtyMinutes,
+            reminderMinutes: 60,
             startedAt: date(2026, 5, 13, 9),
             mode: .running,
             notificationIssue: .notificationsBlocked
@@ -96,11 +96,26 @@ struct ReminderStateTests {
     }
 
     @Test("minute input snaps to supported options")
-    func reminderIntervalSnapsMinuteInput() {
-        #expect(ReminderInterval(minutes: 45) == .sixtyMinutes)
-        #expect(ReminderInterval(minutes: 90) == .sixtyMinutes)
-        #expect(ReminderInterval(minutes: 100) == .twoHours)
-        #expect(ReminderInterval(minutes: Int.min) == .sixtyMinutes)
-        #expect(ReminderInterval(minutes: Int.max) == .twoHours)
+    func supportedReminderMinutesSnapInput() {
+        #expect(ReminderState.supportedReminderMinutes(for: 45) == 60)
+        #expect(ReminderState.supportedReminderMinutes(for: 90) == 60)
+        #expect(ReminderState.supportedReminderMinutes(for: 100) == 120)
+        #expect(ReminderState.supportedReminderMinutes(for: Int.min) == 60)
+        #expect(ReminderState.supportedReminderMinutes(for: Int.max) == 120)
+    }
+
+    @Test("state stores only supported reminder minutes")
+    func stateStoresOnlySupportedReminderMinutes() {
+        var state = ReminderState(
+            reminderMinutes: 999,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .running,
+            notificationIssue: nil
+        )
+
+        #expect(state.reminderMinutes == 120)
+
+        state.setReminderMinutes(10)
+        #expect(state.reminderMinutes == 60)
     }
 }

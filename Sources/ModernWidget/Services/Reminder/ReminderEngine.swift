@@ -27,7 +27,7 @@ final class ReminderEngine {
     private var state: ReminderState
 
     var reminderMinutes: Int {
-        state.reminderInterval.minutes
+        state.reminderMinutes
     }
 
     init(defaults: UserDefaults = .standard, notifier: ReminderNotifier = ReminderNotifier()) {
@@ -47,15 +47,15 @@ final class ReminderEngine {
     }
 
     func setReminderMinutes(_ minutes: Int) {
-        let interval = ReminderInterval(minutes: minutes)
-        if interval == state.reminderInterval {
+        let reminderMinutes = ReminderState.supportedReminderMinutes(for: minutes)
+        if reminderMinutes == state.reminderMinutes {
             return
         }
 
         let now = Date.now
         lastReminderAt = nil
         updateState {
-            $0.reminderInterval = interval
+            $0.setReminderMinutes(reminderMinutes)
             $0.restart(at: now)
         }
     }
@@ -75,8 +75,9 @@ final class ReminderEngine {
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        let interval = ReminderInterval(minutes: defaults.integer(forKey: Keys.reminderMinutes))
-        let reminderSeconds = interval.seconds
+        let reminderMinutes = ReminderState.supportedReminderMinutes(
+            for: defaults.integer(forKey: Keys.reminderMinutes))
+        let reminderSeconds = reminderMinutes * 60
         let storedPausedSeconds =
             defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? reminderSeconds
         let pausedSeconds = min(max(storedPausedSeconds, 0), reminderSeconds)
@@ -87,7 +88,7 @@ final class ReminderEngine {
 
         let startedAt = loadStartedAt(defaults: defaults)
         return ReminderState(
-            reminderInterval: interval,
+            reminderMinutes: reminderMinutes,
             startedAt: startedAt,
             mode: mode,
             notificationIssue: nil
@@ -121,7 +122,7 @@ final class ReminderEngine {
     }
 
     private func persistState() {
-        defaults.set(state.reminderInterval.minutes, forKey: Keys.reminderMinutes)
+        defaults.set(state.reminderMinutes, forKey: Keys.reminderMinutes)
         defaults.set(state.startedAt, forKey: Keys.startedAt)
 
         switch state.mode {
