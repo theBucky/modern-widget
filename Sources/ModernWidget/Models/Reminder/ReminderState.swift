@@ -2,18 +2,44 @@ import Foundation
 
 struct ReminderSnapshot: Equatable {
     let phase: ReminderPhase
+    let secondsRemaining: Int
     let progress: Double
-    let countdownLabel: String
-    let reminderStatusMessage: String?
+    let notificationIssue: ReminderNotificationIssue?
 }
 
 struct ReminderState: Equatable {
     static let minutePresets = [60, 120]
 
-    var reminderMinutes: Int
+    private(set) var reminderMinutes: Int
     var startedAt: Date
-    var mode: ReminderMode
+    private(set) var mode: ReminderMode
     var notificationIssue: ReminderNotificationIssue?
+
+    init(
+        reminderMinutes: Int,
+        startedAt: Date,
+        mode: ReminderMode,
+        notificationIssue: ReminderNotificationIssue?
+    ) {
+        self.reminderMinutes = Self.supportedReminderMinutes(for: reminderMinutes)
+        self.startedAt = startedAt
+        self.mode = Self.normalizedMode(
+            mode,
+            reminderSeconds: self.reminderMinutes * 60
+        )
+        self.notificationIssue = notificationIssue
+    }
+
+    nonisolated static func supportedReminderMinutes(for minutes: Int) -> Int {
+        minutes <= 90 ? 60 : 120
+    }
+
+    private static func normalizedMode(_ mode: ReminderMode, reminderSeconds: Int) -> ReminderMode {
+        guard case let .paused(secondsRemaining) = mode else {
+            return mode
+        }
+        return .paused(secondsRemaining: min(max(secondsRemaining, 0), reminderSeconds))
+    }
 
     var reminderSeconds: Int {
         reminderMinutes * 60
@@ -33,6 +59,11 @@ struct ReminderState: Equatable {
         notificationIssue = nil
     }
 
+    mutating func setReminderMinutes(_ minutes: Int) {
+        reminderMinutes = Self.supportedReminderMinutes(for: minutes)
+        mode = Self.normalizedMode(mode, reminderSeconds: reminderSeconds)
+    }
+
     mutating func togglePause(at date: Date) {
         switch mode {
         case .running:
@@ -50,32 +81,9 @@ struct ReminderState: Equatable {
 
         return ReminderSnapshot(
             phase: countdown.phase,
+            secondsRemaining: countdown.secondsRemaining,
             progress: Double(countdown.secondsRemaining) / Double(reminderSeconds),
-            countdownLabel: Self.countdownLabel(for: countdown.secondsRemaining),
-            reminderStatusMessage: Self.statusMessage(for: notificationIssue)
+            notificationIssue: notificationIssue
         )
-    }
-
-    static func normalizedReminderMinutes(_ minutes: Int) -> Int {
-        minutes <= 90 ? 60 : 120
-    }
-
-    private static func countdownLabel(for secondsRemaining: Int) -> String {
-        String(format: "%02d:%02d", secondsRemaining / 60, secondsRemaining % 60)
-    }
-
-    private static func statusMessage(for issue: ReminderNotificationIssue?) -> String? {
-        guard let issue else {
-            return nil
-        }
-
-        switch issue {
-        case .notificationsBlocked:
-            return "notifications blocked in System Settings"
-        case .unknownPermissionState:
-            return "unknown notification permission state"
-        case let .deliveryFailure(message):
-            return message
-        }
     }
 }

@@ -47,15 +47,15 @@ final class ReminderEngine {
     }
 
     func setReminderMinutes(_ minutes: Int) {
-        let normalizedMinutes = ReminderState.normalizedReminderMinutes(minutes)
-        if normalizedMinutes == state.reminderMinutes {
+        let reminderMinutes = ReminderState.supportedReminderMinutes(for: minutes)
+        if reminderMinutes == state.reminderMinutes {
             return
         }
 
         let now = Date.now
         lastReminderAt = nil
         updateState {
-            $0.reminderMinutes = normalizedMinutes
+            $0.setReminderMinutes(reminderMinutes)
             $0.restart(at: now)
         }
     }
@@ -75,10 +75,9 @@ final class ReminderEngine {
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        let storedReminderMinutes = ReminderState.normalizedReminderMinutes(
-            defaults.integer(forKey: Keys.reminderMinutes)
-        )
-        let reminderSeconds = storedReminderMinutes * 60
+        let reminderMinutes = ReminderState.supportedReminderMinutes(
+            for: defaults.integer(forKey: Keys.reminderMinutes))
+        let reminderSeconds = reminderMinutes * 60
         let storedPausedSeconds =
             defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? reminderSeconds
         let pausedSeconds = min(max(storedPausedSeconds, 0), reminderSeconds)
@@ -89,7 +88,7 @@ final class ReminderEngine {
 
         let startedAt = loadStartedAt(defaults: defaults)
         return ReminderState(
-            reminderMinutes: storedReminderMinutes,
+            reminderMinutes: reminderMinutes,
             startedAt: startedAt,
             mode: mode,
             notificationIssue: nil
@@ -129,7 +128,7 @@ final class ReminderEngine {
         switch state.mode {
         case .running:
             defaults.set(false, forKey: Keys.isPaused)
-            defaults.set(state.reminderSeconds, forKey: Keys.pausedRemainingSeconds)
+            defaults.removeObject(forKey: Keys.pausedRemainingSeconds)
         case let .paused(secondsRemaining):
             defaults.set(true, forKey: Keys.isPaused)
             defaults.set(secondsRemaining, forKey: Keys.pausedRemainingSeconds)

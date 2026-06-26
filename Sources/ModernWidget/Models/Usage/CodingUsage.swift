@@ -43,47 +43,13 @@ struct CodingTokenCounts: Hashable, Sendable {
     }
 
     mutating func add(_ other: CodingTokenCounts) {
-        inputTokens += other.inputTokens
-        outputTokens += other.outputTokens
-        cacheCreationTokens += other.cacheCreationTokens
-        cacheReadTokens += other.cacheReadTokens
-        reasoningTokens += other.reasoningTokens
-        totalTokens += other.totalTokens
+        inputTokens = inputTokens.saturatingAdd(other.inputTokens)
+        outputTokens = outputTokens.saturatingAdd(other.outputTokens)
+        cacheCreationTokens = cacheCreationTokens.saturatingAdd(other.cacheCreationTokens)
+        cacheReadTokens = cacheReadTokens.saturatingAdd(other.cacheReadTokens)
+        reasoningTokens = reasoningTokens.saturatingAdd(other.reasoningTokens)
+        totalTokens = totalTokens.saturatingAdd(other.totalTokens)
         costUSD += other.costUSD
-    }
-
-    static func claude(
-        inputTokens: UInt64,
-        outputTokens: UInt64,
-        cacheCreationTokens: UInt64,
-        cacheReadTokens: UInt64,
-        costUSD: Double
-    ) -> Self {
-        Self(
-            inputTokens: inputTokens,
-            outputTokens: outputTokens,
-            cacheCreationTokens: cacheCreationTokens,
-            cacheReadTokens: cacheReadTokens,
-            totalTokens: inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens,
-            costUSD: costUSD
-        )
-    }
-
-    static func codex(
-        rawInputTokens: UInt64,
-        cachedInputTokens: UInt64,
-        outputTokens: UInt64,
-        reasoningTokens: UInt64,
-        costUSD: Double
-    ) -> Self {
-        Self(
-            inputTokens: rawInputTokens.saturatingSubtract(cachedInputTokens),
-            outputTokens: outputTokens,
-            cacheReadTokens: cachedInputTokens,
-            reasoningTokens: reasoningTokens,
-            totalTokens: rawInputTokens + outputTokens,
-            costUSD: costUSD
-        )
     }
 }
 
@@ -211,39 +177,6 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
             )
         }
     }
-}
-
-func formatCodingUsageCost(_ cost: Double) -> String {
-    if cost <= 0 {
-        return "$0.00"
-    }
-    if cost < 0.01 {
-        return String(format: "$%.4f", cost)
-    }
-    return String(format: "$%.2f", cost)
-}
-
-func formatCodingUsageTokens(_ tokens: UInt64) -> String {
-    let units: [(threshold: Double, suffix: String)] = [
-        (1_000_000_000_000, "T"),
-        (1_000_000_000, "B"),
-        (1_000_000, "M"),
-        (1_000, "K"),
-    ]
-    let value = Double(tokens)
-
-    for unit in units {
-        guard value >= unit.threshold else {
-            continue
-        }
-        return String(format: "%.1f%@ tokens", value / unit.threshold, unit.suffix)
-    }
-
-    return String(format: "%.1f tokens", value)
-}
-
-func formatCodingUsageCostTrendMagnitude(_ trend: CodingUsageCostTrend) -> String {
-    String(format: "%.1f%%", abs(trend.percent))
 }
 
 struct CodingUsageReport: Equatable, Sendable {

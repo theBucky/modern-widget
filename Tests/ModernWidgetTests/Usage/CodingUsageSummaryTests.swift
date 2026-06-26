@@ -114,6 +114,7 @@ struct CodingUsageSummaryTests {
     func formatsTokenCountsWithCompactUnits() {
         #expect(formatCodingUsageTokens(999) == "999.0 tokens")
         #expect(formatCodingUsageTokens(1_200) == "1.2K tokens")
+        #expect(formatCodingUsageTokens(999_950) == "1.0M tokens")
         #expect(formatCodingUsageTokens(12_300_000_000) == "12.3B tokens")
         #expect(formatCodingUsageTokens(1_200_000_000_000) == "1.2T tokens")
     }

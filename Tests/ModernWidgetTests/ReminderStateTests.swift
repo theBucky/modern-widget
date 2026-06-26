@@ -21,7 +21,7 @@ struct ReminderStateTests {
         #expect(state.mode == .running)
         #expect(state.startedAt == restartedAt)
         #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.reminderStatusMessage == nil)
+        #expect(snapshot.notificationIssue == nil)
     }
 
     @Test("pause freezes visible countdown and clears notification issue")
@@ -39,8 +39,8 @@ struct ReminderStateTests {
 
         #expect(state.mode == .paused(secondsRemaining: 2700))
         #expect(snapshot.phase == .paused)
-        #expect(snapshot.countdownLabel == "45:00")
-        #expect(snapshot.reminderStatusMessage == nil)
+        #expect(snapshot.secondsRemaining == 2700)
+        #expect(snapshot.notificationIssue == nil)
     }
 
     @Test("toggle pause resumes from the frozen value")
@@ -58,7 +58,7 @@ struct ReminderStateTests {
 
         #expect(state.startedAt == date(2026, 5, 13, 10, 50))
         #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.countdownLabel == "50:00")
+        #expect(snapshot.secondsRemaining == 3000)
     }
 
     @Test("pausing an overdue timer freezes zero remaining")
@@ -75,7 +75,7 @@ struct ReminderStateTests {
 
         #expect(state.mode == .paused(secondsRemaining: 0))
         #expect(snapshot.phase == .paused)
-        #expect(snapshot.countdownLabel == "00:00")
+        #expect(snapshot.secondsRemaining == 0)
     }
 
     @Test("snapshot reports progress, label, and notification issue")
@@ -91,16 +91,57 @@ struct ReminderStateTests {
 
         #expect(snapshot.phase == .countingDown)
         #expect(snapshot.progress == 0.5)
-        #expect(snapshot.countdownLabel == "30:00")
-        #expect(snapshot.reminderStatusMessage == "notifications blocked in System Settings")
+        #expect(snapshot.secondsRemaining == 1800)
+        #expect(snapshot.notificationIssue == .notificationsBlocked)
     }
 
     @Test("minute input snaps to supported options")
-    func normalizedReminderMinutes() {
-        #expect(ReminderState.normalizedReminderMinutes(45) == 60)
-        #expect(ReminderState.normalizedReminderMinutes(90) == 60)
-        #expect(ReminderState.normalizedReminderMinutes(100) == 120)
-        #expect(ReminderState.normalizedReminderMinutes(Int.min) == 60)
-        #expect(ReminderState.normalizedReminderMinutes(Int.max) == 120)
+    func supportedReminderMinutesSnapInput() {
+        #expect(ReminderState.supportedReminderMinutes(for: 45) == 60)
+        #expect(ReminderState.supportedReminderMinutes(for: 90) == 60)
+        #expect(ReminderState.supportedReminderMinutes(for: 100) == 120)
+        #expect(ReminderState.supportedReminderMinutes(for: Int.min) == 60)
+        #expect(ReminderState.supportedReminderMinutes(for: Int.max) == 120)
+    }
+
+    @Test("state stores only supported reminder minutes")
+    func stateStoresOnlySupportedReminderMinutes() {
+        var state = ReminderState(
+            reminderMinutes: 999,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .running,
+            notificationIssue: nil
+        )
+
+        #expect(state.reminderMinutes == 120)
+
+        state.setReminderMinutes(10)
+        #expect(state.reminderMinutes == 60)
+    }
+
+    @Test("state clamps paused seconds to supported duration")
+    func stateClampsPausedSecondsToSupportedDuration() {
+        let state = ReminderState(
+            reminderMinutes: 45,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .paused(secondsRemaining: 9_999),
+            notificationIssue: nil
+        )
+
+        #expect(state.reminderMinutes == 60)
+        #expect(state.mode == .paused(secondsRemaining: 3_600))
+        #expect(state.snapshot(at: date(2026, 5, 13, 9)).progress == 1)
+
+        var longState = ReminderState(
+            reminderMinutes: 120,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .paused(secondsRemaining: 7_200),
+            notificationIssue: nil
+        )
+
+        longState.setReminderMinutes(60)
+
+        #expect(longState.mode == .paused(secondsRemaining: 3_600))
+        #expect(longState.snapshot(at: date(2026, 5, 13, 9)).progress == 1)
     }
 }

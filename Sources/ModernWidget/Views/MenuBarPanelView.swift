@@ -6,10 +6,7 @@ struct MenuBarPanelView: View {
     let dailySupplementStore: DailySupplementStore
     let usageStore: CodingUsageStore
 
-    @State private var selectedPane = Pane.timer
-    @State private var displayedPane = Pane.timer
-    @State private var contentOpacity = 1.0
-    @State private var paneTransitionID = 0
+    @State private var paneTransition = PaneTransition(initialPane: .timer)
 
     private enum Pane: CaseIterable {
         case timer
@@ -48,6 +45,37 @@ struct MenuBarPanelView: View {
         }
     }
 
+    private struct PaneTransition {
+        var selectedPane: Pane
+        var displayedPane: Pane
+        var contentOpacity = 1.0
+
+        private var transitionID = 0
+
+        init(initialPane: Pane) {
+            self.selectedPane = initialPane
+            self.displayedPane = initialPane
+        }
+
+        mutating func beginSwitch(to pane: Pane) -> Int? {
+            selectedPane = pane
+            transitionID += 1
+
+            guard pane != displayedPane else {
+                return nil
+            }
+            return transitionID
+        }
+
+        func matches(_ id: Int) -> Bool {
+            transitionID == id
+        }
+
+        mutating func displaySelectedPane() {
+            displayedPane = selectedPane
+        }
+    }
+
     private enum Layout {
         static let mainPaneWidth: CGFloat = 180
         static let detailPaneWidth: CGFloat = 280
@@ -62,19 +90,16 @@ struct MenuBarPanelView: View {
         VStack(spacing: Layout.unitSpacing) {
             panePicker
             paneBody
-                .opacity(contentOpacity)
+                .opacity(paneTransition.contentOpacity)
             UpdateAvailableButton()
         }
-        .frame(width: displayedPane.width)
+        .frame(width: paneTransition.displayedPane.width)
         .padding(Layout.borderPadding)
-        .onChange(of: selectedPane) { _, newPane in
-            switchPane(to: newPane)
-        }
     }
 
     @ViewBuilder
     private var paneBody: some View {
-        switch displayedPane {
+        switch paneTransition.displayedPane {
         case .timer:
             ReminderPaneView(
                 engine: engine,
@@ -92,7 +117,13 @@ struct MenuBarPanelView: View {
     }
 
     private var panePicker: some View {
-        Picker("Pane", selection: $selectedPane) {
+        Picker(
+            "Pane",
+            selection: Binding(
+                get: { paneTransition.selectedPane },
+                set: { pane in switchPane(to: pane) }
+            )
+        ) {
             ForEach(Pane.allCases, id: \.self) { pane in
                 Label(pane.title, systemImage: pane.systemImage).tag(pane)
             }
@@ -103,32 +134,29 @@ struct MenuBarPanelView: View {
     }
 
     private func switchPane(to pane: Pane) {
-        paneTransitionID += 1
-        let transitionID = paneTransitionID
-
-        guard pane != displayedPane else {
+        guard let transitionID = paneTransition.beginSwitch(to: pane) else {
             withAnimation(Layout.fadeInAnimation) {
-                contentOpacity = 1
+                paneTransition.contentOpacity = 1
             }
             return
         }
 
         withAnimation(Layout.fadeOutAnimation) {
-            contentOpacity = 0
+            paneTransition.contentOpacity = 0
         } completion: {
-            guard paneTransitionID == transitionID else {
+            guard paneTransition.matches(transitionID) else {
                 return
             }
 
             withAnimation(Layout.paneAnimation) {
-                displayedPane = pane
+                paneTransition.displaySelectedPane()
             } completion: {
-                guard paneTransitionID == transitionID else {
+                guard paneTransition.matches(transitionID) else {
                     return
                 }
 
                 withAnimation(Layout.fadeInAnimation) {
-                    contentOpacity = 1
+                    paneTransition.contentOpacity = 1
                 }
             }
         }

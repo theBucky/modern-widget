@@ -19,8 +19,8 @@ struct WalkHistoryStoreTests {
         store.recordWalk(evening)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults)
-        #expect(store.walkCountsByDay[today] == 2)
-        #expect(reloadedStore.walkCountsByDay[today] == 2)
+        #expect(store.walkCount(on: today) == 2)
+        #expect(reloadedStore.walkCount(on: today) == 2)
     }
 
     @Test("walks outside the retention window are ignored")
@@ -35,7 +35,43 @@ struct WalkHistoryStoreTests {
         store.recordWalk(today)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults)
-        #expect(reloadedStore.walkCountsByDay[calendar.startOfDay(for: expiredDay)] == nil)
-        #expect(reloadedStore.walkCountsByDay[today] == 1)
+        #expect(reloadedStore.walkCount(on: expiredDay) == 0)
+        #expect(reloadedStore.walkCount(on: today) == 1)
+    }
+
+    @Test("legacy walk dates are folded by day and migrated")
+    func legacyWalkDatesAreFoldedByDayAndMigrated() throws {
+        let defaults = makeDefaults("WalkHistoryStoreTests")
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        let morning = calendar.date(byAdding: .hour, value: 9, to: today)!
+        let evening = calendar.date(byAdding: .hour, value: 18, to: today)!
+        let legacyData = try JSONEncoder().encode([morning, evening])
+        defaults.set(legacyData, forKey: "walkHistory")
+
+        let store = WalkHistoryStore(defaults: defaults)
+        let reloadedStore = WalkHistoryStore(defaults: defaults)
+        let savedData = try #require(defaults.data(forKey: "walkHistory"))
+        let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
+
+        #expect(store.walkCount(on: today) == 2)
+        #expect(reloadedStore.walkCount(on: today) == 2)
+        #expect(savedDays == [StoredWalkDay(day: today, count: 2)])
+    }
+
+    private struct StoredWalkDay: Codable, Equatable {
+        let year: Int
+        let month: Int
+        let day: Int
+        let count: Int
+
+        init(day: Date, count: Int) {
+            let calendar = Calendar(identifier: .gregorian)
+            let components = calendar.dateComponents([.year, .month, .day], from: day)
+            self.year = components.year!
+            self.month = components.month!
+            self.day = components.day!
+            self.count = count
+        }
     }
 }

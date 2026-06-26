@@ -45,17 +45,21 @@ struct CodexRawUsage {
     }
 
     func tokenCounts(model: String, usesFastPricing: Bool) -> CodingTokenCounts {
-        CodingTokenCounts.codex(
-            rawInputTokens: inputTokens,
-            cachedInputTokens: cachedInputTokens,
+        let billedInputTokens = inputTokens - cachedInputTokens
+        return CodingTokenCounts(
+            inputTokens: billedInputTokens,
             outputTokens: outputTokens,
+            cacheReadTokens: cachedInputTokens,
             reasoningTokens: reasoningTokens,
-            costUSD: CodingUsagePricing.codexCost(
+            totalTokens: inputTokens.saturatingAdd(outputTokens),
+            costUSD: CodingUsagePricing.cost(
                 model: model,
-                inputTokens: inputTokens,
-                cachedInputTokens: cachedInputTokens,
-                outputTokens: outputTokens,
-                usesFastPricing: usesFastPricing
+                tokens: CodingUsageBillableTokens(
+                    input: billedInputTokens,
+                    output: outputTokens,
+                    cacheRead: cachedInputTokens,
+                    usesFastPricing: usesFastPricing
+                )
             )
         )
     }
