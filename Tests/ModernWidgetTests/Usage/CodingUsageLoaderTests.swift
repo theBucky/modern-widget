@@ -35,6 +35,29 @@ struct CodingUsageLoaderTests {
         #expect(abs(dayCounts(claude, 2026, 6, 17).costUSD - 0.0001458) < 0.00000001)
     }
 
+    @Test("filters claude usage before deduping duplicate messages")
+    func filtersClaudeUsageBeforeDedupingDuplicateMessages() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeDedupeWindow")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-05-19T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":999,"output_tokens":1}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(dayCounts(claude, 2026, 6, 18).inputTokens == 10)
+        #expect(dayCounts(claude, 2026, 6, 18).outputTokens == 5)
+        #expect(claude.totalCounts.totalTokens == 15)
+    }
+
     @Test("loads codex usage from active sessions before archived duplicates")
     func loadsCodexUsageFromActiveSessionsBeforeArchivedDuplicates() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-Codex")
@@ -209,6 +232,36 @@ struct CodingUsageLoaderTests {
         #expect(abs(pi.totalCounts.costUSD - 0.00712) < 0.00000001)
         #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 360)
         #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
+    }
+
+    @Test("saturates malformed token totals")
+    func saturatesMalformedTokenTotals() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-TokenOverflow")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let max = UInt64.max
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","message":{"id":"msg-overflow","model":"claude-sonnet-4-20250514","usage":{"input_tokens":\#(max),"output_tokens":1}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":\#(max),"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0},"model":"gpt-5.2"}}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+        try writeFixture(
+            #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":\#(max),"output":1}}}"#,
+            to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+
+        #expect(report.agents.first { $0.agent == .claude }?.totalCounts.totalTokens == max)
+        #expect(report.agents.first { $0.agent == .codex }?.totalCounts.totalTokens == max)
+        #expect(report.agents.first { $0.agent == .pi }?.totalCounts.totalTokens == max)
     }
 
     @Test("skips escaped strings and nested content while extracting usage")

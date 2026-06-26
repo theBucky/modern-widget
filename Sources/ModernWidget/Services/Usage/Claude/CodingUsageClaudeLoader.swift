@@ -40,12 +40,14 @@ private struct ClaudeMessageFields {
 extension CodingUsageLoader {
     func loadClaudeUsage(
         files: [URL],
+        scope: CodingUsageDateScope,
         into accumulator: inout CodingUsageAccumulator
     ) {
         let usageNeedle = JSONLineNeedle(#""usage""#)
         let entries =
             files
             .flatMap { usageRecords(in: $0, needles: [usageNeedle], parse: claudeUsageEntry) }
+            .filter { scope.historyDay(containing: $0.timestamp) != nil }
 
         for entry in dedupeClaudeEntries(entries) {
             accumulator.add(.claude, counts: entry.counts, at: entry.timestamp)
@@ -168,15 +170,20 @@ private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEn
     }
     let cacheCreation5m = message.cacheCreation5mResolved
     let cacheCreation1h = message.cacheCreation1hResolved
+    let cacheCreationTokens = cacheCreation5m.saturatingAdd(cacheCreation1h)
+    let totalTokens =
+        message.input
+        .saturatingAdd(message.output)
+        .saturatingAdd(cacheCreationTokens)
+        .saturatingAdd(message.cacheRead)
     return ClaudeUsageEntry(
         timestamp: timestamp,
         counts: CodingTokenCounts(
             inputTokens: message.input,
             outputTokens: message.output,
-            cacheCreationTokens: cacheCreation5m + cacheCreation1h,
+            cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: message.cacheRead,
-            totalTokens: message.input + message.output + cacheCreation5m + cacheCreation1h
-                + message.cacheRead,
+            totalTokens: totalTokens,
             costUSD: CodingUsagePricing.cost(
                 model: message.model,
                 tokens: CodingUsageBillableTokens(

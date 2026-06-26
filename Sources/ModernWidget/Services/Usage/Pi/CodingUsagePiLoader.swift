@@ -52,15 +52,14 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         return nil
     }
 
+    let nonOutputTokens =
+        fields.input
+        .saturatingAdd(fields.cacheWrite)
+        .saturatingAdd(fields.cacheRead)
     let outputTokens =
         fields.rawOutput == 0
-        ? fields.totalTokens.saturatingSubtract(
-            fields.input + fields.cacheWrite + fields.cacheRead
-        ) : fields.rawOutput
-    let totalTokens = max(
-        fields.totalTokens,
-        fields.input + outputTokens + fields.cacheWrite + fields.cacheRead
-    )
+        ? fields.totalTokens.saturatingSubtract(nonOutputTokens) : fields.rawOutput
+    let totalTokens = max(fields.totalTokens, nonOutputTokens.saturatingAdd(outputTokens))
 
     guard totalTokens > 0 else {
         return nil

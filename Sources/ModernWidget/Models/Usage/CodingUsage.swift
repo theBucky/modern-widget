@@ -43,12 +43,12 @@ struct CodingTokenCounts: Hashable, Sendable {
     }
 
     mutating func add(_ other: CodingTokenCounts) {
-        inputTokens += other.inputTokens
-        outputTokens += other.outputTokens
-        cacheCreationTokens += other.cacheCreationTokens
-        cacheReadTokens += other.cacheReadTokens
-        reasoningTokens += other.reasoningTokens
-        totalTokens += other.totalTokens
+        inputTokens = inputTokens.saturatingAdd(other.inputTokens)
+        outputTokens = outputTokens.saturatingAdd(other.outputTokens)
+        cacheCreationTokens = cacheCreationTokens.saturatingAdd(other.cacheCreationTokens)
+        cacheReadTokens = cacheReadTokens.saturatingAdd(other.cacheReadTokens)
+        reasoningTokens = reasoningTokens.saturatingAdd(other.reasoningTokens)
+        totalTokens = totalTokens.saturatingAdd(other.totalTokens)
         costUSD += other.costUSD
     }
 }

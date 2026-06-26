@@ -51,7 +51,7 @@ struct CodexRawUsage {
             outputTokens: outputTokens,
             cacheReadTokens: cachedInputTokens,
             reasoningTokens: reasoningTokens,
-            totalTokens: inputTokens + outputTokens,
+            totalTokens: inputTokens.saturatingAdd(outputTokens),
             costUSD: CodingUsagePricing.cost(
                 model: model,
                 tokens: CodingUsageBillableTokens(
