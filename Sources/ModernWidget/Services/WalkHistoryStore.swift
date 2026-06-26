@@ -116,6 +116,8 @@ private struct LegacyStoredWalkDay: Codable {
 }
 
 private struct WalkHistoryDay: Comparable, Codable, Hashable {
+    private static let calendar = Calendar(identifier: .gregorian)
+
     let year: Int
     let month: Int
     let day: Int
@@ -126,8 +128,8 @@ private struct WalkHistoryDay: Comparable, Codable, Hashable {
         self.day = day
     }
 
-    init(date: Date, calendar: Calendar = .current) {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
+    init(date: Date) {
+        let components = Self.calendar.dateComponents([.year, .month, .day], from: date)
         self.year = components.year!
         self.month = components.month!
         self.day = components.day!

@@ -56,7 +56,7 @@ struct WalkHistoryStoreTests {
 
         #expect(store.walkCount(on: today) == 2)
         #expect(reloadedStore.walkCount(on: today) == 2)
-        #expect(savedDays == [StoredWalkDay(day: today, count: 2, calendar: calendar)])
+        #expect(savedDays == [StoredWalkDay(day: today, count: 2)])
     }
 
     @Test("stored walk dates are migrated to stable day keys")
@@ -72,7 +72,7 @@ struct WalkHistoryStoreTests {
         let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
 
         #expect(store.walkCount(on: today) == 3)
-        #expect(savedDays == [StoredWalkDay(day: today, count: 3, calendar: calendar)])
+        #expect(savedDays == [StoredWalkDay(day: today, count: 3)])
     }
 
     private struct StoredWalkDay: Codable, Equatable {
@@ -81,7 +81,8 @@ struct WalkHistoryStoreTests {
         let day: Int
         let count: Int
 
-        init(day: Date, count: Int, calendar: Calendar) {
+        init(day: Date, count: Int) {
+            let calendar = Calendar(identifier: .gregorian)
             let components = calendar.dateComponents([.year, .month, .day], from: day)
             self.year = components.year!
             self.month = components.month!
