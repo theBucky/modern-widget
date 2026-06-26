@@ -10,11 +10,13 @@ final class UpdaterManager: NSObject, ObservableObject {
     private lazy var controller = SPUStandardUpdaterController(
         startingUpdater: false,
         updaterDelegate: self,
-        userDriverDelegate: nil
+        userDriverDelegate: self
     )
 
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var isUpdateAvailable = false
+
+    private var activationPolicyBeforeUpdateUI: NSApplication.ActivationPolicy?
 
     private override init() {
         super.init()
@@ -36,10 +38,30 @@ final class UpdaterManager: NSObject, ObservableObject {
         #if DEBUG
             return
         #else
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
+            activateForUpdateUI()
             controller.checkForUpdates(nil)
         #endif
+    }
+
+    private func activateForUpdateUI() {
+        let currentPolicy = NSApp.activationPolicy()
+        if currentPolicy != .regular, activationPolicyBeforeUpdateUI == nil {
+            guard NSApp.setActivationPolicy(.regular) else {
+                return
+            }
+            activationPolicyBeforeUpdateUI = currentPolicy
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func restoreActivationPolicy() {
+        guard let activationPolicyBeforeUpdateUI else {
+            return
+        }
+
+        self.activationPolicyBeforeUpdateUI = nil
+        NSApp.setActivationPolicy(activationPolicyBeforeUpdateUI)
     }
 }
 
@@ -50,5 +72,19 @@ extension UpdaterManager: SPUUpdaterDelegate {
 
     func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) {
         isUpdateAvailable = false
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+        error: Error?
+    ) {
+        restoreActivationPolicy()
+    }
+}
+
+extension UpdaterManager: @preconcurrency SPUStandardUserDriverDelegate {
+    func standardUserDriverWillFinishUpdateSession() {
+        restoreActivationPolicy()
     }
 }
