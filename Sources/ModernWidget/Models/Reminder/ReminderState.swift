@@ -12,7 +12,7 @@ struct ReminderState: Equatable {
 
     private(set) var reminderMinutes: Int
     var startedAt: Date
-    var mode: ReminderMode
+    private(set) var mode: ReminderMode
     var notificationIssue: ReminderNotificationIssue?
 
     init(
@@ -23,12 +23,22 @@ struct ReminderState: Equatable {
     ) {
         self.reminderMinutes = Self.supportedReminderMinutes(for: reminderMinutes)
         self.startedAt = startedAt
-        self.mode = mode
+        self.mode = Self.normalizedMode(
+            mode,
+            reminderSeconds: self.reminderMinutes * 60
+        )
         self.notificationIssue = notificationIssue
     }
 
     nonisolated static func supportedReminderMinutes(for minutes: Int) -> Int {
         minutes <= 90 ? 60 : 120
+    }
+
+    private static func normalizedMode(_ mode: ReminderMode, reminderSeconds: Int) -> ReminderMode {
+        guard case let .paused(secondsRemaining) = mode else {
+            return mode
+        }
+        return .paused(secondsRemaining: min(max(secondsRemaining, 0), reminderSeconds))
     }
 
     var reminderSeconds: Int {
@@ -51,6 +61,7 @@ struct ReminderState: Equatable {
 
     mutating func setReminderMinutes(_ minutes: Int) {
         reminderMinutes = Self.supportedReminderMinutes(for: minutes)
+        mode = Self.normalizedMode(mode, reminderSeconds: reminderSeconds)
     }
 
     mutating func togglePause(at date: Date) {

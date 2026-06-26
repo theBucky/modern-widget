@@ -118,4 +118,30 @@ struct ReminderStateTests {
         state.setReminderMinutes(10)
         #expect(state.reminderMinutes == 60)
     }
+
+    @Test("state clamps paused seconds to supported duration")
+    func stateClampsPausedSecondsToSupportedDuration() {
+        let state = ReminderState(
+            reminderMinutes: 45,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .paused(secondsRemaining: 9_999),
+            notificationIssue: nil
+        )
+
+        #expect(state.reminderMinutes == 60)
+        #expect(state.mode == .paused(secondsRemaining: 3_600))
+        #expect(state.snapshot(at: date(2026, 5, 13, 9)).progress == 1)
+
+        var longState = ReminderState(
+            reminderMinutes: 120,
+            startedAt: date(2026, 5, 13, 9),
+            mode: .paused(secondsRemaining: 7_200),
+            notificationIssue: nil
+        )
+
+        longState.setReminderMinutes(60)
+
+        #expect(longState.mode == .paused(secondsRemaining: 3_600))
+        #expect(longState.snapshot(at: date(2026, 5, 13, 9)).progress == 1)
+    }
 }
