@@ -64,6 +64,8 @@ private struct CodingUsageLogoImage: View {
     private var logoURL: URL {
         Bundle.main.resourceURL!
             .appendingPathComponent("modern-widget_ModernWidget.bundle")
+            .appendingPathComponent("Assets.xcassets")
+            .appendingPathComponent("\(agent.logoResourceName).imageset")
             .appendingPathComponent("\(agent.logoResourceName).pdf")
     }
 }
