@@ -42,6 +42,11 @@ func formatCodingUsageTokens(_ tokens: UInt64) -> String {
     return codingUsageFormat("%.1f tokens", value)
 }
 
-func formatCodingUsageCostTrendMagnitude(_ trend: CodingUsageCostTrend) -> String {
-    codingUsageFormat("%.1f%%", abs(trend.percent))
+func formatCodingUsageCostTrendPercent(_ trend: CodingUsageCostTrend) -> String {
+    let percentFormat = FloatingPointFormatStyle<Double>.Percent.percent
+        .precision(.fractionLength(1))
+        .sign(strategy: .always(includingZero: false))
+        .locale(codingUsageFormatLocale)
+
+    return (trend.percent / 100).formatted(percentFormat)
 }

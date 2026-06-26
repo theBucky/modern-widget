@@ -119,20 +119,20 @@ struct CodingUsageSummaryTests {
         #expect(formatCodingUsageTokens(1_200_000_000_000) == "1.2T tokens")
     }
 
-    @Test("formats cost trend magnitude")
-    func formatsCostTrendMagnitude() {
+    @Test("formats cost trend percent")
+    func formatsCostTrendPercent() {
         #expect(
-            formatCodingUsageCostTrendMagnitude(
-                CodingUsageCostTrend(currentCostUSD: 120, previousCostUSD: 100)) == "20.0%")
+            formatCodingUsageCostTrendPercent(
+                CodingUsageCostTrend(currentCostUSD: 120, previousCostUSD: 100)) == "+20.0%")
         #expect(
-            formatCodingUsageCostTrendMagnitude(
-                CodingUsageCostTrend(currentCostUSD: 95, previousCostUSD: 100)) == "5.0%")
+            formatCodingUsageCostTrendPercent(
+                CodingUsageCostTrend(currentCostUSD: 95, previousCostUSD: 100)) == "-5.0%")
         #expect(
-            formatCodingUsageCostTrendMagnitude(
+            formatCodingUsageCostTrendPercent(
                 CodingUsageCostTrend(currentCostUSD: 0, previousCostUSD: 0)) == "0.0%")
         #expect(
-            formatCodingUsageCostTrendMagnitude(
-                CodingUsageCostTrend(currentCostUSD: 100, previousCostUSD: 0)) == "100.0%")
+            formatCodingUsageCostTrendPercent(
+                CodingUsageCostTrend(currentCostUSD: 100, previousCostUSD: 0)) == "+100.0%")
     }
 
     @Test("empty summary gets a thirty day chart window")

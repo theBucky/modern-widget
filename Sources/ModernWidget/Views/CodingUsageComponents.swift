@@ -175,7 +175,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     }
 
     private var trendBadge: some View {
-        Text(isLoading ? "loading" : formatCodingUsageCostTrendMagnitude(costTrend))
+        Text(isLoading ? "loading" : formatCodingUsageCostTrendPercent(costTrend))
             .font(.caption.monospacedDigit())
             .fontWeight(.regular)
             .foregroundStyle(.white)
