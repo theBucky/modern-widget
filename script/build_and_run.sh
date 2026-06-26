@@ -32,7 +32,8 @@ make_bundle() {
   fi
 
   BUILD_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
-  RESOURCE_BUNDLE="$BUILD_DIR/modern-widget_ModernWidget.bundle"
+  RESOURCE_BUNDLE_NAME="modern-widget_ModernWidget.bundle"
+  RESOURCE_BUNDLE="$BUILD_DIR/$RESOURCE_BUNDLE_NAME"
   rm -rf "$RESOURCE_BUNDLE"
   swift build -c "$CONFIGURATION"
   BUILD_BINARY="$BUILD_DIR/$APP_NAME"
@@ -44,7 +45,7 @@ make_bundle() {
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 
   if [[ -d "$RESOURCE_BUNDLE" ]]; then
-    cp -R "$RESOURCE_BUNDLE"/. "$APP_RESOURCES/"
+    cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/$RESOURCE_BUNDLE_NAME"
   fi
 
   SPARKLE_FRAMEWORK="$(find "$BUILD_DIR" -path "*/Sparkle.framework" -type d | head -1)"

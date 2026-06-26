@@ -1,3 +1,4 @@
+import AppKit
 import Charts
 import SwiftUI
 
@@ -9,11 +10,7 @@ struct CodingUsageAgentSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(summary.agent.logoResourceName, bundle: .main)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 14, height: 14)
-                    .accessibilityHidden(true)
+                CodingUsageLogoImage(agent: summary.agent)
 
                 Text(summary.agent.title)
                     .font(.subheadline.weight(.semibold))
@@ -50,6 +47,24 @@ struct CodingUsageAgentSection: View {
         }
         .font(.caption.monospacedDigit())
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct CodingUsageLogoImage: View {
+    let agent: CodingUsageAgent
+
+    var body: some View {
+        Image(nsImage: NSImage(contentsOf: logoURL)!)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 14, height: 14)
+            .accessibilityHidden(true)
+    }
+
+    private var logoURL: URL {
+        Bundle.main.resourceURL!
+            .appendingPathComponent("modern-widget_ModernWidget.bundle")
+            .appendingPathComponent("\(agent.logoResourceName).pdf")
     }
 }
 
