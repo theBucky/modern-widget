@@ -59,22 +59,6 @@ struct WalkHistoryStoreTests {
         #expect(savedDays == [StoredWalkDay(day: today, count: 2)])
     }
 
-    @Test("stored walk dates are migrated to stable day keys")
-    func storedWalkDatesAreMigratedToStableDayKeys() throws {
-        let defaults = makeDefaults("WalkHistoryStoreTests")
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
-        let oldData = try JSONEncoder().encode([LegacyStoredWalkDay(day: today, count: 3)])
-        defaults.set(oldData, forKey: "walkHistory")
-
-        let store = WalkHistoryStore(defaults: defaults)
-        let savedData = try #require(defaults.data(forKey: "walkHistory"))
-        let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
-
-        #expect(store.walkCount(on: today) == 3)
-        #expect(savedDays == [StoredWalkDay(day: today, count: 3)])
-    }
-
     private struct StoredWalkDay: Codable, Equatable {
         let year: Int
         let month: Int
@@ -89,10 +73,5 @@ struct WalkHistoryStoreTests {
             self.day = components.day!
             self.count = count
         }
-    }
-
-    private struct LegacyStoredWalkDay: Codable {
-        let day: Date
-        let count: Int
     }
 }

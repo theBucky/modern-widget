@@ -34,13 +34,15 @@ final class WalkHistoryStore {
         countsByDayID[WalkHistoryDay(date: date)] ?? 0
     }
 
-    private static func load(from defaults: UserDefaults) -> LoadedWalkHistory {
+    private static func load(from defaults: UserDefaults) -> (
+        counts: [WalkHistoryDay: Int], needsSave: Bool
+    ) {
         guard let data = defaults.data(forKey: storageKey) else {
-            return LoadedWalkHistory(counts: [:], needsSave: false)
+            return (counts: [:], needsSave: false)
         }
 
         if let days = try? JSONDecoder().decode([StoredWalkDay].self, from: data) {
-            return LoadedWalkHistory(
+            return (
                 counts: days.reduce(into: [:]) { counts, day in
                     counts[day.historyDay, default: 0] += day.count
                 },
@@ -48,17 +50,8 @@ final class WalkHistoryStore {
             )
         }
 
-        if let days = try? JSONDecoder().decode([LegacyStoredWalkDay].self, from: data) {
-            return LoadedWalkHistory(
-                counts: days.reduce(into: [:]) { counts, day in
-                    counts[WalkHistoryDay(date: day.day), default: 0] += day.count
-                },
-                needsSave: true
-            )
-        }
-
         if let dates = try? JSONDecoder().decode([Date].self, from: data) {
-            return LoadedWalkHistory(
+            return (
                 counts: dates.reduce(into: [:]) { counts, walk in
                     counts[WalkHistoryDay(date: walk), default: 0] += 1
                 },
@@ -66,7 +59,7 @@ final class WalkHistoryStore {
             )
         }
 
-        return LoadedWalkHistory(counts: [:], needsSave: false)
+        return (counts: [:], needsSave: false)
     }
 
     private func save() {
@@ -87,11 +80,6 @@ final class WalkHistoryStore {
     }
 }
 
-private struct LoadedWalkHistory {
-    let counts: [WalkHistoryDay: Int]
-    let needsSave: Bool
-}
-
 private struct StoredWalkDay: Codable {
     let year: Int
     let month: Int
@@ -108,11 +96,6 @@ private struct StoredWalkDay: Codable {
     var historyDay: WalkHistoryDay {
         WalkHistoryDay(year: year, month: month, day: day)
     }
-}
-
-private struct LegacyStoredWalkDay: Codable {
-    let day: Date
-    let count: Int
 }
 
 private struct WalkHistoryDay: Comparable, Codable, Hashable {

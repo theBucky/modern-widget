@@ -5,7 +5,6 @@ struct MenuBarPanelView: View {
     let walkHistoryStore: WalkHistoryStore
     let dailySupplementStore: DailySupplementStore
     let usageStore: CodingUsageStore
-    @ObservedObject var updaterManager: UpdaterManager
 
     @State private var paneTransition = PaneTransition(initialPane: .timer)
 
@@ -92,7 +91,7 @@ struct MenuBarPanelView: View {
             panePicker
             paneBody
                 .opacity(paneTransition.contentOpacity)
-            UpdateAvailableButton(updaterManager: updaterManager)
+            UpdateAvailableButton()
         }
         .frame(width: paneTransition.displayedPane.width)
         .padding(Layout.borderPadding)
@@ -165,7 +164,7 @@ struct MenuBarPanelView: View {
 }
 
 private struct UpdateAvailableButton: View {
-    @ObservedObject var updaterManager: UpdaterManager
+    @ObservedObject private var updaterManager = UpdaterManager.shared
 
     var body: some View {
         if updaterManager.isUpdateAvailable {
