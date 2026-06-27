@@ -60,7 +60,7 @@ struct CodingUsageChart: View {
         if isLoading {
             return 1
         }
-        guard day.counts.hasUsage else {
+        guard day.counts.hasCost else {
             return 0
         }
         return max(day.counts.costUSD, minimumVisibleCost)

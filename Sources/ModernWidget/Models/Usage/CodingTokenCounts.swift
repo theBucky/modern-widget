@@ -12,6 +12,10 @@ struct CodingTokenCounts: Hashable, Sendable {
             || reasoningTokens > 0 || totalTokens > 0 || costUSD > 0
     }
 
+    var hasCost: Bool {
+        costUSD > 0
+    }
+
     mutating func add(_ other: CodingTokenCounts) {
         inputTokens = inputTokens.saturatingAdd(other.inputTokens)
         outputTokens = outputTokens.saturatingAdd(other.outputTokens)
