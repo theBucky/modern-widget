@@ -4,7 +4,7 @@ struct CodingUsageView: View {
     let store: CodingUsageStore
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: PanelLayout.sectionSpacing) {
             CodingUsageTodayTotalSection(
                 summary: store.report.todaySummary(now: reportDate),
                 isLoading: isLoading

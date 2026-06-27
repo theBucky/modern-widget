@@ -6,14 +6,13 @@ struct ReminderPaneView: View {
     @Bindable var dailySupplementStore: DailySupplementStore
 
     private enum Layout {
-        static let unitSpacing: CGFloat = 20
         static let actionButtonSize: CGFloat = 34
     }
 
     var body: some View {
         let snapshot = engine.snapshot
 
-        VStack(spacing: Layout.unitSpacing) {
+        VStack(spacing: PanelLayout.paneSpacing) {
             intervalMenu
             ReminderStatusView(snapshot: snapshot)
             actionsSection(phase: snapshot.phase)
@@ -47,7 +46,7 @@ struct ReminderPaneView: View {
         let pauseTitle = phase == .paused ? "Resume timer" : "Pause timer"
         let pauseIcon = phase == .paused ? "play.fill" : "pause.fill"
 
-        return HStack(spacing: 10) {
+        return HStack(spacing: PanelLayout.contentSpacing) {
             Button {
                 engine.togglePause()
             } label: {
@@ -57,7 +56,7 @@ struct ReminderPaneView: View {
                     .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
             }
             .buttonStyle(.bordered)
-            .clipShape(Circle())
+            .buttonBorderShape(.circle)
             .help(pauseTitle)
 
             Button {
@@ -71,7 +70,7 @@ struct ReminderPaneView: View {
                     .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
             }
             .buttonStyle(.borderedProminent)
-            .clipShape(Circle())
+            .buttonBorderShape(.circle)
             .keyboardShortcut(.defaultAction)
             .help("Complete break")
         }
@@ -84,7 +83,7 @@ private struct ReminderStatusView: View {
     var body: some View {
         let currentStatus = status
 
-        VStack(spacing: 4) {
+        VStack(spacing: PanelLayout.tightSpacing) {
             Text(currentStatus.title)
                 .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()

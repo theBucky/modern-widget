@@ -6,11 +6,9 @@ struct WalkHistoryCalendarView: View {
     @State private var visibleMonth = Calendar.current.startOfMonth(for: .now)
 
     private enum Layout {
-        static let sectionSpacing: CGFloat = 10
         static let cellSpacing: CGFloat = 3
         static let cellHeight: CGFloat = 44
-        static let cornerRadius: CGFloat = 5
-        static let chevronSize: CGFloat = 22
+        static let chevronButtonSize: CGFloat = 22
         static let columns = Array(
             repeating: GridItem(.flexible(), spacing: cellSpacing),
             count: 7
@@ -23,7 +21,7 @@ struct WalkHistoryCalendarView: View {
     }
 
     var body: some View {
-        VStack(spacing: Layout.sectionSpacing) {
+        VStack(spacing: PanelLayout.sectionSpacing) {
             monthHeader
             weekdayHeader
             daysGrid
@@ -38,7 +36,7 @@ struct WalkHistoryCalendarView: View {
                 Label("Previous month", systemImage: "chevron.left")
                     .labelStyle(.iconOnly)
                     .font(.caption.weight(.semibold))
-                    .frame(width: Layout.chevronSize, height: Layout.chevronSize)
+                    .frame(width: Layout.chevronButtonSize, height: Layout.chevronButtonSize)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
@@ -59,7 +57,7 @@ struct WalkHistoryCalendarView: View {
                 Label("Next month", systemImage: "chevron.right")
                     .labelStyle(.iconOnly)
                     .font(.caption.weight(.semibold))
-                    .frame(width: Layout.chevronSize, height: Layout.chevronSize)
+                    .frame(width: Layout.chevronButtonSize, height: Layout.chevronButtonSize)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
@@ -115,7 +113,7 @@ struct WalkHistoryCalendarView: View {
         }
         .frame(height: Layout.cellHeight)
         .background(
-            RoundedRectangle(cornerRadius: Layout.cornerRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: PanelLayout.cornerRadius, style: .continuous)
                 .fill(cellFill(today: today, hasWalks: count > 0))
         )
     }

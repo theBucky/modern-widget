@@ -8,15 +8,15 @@ struct CodingUsageAgentSection: View {
     let isLoading: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: PanelLayout.contentSpacing) {
+            HStack(spacing: PanelLayout.contentSpacing) {
                 CodingUsageLogoImage(agent: summary.agent)
 
                 Text(summary.agent.title)
                     .font(.subheadline.weight(.semibold))
             }
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PanelLayout.sectionSpacing) {
                 usageTable
 
                 CodingUsageChart(
@@ -27,14 +27,19 @@ struct CodingUsageAgentSection: View {
                 .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(8)
-            .background(.quaternary.opacity(0.25), in: .rect(cornerRadius: 6))
+            .padding(PanelLayout.contentSpacing)
+            .background(
+                .quaternary.opacity(0.25), in: .rect(cornerRadius: PanelLayout.cornerRadius))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var usageTable: some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+        Grid(
+            alignment: .leading,
+            horizontalSpacing: PanelLayout.contentSpacing,
+            verticalSpacing: PanelLayout.tightSpacing
+        ) {
             ForEach(summary.usageRows(now: reportDate)) { row in
                 GridRow {
                     Text(row.title)
@@ -147,7 +152,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: PanelLayout.contentSpacing) {
             totalCostText
             trendBadge
                 .padding(.top, 7)

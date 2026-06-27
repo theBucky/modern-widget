@@ -43,9 +43,9 @@ struct MenuBarPanelView: View {
         var width: CGFloat {
             switch self {
             case .timer:
-                return Layout.mainPaneWidth
+                return PanelLayout.mainPaneWidth
             case .calendar, .usage, .settings:
-                return Layout.detailPaneWidth
+                return PanelLayout.detailPaneWidth
             }
         }
 
@@ -84,24 +84,20 @@ struct MenuBarPanelView: View {
     }
 
     private enum Layout {
-        static let mainPaneWidth: CGFloat = 180
-        static let detailPaneWidth: CGFloat = 280
-        static let borderPadding: CGFloat = 20
-        static let unitSpacing: CGFloat = 20
         static let fadeOutAnimation = Animation.easeOut(duration: 0.06)
         static let paneAnimation = Animation.smooth(duration: 0.11)
         static let fadeInAnimation = Animation.easeIn(duration: 0.06)
     }
 
     var body: some View {
-        VStack(spacing: Layout.unitSpacing) {
+        VStack(spacing: PanelLayout.paneSpacing) {
             topBar
             paneBody
                 .opacity(paneTransition.contentOpacity)
             UpdateAvailableButton()
         }
         .frame(width: paneTransition.displayedPane.width)
-        .padding(Layout.borderPadding)
+        .padding(PanelLayout.outerPadding)
     }
 
     @ViewBuilder
