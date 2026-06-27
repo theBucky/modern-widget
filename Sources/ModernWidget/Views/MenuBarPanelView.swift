@@ -8,10 +8,11 @@ struct MenuBarPanelView: View {
 
     @State private var paneTransition = PaneTransition(initialPane: .timer)
 
-    private enum Pane: CaseIterable {
+    private enum Pane {
         case timer
         case calendar
         case usage
+        case settings
 
         var title: String {
             switch self {
@@ -21,6 +22,8 @@ struct MenuBarPanelView: View {
                 return "Calendar"
             case .usage:
                 return "Usage"
+            case .settings:
+                return "Settings"
             }
         }
 
@@ -32,6 +35,8 @@ struct MenuBarPanelView: View {
                 return "calendar"
             case .usage:
                 return "chart.line.uptrend.xyaxis"
+            case .settings:
+                return "gearshape"
             }
         }
 
@@ -39,10 +44,12 @@ struct MenuBarPanelView: View {
             switch self {
             case .timer:
                 return Layout.mainPaneWidth
-            case .calendar, .usage:
+            case .calendar, .usage, .settings:
                 return Layout.detailPaneWidth
             }
         }
+
+        static let pickerCases: [Pane] = [.timer, .calendar, .usage]
     }
 
     private struct PaneTransition {
@@ -88,7 +95,7 @@ struct MenuBarPanelView: View {
 
     var body: some View {
         VStack(spacing: Layout.unitSpacing) {
-            panePicker
+            topBar
             paneBody
                 .opacity(paneTransition.contentOpacity)
             UpdateAvailableButton()
@@ -113,7 +120,24 @@ struct MenuBarPanelView: View {
             )
         case .usage:
             CodingUsageView(store: usageStore)
+        case .settings:
+            SettingsPaneView(store: usageStore)
         }
+    }
+
+    private var topBar: some View {
+        HStack {
+            panePicker
+            Spacer()
+            Button {
+                switchPane(to: .settings)
+            } label: {
+                Image(systemName: Pane.settings.systemImage)
+            }
+            .buttonStyle(.borderless)
+            .help(Pane.settings.title)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var panePicker: some View {
@@ -124,7 +148,7 @@ struct MenuBarPanelView: View {
                 set: { pane in switchPane(to: pane) }
             )
         ) {
-            ForEach(Pane.allCases, id: \.self) { pane in
+            ForEach(Pane.pickerCases, id: \.self) { pane in
                 Label(pane.title, systemImage: pane.systemImage).tag(pane)
             }
         }

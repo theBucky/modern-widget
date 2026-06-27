@@ -653,6 +653,34 @@ struct CodingUsageLoaderTests {
         #expect(!report.hasUsage)
     }
 
+    @Test("skips disabled usage agents before scanning")
+    func skipsDisabledUsageAgentsBeforeScanning() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-DisabledAgents")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let scan = loader.usageScan(scope: scope(), enabledAgents: [.codex])
+        let report = loader.loadReport(scan: scan)
+        let claude = report.agents.first { $0.agent == .claude }!
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(scan.claudeFiles.isEmpty)
+        #expect(scan.codexSources.flatMap(\.files).count == 1)
+        #expect(!claude.totalCounts.hasUsage)
+        #expect(codex.totalCounts.totalTokens == 48)
+    }
+
     private func scope() -> CodingUsageDateScope {
         CodingUsageDateScope(
             now: date(2026, 6, 18, 12),

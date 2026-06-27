@@ -26,12 +26,16 @@ struct CodingUsageLoader: Sendable {
         self.homeDirectory = homeDirectory
     }
 
-    func usageScan(scope: CodingUsageDateScope) -> CodingUsageScan {
-        let claudeFiles = claudeUsageFiles(scope: scope)
-        let codexSources = codexUsageSources(scope: scope)
-        let piFiles = piUsageFiles(scope: scope)
+    func usageScan(
+        scope: CodingUsageDateScope,
+        enabledAgents: Set<CodingUsageAgent> = Set(CodingUsageAgent.allCases)
+    ) -> CodingUsageScan {
+        let claudeFiles = enabledAgents.contains(.claude) ? claudeUsageFiles(scope: scope) : []
+        let codexSources = enabledAgents.contains(.codex) ? codexUsageSources(scope: scope) : []
+        let piFiles = enabledAgents.contains(.pi) ? piUsageFiles(scope: scope) : []
+        let extraCodexFiles = enabledAgents.contains(.codex) ? codexFingerprintFiles() : []
         let files =
-            (claudeFiles + codexSources.flatMap(\.files) + piFiles + codexFingerprintFiles())
+            (claudeFiles + codexSources.flatMap(\.files) + piFiles + extraCodexFiles)
             .uniquedByPath()
             .compactMap(usageFileFingerprint)
             .sorted { $0.path < $1.path }
