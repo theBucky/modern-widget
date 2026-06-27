@@ -51,11 +51,13 @@ final class CodingUsageStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        enabledAgents = Set(
+        let storedEnabledAgents = Set(
             CodingUsageAgent.allCases.filter { agent in
                 defaults.object(forKey: DefaultsKey.enabledAgent(agent)) as? Bool ?? true
             }
         )
+        enabledAgents = storedEnabledAgents
+        report = CodingUsageReport.empty.showingAgents(storedEnabledAgents)
         refreshInterval =
             CodingUsageRefreshInterval(
                 rawValue: defaults.integer(forKey: DefaultsKey.refreshInterval))
@@ -81,6 +83,7 @@ final class CodingUsageStore {
         } else {
             enabledAgents.remove(agent)
         }
+        report = report.showingAgents(enabledAgents)
         restartRefresh()
     }
 

@@ -672,12 +672,11 @@ struct CodingUsageLoaderTests {
         let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
         let scan = loader.usageScan(scope: scope(), enabledAgents: [.codex])
         let report = loader.loadReport(scan: scan)
-        let claude = report.agents.first { $0.agent == .claude }!
         let codex = report.agents.first { $0.agent == .codex }!
 
         #expect(scan.claudeFiles.isEmpty)
         #expect(scan.codexSources.flatMap(\.files).count == 1)
-        #expect(!claude.totalCounts.hasUsage)
+        #expect(report.agents.map(\.agent) == [.codex])
         #expect(codex.totalCounts.totalTokens == 48)
     }
 

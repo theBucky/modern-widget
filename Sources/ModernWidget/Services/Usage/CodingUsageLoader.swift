@@ -9,6 +9,7 @@ struct CodingUsageScan: Sendable {
 }
 
 struct CodingUsageFingerprint: Equatable, Sendable {
+    let agents: [CodingUsageAgent]
     let historyStart: Date
     let historyEnd: Date
     let files: [CodingUsageFileFingerprint]
@@ -40,6 +41,7 @@ struct CodingUsageLoader: Sendable {
             .compactMap(usageFileFingerprint)
             .sorted { $0.path < $1.path }
         let fingerprint = CodingUsageFingerprint(
+            agents: CodingUsageAgent.ordered(enabledAgents),
             historyStart: scope.history.start,
             historyEnd: scope.history.end,
             files: files
@@ -66,7 +68,7 @@ struct CodingUsageLoader: Sendable {
 
         return CodingUsageReport(
             generatedAt: scan.scope.now,
-            agents: accumulator.agentSummaries()
+            agents: accumulator.agentSummaries(for: scan.fingerprint.agents)
         )
     }
 }
@@ -88,8 +90,8 @@ struct CodingUsageAccumulator {
         dailyCounts[agent, default: [:]][day, default: CodingTokenCounts()].add(tokenCounts)
     }
 
-    func agentSummaries() -> [CodingUsageAgentSummary] {
-        CodingUsageAgent.allCases.map { agent in
+    func agentSummaries(for agents: [CodingUsageAgent]) -> [CodingUsageAgentSummary] {
+        agents.map { agent in
             CodingUsageAgentSummary(
                 agent: agent,
                 dailyCounts: scope.historyDays.map { day in

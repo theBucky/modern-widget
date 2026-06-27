@@ -5,6 +5,10 @@ enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
     case codex
     case pi
 
+    static func ordered(_ agents: Set<Self>) -> [Self] {
+        allCases.filter { agents.contains($0) }
+    }
+
     var title: String {
         switch self {
         case .claude:
@@ -177,6 +181,17 @@ struct CodingUsageReport: Equatable, Sendable {
                 currentCostUSD: today.costUSD,
                 previousCostUSD: yesterday.costUSD
             )
+        )
+    }
+
+    func showingAgents(_ enabledAgents: Set<CodingUsageAgent>) -> Self {
+        let summariesByAgent = Dictionary(uniqueKeysWithValues: agents.map { ($0.agent, $0) })
+
+        return Self(
+            generatedAt: generatedAt,
+            agents: CodingUsageAgent.ordered(enabledAgents).map { agent in
+                summariesByAgent[agent] ?? CodingUsageAgentSummary(agent: agent, dailyCounts: [])
+            }
         )
     }
 
