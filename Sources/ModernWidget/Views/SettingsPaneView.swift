@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsPaneView: View {
     let store: CodingUsageStore
 
+    @ObservedObject private var launchAtLoginManager = LaunchAtLoginManager.shared
     @ObservedObject private var updaterManager = UpdaterManager.shared
 
     var body: some View {
@@ -35,7 +36,17 @@ struct SettingsPaneView: View {
                 .pickerStyle(.menu)
             }
 
-            Section("Version") {
+            Section("System") {
+                Toggle(
+                    "Launch at Login",
+                    isOn: Binding(
+                        get: { launchAtLoginManager.isEnabled },
+                        set: { launchAtLoginManager.setEnabled($0) }
+                    )
+                )
+                .toggleStyle(.switch)
+                .disabled(!launchAtLoginManager.canChange)
+
                 LabeledContent("Build", value: buildVersion)
 
                 Button {
@@ -52,6 +63,9 @@ struct SettingsPaneView: View {
         .contentMargins(.horizontal, 0, for: .scrollContent)
         .frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear {
+            launchAtLoginManager.refresh()
+        }
     }
 
     private var buildVersion: String {
