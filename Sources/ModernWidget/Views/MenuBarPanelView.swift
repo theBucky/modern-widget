@@ -8,7 +8,7 @@ struct MenuBarPanelView: View {
 
     @State private var paneTransition = PaneTransition(initialPane: .timer)
 
-    private enum Pane {
+    private enum Pane: Hashable {
         case timer
         case calendar
         case usage

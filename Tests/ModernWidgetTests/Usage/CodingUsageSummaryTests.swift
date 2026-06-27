@@ -159,6 +159,14 @@ struct CodingUsageSummaryTests {
         #expect(days.allSatisfy { !$0.counts.hasUsage })
     }
 
+    @Test("token only counts are usage but not cost")
+    func tokenOnlyCountsAreUsageButNotCost() {
+        let counts = CodingTokenCounts(totalTokens: 10, costUSD: 0)
+
+        #expect(counts.hasUsage)
+        #expect(!counts.hasCost)
+    }
+
     private func day(_ year: Int, _ month: Int, _ day: Int, _ costUSD: Double)
         -> CodingUsageDaySummary
     {

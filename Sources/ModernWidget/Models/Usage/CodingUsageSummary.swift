@@ -15,42 +15,6 @@ enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
             return "Pi"
         }
     }
-
-    var logoResourceName: String {
-        switch self {
-        case .claude:
-            return "ClaudeLogo"
-        case .codex:
-            return "CodexLogo"
-        case .pi:
-            return "PiLogo"
-        }
-    }
-}
-
-struct CodingTokenCounts: Hashable, Sendable {
-    var inputTokens: UInt64 = 0
-    var outputTokens: UInt64 = 0
-    var cacheCreationTokens: UInt64 = 0
-    var cacheReadTokens: UInt64 = 0
-    var reasoningTokens: UInt64 = 0
-    var totalTokens: UInt64 = 0
-    var costUSD: Double = 0
-
-    var hasUsage: Bool {
-        inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
-            || reasoningTokens > 0 || totalTokens > 0 || costUSD > 0
-    }
-
-    mutating func add(_ other: CodingTokenCounts) {
-        inputTokens = inputTokens.saturatingAdd(other.inputTokens)
-        outputTokens = outputTokens.saturatingAdd(other.outputTokens)
-        cacheCreationTokens = cacheCreationTokens.saturatingAdd(other.cacheCreationTokens)
-        cacheReadTokens = cacheReadTokens.saturatingAdd(other.cacheReadTokens)
-        reasoningTokens = reasoningTokens.saturatingAdd(other.reasoningTokens)
-        totalTokens = totalTokens.saturatingAdd(other.totalTokens)
-        costUSD += other.costUSD
-    }
 }
 
 struct CodingUsageDaySummary: Equatable, Sendable {
@@ -223,36 +187,5 @@ struct CodingUsageReport: Equatable, Sendable {
                 CodingUsageAgentSummary(agent: agent, dailyCounts: [])
             }
         )
-    }
-}
-
-struct CodingUsageDateScope: Equatable, Sendable {
-    let now: Date
-    let history: DateInterval
-    let historyDays: [Date]
-
-    private let calendar: Calendar
-
-    init(now: Date = .now, calendar: Calendar = .current) {
-        let todayStart = calendar.startOfDay(for: now)
-        let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
-        let rollingStart = calendar.date(byAdding: .day, value: -29, to: todayStart)!
-        let monthStart = calendar.dateInterval(of: .month, for: now)!.start
-        let historyStart = min(rollingStart, monthStart)
-        let dayCount = calendar.dateComponents([.day], from: historyStart, to: tomorrowStart).day!
-
-        self.now = now
-        self.calendar = calendar
-        self.history = DateInterval(start: historyStart, end: tomorrowStart)
-        self.historyDays = (0..<dayCount).map {
-            calendar.date(byAdding: .day, value: $0, to: historyStart)!
-        }
-    }
-
-    func historyDay(containing date: Date) -> Date? {
-        guard date >= history.start && date < history.end else {
-            return nil
-        }
-        return calendar.startOfDay(for: date)
     }
 }
