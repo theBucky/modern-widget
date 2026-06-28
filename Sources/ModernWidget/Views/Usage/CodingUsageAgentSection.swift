@@ -7,7 +7,7 @@ struct CodingUsageAgentSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PanelLayout.contentSpacing) {
-            HStack(spacing: PanelLayout.contentSpacing) {
+            HStack(spacing: 6) {
                 Image(summary.agent.logoResourceName)
                     .resizable()
                     .scaledToFit()
@@ -29,7 +29,7 @@ struct CodingUsageAgentSection: View {
                 .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(PanelLayout.contentSpacing)
+            .padding(12)
             .background(
                 .quaternary.opacity(0.25), in: .rect(cornerRadius: PanelLayout.cornerRadius))
         }
