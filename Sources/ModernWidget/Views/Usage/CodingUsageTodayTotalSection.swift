@@ -5,6 +5,7 @@ struct CodingUsageTodayTotalSection: View {
     let isLoading: Bool
 
     @State private var displayedCostUSD = 0.0
+    @State private var isTrendVisible = false
 
     var body: some View {
         HStack(alignment: .bottom) {
@@ -12,7 +13,8 @@ struct CodingUsageTodayTotalSection: View {
                 costUSD: displayedCostUSD,
                 costTrend: summary.costTrend,
                 hasUsage: summary.counts.hasUsage,
-                isLoading: isLoading
+                isLoading: isLoading,
+                isTrendVisible: isTrendVisible
             )
 
             Spacer(minLength: 16)
@@ -20,11 +22,8 @@ struct CodingUsageTodayTotalSection: View {
             dateTokenGroup
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            updateDisplayedCost(animated: !isLoading)
-        }
-        .onChange(of: targetCostUSD) {
-            updateDisplayedCost(animated: true)
+        .task(id: animationState) {
+            await animateTotal()
         }
     }
 
@@ -47,22 +46,42 @@ struct CodingUsageTodayTotalSection: View {
         )
     }
 
-    private var targetCostUSD: Double {
-        isLoading ? 0 : summary.counts.costUSD
+    private var animationState: CodingUsageTodayTotalAnimationState {
+        CodingUsageTodayTotalAnimationState(
+            isLoading: isLoading,
+            costUSD: summary.counts.costUSD
+        )
     }
 
-    private func updateDisplayedCost(animated: Bool) {
-        if animated, !isLoading {
-            withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
-                displayedCostUSD = targetCostUSD
-            }
+    private func animateTotal() async {
+        isTrendVisible = false
+
+        if isLoading {
+            displayedCostUSD = 0
             return
         }
 
-        displayedCostUSD = targetCostUSD
+        withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
+            displayedCostUSD = summary.counts.costUSD
+        }
+
+        try? await Task.sleep(for: .seconds(Self.costAnimationDuration))
+        if Task.isCancelled {
+            return
+        }
+
+        withAnimation(.easeOut(duration: Self.trendFadeDuration)) {
+            isTrendVisible = true
+        }
     }
 
     private static let costAnimationDuration = 1.0
+    private static let trendFadeDuration = 0.2
+}
+
+private struct CodingUsageTodayTotalAnimationState: Equatable {
+    let isLoading: Bool
+    let costUSD: Double
 }
 
 private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
@@ -70,6 +89,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     let costTrend: CodingUsageCostTrend
     let hasUsage: Bool
     let isLoading: Bool
+    let isTrendVisible: Bool
 
     var animatableData: Double {
         get { costUSD }
@@ -113,6 +133,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
             .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
             .contentTransition(.numericText(value: costTrend.percent))
+            .opacity(isTrendVisible ? 1 : 0)
     }
 
     private var trendColor: Color {
