@@ -122,7 +122,7 @@ struct WalkHistoryCalendarView: View {
         let calendar = Calendar.current
 
         if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
-            return Color(nsColor: .tertiaryLabelColor)
+            return .secondary.opacity(0.5)
         }
         if supplementStore.isTaken(on: date) {
             return Palette.supplementTaken

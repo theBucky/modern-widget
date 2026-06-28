@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct CodingUsageTodayTotalSection: View {
@@ -94,11 +93,11 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
         if isLoading {
             text.foregroundStyle(.secondary)
         } else if !hasUsage {
-            text.foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+            text.foregroundStyle(.tertiary)
         } else {
             text.foregroundStyle(
                 LinearGradient(
-                    colors: [Color(nsColor: .textColor), Color(nsColor: .secondaryLabelColor)],
+                    colors: [.primary, .secondary],
                     startPoint: .top,
                     endPoint: .bottom
                 ))
@@ -127,7 +126,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
         case .down:
             return Color(red: 182 / 255, green: 68 / 255, blue: 0)
         case .flat:
-            return Color(nsColor: .systemGray)
+            return .gray
         }
     }
 }

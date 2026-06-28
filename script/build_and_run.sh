@@ -32,8 +32,7 @@ make_bundle() {
   fi
 
   BUILD_DIR="$(swift build -c "$CONFIGURATION" --show-bin-path)"
-  RESOURCE_BUNDLE_NAME="modern-widget_ModernWidget.bundle"
-  RESOURCE_BUNDLE="$BUILD_DIR/$RESOURCE_BUNDLE_NAME"
+  RESOURCE_BUNDLE="$BUILD_DIR/modern-widget_ModernWidget.bundle"
   rm -rf "$RESOURCE_BUNDLE"
   swift build -c "$CONFIGURATION"
   BUILD_BINARY="$BUILD_DIR/$APP_NAME"
@@ -45,7 +44,15 @@ make_bundle() {
   install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BINARY"
 
   if [[ -d "$RESOURCE_BUNDLE" ]]; then
-    cp -R "$RESOURCE_BUNDLE" "$APP_RESOURCES/$RESOURCE_BUNDLE_NAME"
+    ASSET_CATALOG="$RESOURCE_BUNDLE/Assets.xcassets"
+    if [[ -d "$ASSET_CATALOG" ]]; then
+      xcrun actool \
+        --compile "$APP_RESOURCES" \
+        --platform macosx \
+        --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
+        --target-device mac \
+        "$ASSET_CATALOG" >/dev/null
+    fi
   fi
 
   SPARKLE_FRAMEWORK="$(find "$BUILD_DIR" -path "*/Sparkle.framework" -type d | head -1)"

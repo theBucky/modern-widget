@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct CodingUsageValueText: View {
@@ -8,7 +7,7 @@ struct CodingUsageValueText: View {
     var body: some View {
         if isLoading {
             Text("loading")
-                .foregroundColor(Self.costColor)
+                .foregroundColor(.primary)
         } else {
             Text("\(tokenText) / \(costText)")
         }
@@ -23,8 +22,6 @@ struct CodingUsageValueText: View {
     private var costText: Text {
         Text(formatCodingUsageCost(counts.costUSD))
             .fontWeight(.semibold)
-            .foregroundColor(counts.hasUsage ? Self.costColor : Color(nsColor: .tertiaryLabelColor))
+            .foregroundColor(counts.hasUsage ? .primary : .secondary.opacity(0.5))
     }
-
-    private static let costColor = Color(nsColor: .textColor)
 }
