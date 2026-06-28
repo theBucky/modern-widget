@@ -10,16 +10,18 @@ struct ReminderPaneView: View {
     }
 
     var body: some View {
-        let snapshot = engine.snapshot
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let snapshot = engine.snapshot(at: context.date)
 
-        VStack(spacing: PanelLayout.paneSpacing) {
-            intervalMenu
-            ReminderStatusView(snapshot: snapshot)
-            actionsSection(phase: snapshot.phase)
-            Toggle("daily supplement taken", isOn: $dailySupplementStore.isTakenToday)
-                .toggleStyle(.checkbox)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(spacing: PanelLayout.paneSpacing) {
+                intervalMenu
+                ReminderStatusView(snapshot: snapshot)
+                actionsSection(phase: snapshot.phase)
+                Toggle("daily supplement taken", isOn: $dailySupplementStore.isTakenToday)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

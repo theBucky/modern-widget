@@ -12,14 +12,14 @@ final class ReminderEngine {
         static let pausedRemainingSeconds = "pausedRemainingSeconds"
     }
 
-    private(set) var snapshot: ReminderSnapshot
+    private(set) var menuBarSnapshot: ReminderSnapshot
 
     @ObservationIgnored
     private let defaults: UserDefaults
     @ObservationIgnored
     private let notifier: ReminderNotifier
     @ObservationIgnored
-    private var snapshotTask: Task<Void, Never>?
+    private var menuBarSnapshotTask: Task<Void, Never>?
     @ObservationIgnored
     private var reminderTask: Task<Void, Never>?
     @ObservationIgnored
@@ -30,19 +30,23 @@ final class ReminderEngine {
         state.reminderMinutes
     }
 
+    func snapshot(at date: Date) -> ReminderSnapshot {
+        state.snapshot(at: date)
+    }
+
     init(defaults: UserDefaults = .standard, notifier: ReminderNotifier = ReminderNotifier()) {
         let state = Self.loadState(defaults: defaults)
         self.defaults = defaults
         self.notifier = notifier
         self.state = state
-        self.snapshot = state.snapshot(at: .now)
+        self.menuBarSnapshot = state.snapshot(at: .now)
 
         syncReminderTaskToState()
-        refreshSnapshot()
+        refreshMenuBarSnapshot()
     }
 
     deinit {
-        snapshotTask?.cancel()
+        menuBarSnapshotTask?.cancel()
         reminderTask?.cancel()
     }
 
@@ -118,7 +122,7 @@ final class ReminderEngine {
         if state.schedule != previousState.schedule {
             syncReminderTaskToState()
         }
-        refreshSnapshot()
+        refreshMenuBarSnapshot()
     }
 
     private func persistState() {
@@ -135,32 +139,32 @@ final class ReminderEngine {
         }
     }
 
-    private func refreshSnapshot() {
+    private func refreshMenuBarSnapshot() {
         let now = Date.now
         let nextSnapshot = state.snapshot(at: now)
-        if nextSnapshot != snapshot {
-            snapshot = nextSnapshot
+        if nextSnapshot != menuBarSnapshot {
+            menuBarSnapshot = nextSnapshot
         }
 
-        scheduleSnapshotRefresh(after: state.schedule.countdown(at: now).nextRefreshDelay)
+        scheduleMenuBarSnapshotRefresh(after: state.schedule.countdown(at: now).nextRefreshDelay)
     }
 
-    private func scheduleSnapshotRefresh(after delay: TimeInterval?) {
-        snapshotTask?.cancel()
-        snapshotTask = nil
+    private func scheduleMenuBarSnapshotRefresh(after delay: TimeInterval?) {
+        menuBarSnapshotTask?.cancel()
+        menuBarSnapshotTask = nil
 
         guard let delay else {
             return
         }
 
-        snapshotTask = Task { @MainActor [weak self] in
+        menuBarSnapshotTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
             } catch {
                 return
             }
 
-            self?.refreshSnapshot()
+            self?.refreshMenuBarSnapshot()
         }
     }
 

@@ -4,7 +4,7 @@ struct MenuBarIconView: View {
     let engine: ReminderEngine
 
     var body: some View {
-        let snapshot = engine.snapshot
+        let snapshot = engine.menuBarSnapshot
 
         Group {
             switch snapshot.phase {
