@@ -17,7 +17,7 @@ final class ReminderEngine {
     @ObservationIgnored
     private let defaults: UserDefaults
     @ObservationIgnored
-    private let notifier: ReminderNotifier
+    private let notifier: ReminderNotifying
     @ObservationIgnored
     private var menuBarSnapshotTask: Task<Void, Never>?
     @ObservationIgnored
@@ -34,7 +34,7 @@ final class ReminderEngine {
         state.snapshot(at: date)
     }
 
-    init(defaults: UserDefaults = .standard, notifier: ReminderNotifier = ReminderNotifier()) {
+    init(defaults: UserDefaults = .standard, notifier: ReminderNotifying = ReminderNotifier()) {
         let state = Self.loadState(defaults: defaults)
         self.defaults = defaults
         self.notifier = notifier
@@ -79,21 +79,17 @@ final class ReminderEngine {
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        let reminderMinutes = ReminderState.supportedReminderMinutes(
-            for: defaults.integer(forKey: Keys.reminderMinutes))
-        let reminderSeconds = reminderMinutes * 60
-        let storedPausedSeconds =
-            defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int ?? reminderSeconds
-        let pausedSeconds = min(max(storedPausedSeconds, 0), reminderSeconds)
+        // Missing paused seconds clamp to the full supported duration inside ReminderState.
         let mode: ReminderMode =
             defaults.bool(forKey: Keys.isPaused)
-            ? .paused(secondsRemaining: pausedSeconds)
+            ? .paused(
+                secondsRemaining: defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int
+                    ?? .max)
             : .running
 
-        let startedAt = loadStartedAt(defaults: defaults)
         return ReminderState(
-            reminderMinutes: reminderMinutes,
-            startedAt: startedAt,
+            reminderMinutes: defaults.integer(forKey: Keys.reminderMinutes),
+            startedAt: loadStartedAt(defaults: defaults),
             mode: mode,
             notificationIssue: nil
         )

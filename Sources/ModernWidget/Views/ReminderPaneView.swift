@@ -97,8 +97,8 @@ private struct ReminderStatusView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let reminderStatusMessage {
-                Text(reminderStatusMessage)
+            if let message = snapshot.notificationIssue?.message {
+                Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)
             }
@@ -119,20 +119,5 @@ private struct ReminderStatusView: View {
 
     private var countdownLabel: String {
         String(format: "%02d:%02d", snapshot.secondsRemaining / 60, snapshot.secondsRemaining % 60)
-    }
-
-    private var reminderStatusMessage: String? {
-        guard let issue = snapshot.notificationIssue else {
-            return nil
-        }
-
-        switch issue {
-        case .notificationsBlocked:
-            return "notifications blocked in System Settings"
-        case .unknownPermissionState:
-            return "unknown notification permission state"
-        case let .deliveryFailure(message):
-            return message
-        }
     }
 }
