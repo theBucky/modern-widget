@@ -7,21 +7,27 @@ struct CodingUsageValueText: View {
     var body: some View {
         if isLoading {
             Text("loading")
-                .foregroundColor(.primary)
+                .foregroundStyle(Color.black)
         } else {
-            Text("\(tokenText) / \(costText)")
+            HStack(spacing: 3) {
+                tokenText
+                Text("/")
+                    .fontWeight(.regular)
+                    .foregroundStyle(Color.secondary)
+                costText
+            }
         }
     }
 
-    private var tokenText: Text {
+    private var tokenText: some View {
         Text(formatCodingUsageTokens(counts.totalTokens))
             .fontWeight(.regular)
-            .foregroundColor(.secondary)
+            .foregroundStyle(Color.secondary)
     }
 
-    private var costText: Text {
+    private var costText: some View {
         Text(formatCodingUsageCost(counts.costUSD))
             .fontWeight(.semibold)
-            .foregroundColor(counts.hasUsage ? .primary : .secondary.opacity(0.5))
+            .foregroundStyle(Color.black)
     }
 }
