@@ -8,6 +8,10 @@ enum HistoryRetention {
             to: calendar.startOfMonth(for: now)
         )!
     }
+
+    static func earliestRetainedDay(now: Date = .now) -> LocalDay {
+        LocalDay(date: earliestMonth(now: now))
+    }
 }
 
 extension Calendar {
