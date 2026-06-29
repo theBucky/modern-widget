@@ -163,6 +163,37 @@ struct CodingUsageSummaryTests {
             CodingUsageCostTrend(currentCostUSD: 99.94, previousCostUSD: 100).direction == .down)
     }
 
+    @Test("keeps the last thirty chart days in source order without filling gaps")
+    func keepsLastThirtyChartDaysWithoutFillingGaps() {
+        let calendar = gregorianUTC()
+        let now = date(2026, 6, 18, 12)
+        let base = date(2026, 4, 1)
+        let sources = (0..<33).map { index -> CodingUsageDaySummary in
+            CodingUsageDaySummary(
+                date: calendar.date(byAdding: .day, value: index * 2, to: base)!,
+                counts: CodingTokenCounts(totalTokens: UInt64(index + 1))
+            )
+        }
+        let summary = CodingUsageAgentSummary(agent: .claude, dailyCounts: sources)
+
+        let chartDays = summary.chartDays(endingAt: now, calendar: calendar)
+
+        #expect(chartDays.count == 30)
+        #expect(chartDays.map(\.date) == sources.suffix(30).map(\.date))
+        let gapDay = calendar.date(byAdding: .day, value: 1, to: chartDays[0].date)!
+        #expect(!chartDays.contains { $0.date == gapDay })
+    }
+
+    @Test("coerces rounded negative zero trend to positive zero")
+    func coercesNegativeZeroTrendToPositiveZero() {
+        let trend = CodingUsageCostTrend(currentCostUSD: 99.999, previousCostUSD: 100)
+
+        #expect(trend.percent == 0)
+        #expect(trend.percent.sign == .plus)
+        #expect(trend.direction == .flat)
+        #expect(formatCodingUsageCostTrendPercent(trend) == "0.0%")
+    }
+
     @Test("empty summary gets a thirty day chart window")
     func emptySummaryGetsChartWindow() {
         let calendar = gregorianUTC()
