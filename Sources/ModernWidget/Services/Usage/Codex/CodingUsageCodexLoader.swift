@@ -458,10 +458,21 @@ private struct CodexLineFields {
     var infoModel: String?
 }
 
+/// Tracks the subagent replay window. A real
+/// `session_meta.payload.source.subagent.thread_spawn` is followed by the parent's
+/// cumulative snapshots replayed within the same second; those repeats must be dropped,
+/// while a genuinely new event in a later second still counts. The first snapshot after a
+/// spawn is held until a same-second sibling proves it is replay, or a later second, turn
+/// context, or end of file proves it is real and emits it.
 private enum CodexReplayState {
+    /// No spawn pending; events are emitted normally.
     case idle
+    /// A spawn was seen; waiting for the first replayed snapshot.
     case awaitingReplay
+    /// Holding one snapshot that is replay if a same-second sibling follows, otherwise real.
     case pendingReplay(timestamp: Date, fields: CodexLineFields)
+    /// Dropping snapshots that share `second` with the suppressed replay.
     case suppressing(second: Int64)
+    /// Suppressing `second`, with another spawn awaiting replay once that second passes.
     case suppressingThenAwaitingReplay(second: Int64)
 }

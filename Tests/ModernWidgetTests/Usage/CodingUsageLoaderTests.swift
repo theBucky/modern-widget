@@ -615,6 +615,31 @@ struct CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 240)
     }
 
+    @Test("resolves codex model context from payload, info, turn context, and fallback")
+    func resolvesCodexModelContextFromAllSources() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexModelContext")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let log = [
+            #"{"timestamp":"2026-06-17T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":400,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":400}}}}"#,
+            #"{"timestamp":"2026-06-14T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.4"}}"#,
+            #"{"timestamp":"2026-06-14T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100}}}}"#,
+            #"{"timestamp":"2026-06-15T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"model":"gpt-5.2","last_token_usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":200}}}}"#,
+            #"{"timestamp":"2026-06-16T01:00:00.000Z","type":"event_msg","payload":{"model":"gpt-5.5","type":"token_count","info":{"last_token_usage":{"input_tokens":300,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":300}}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/session.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.totalTokens == 1000)
+        #expect(abs(dayCounts(codex, 2026, 6, 17).costUSD - 0.0005) < 0.00000001)
+        #expect(abs(dayCounts(codex, 2026, 6, 14).costUSD - 0.00025) < 0.00000001)
+        #expect(abs(dayCounts(codex, 2026, 6, 15).costUSD - 0.00035) < 0.00000001)
+        #expect(abs(dayCounts(codex, 2026, 6, 16).costUSD - 0.0015) < 0.00000001)
+    }
+
     @Test("uses fast codex pricing from config")
     func usesFastCodexPricingFromConfig() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-FastCodex")
