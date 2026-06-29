@@ -20,8 +20,28 @@ struct LocalDay: Comparable, Hashable, Codable {
         self.day = day
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let year = try container.decode(Int.self, forKey: .year)
+        let month = try container.decode(Int.self, forKey: .month)
+        let day = try container.decode(Int.self, forKey: .day)
+        guard let validDay = LocalDay(year: year, month: month, day: day) else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "invalid Gregorian local day \(year)-\(month)-\(day)"
+                )
+            )
+        }
+        self = validDay
+    }
+
     static func < (lhs: LocalDay, rhs: LocalDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case year, month, day
     }
 
     private static var calendar: Calendar {

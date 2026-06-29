@@ -51,8 +51,9 @@ final class DailySupplementStore {
             return (days: [], needsSave: false)
         }
 
-        if let days = try? JSONDecoder().decode(Set<LocalDay>.self, from: data) {
-            return (days: days, needsSave: false)
+        if let stored = try? JSONDecoder().decode([StoredSupplementDay].self, from: data) {
+            let days = Set(stored.compactMap(\.day))
+            return (days: days, needsSave: days.count != stored.count)
         }
 
         if let dates = try? JSONDecoder().decode(Set<Date>.self, from: data) {
@@ -73,5 +74,19 @@ final class DailySupplementStore {
         let cutoff = HistoryRetention.earliestRetainedDay()
         days = days.filter { $0 >= cutoff }
         return days.count != previousCount
+    }
+}
+
+private struct StoredSupplementDay: Decodable {
+    let day: LocalDay?
+
+    init(from decoder: Decoder) throws {
+        // Drop invalid persisted identities while letting legacy date shapes fall
+        // through to migration: only LocalDay's identity rejection is swallowed.
+        do {
+            day = try LocalDay(from: decoder)
+        } catch DecodingError.dataCorrupted {
+            day = nil
+        }
     }
 }
