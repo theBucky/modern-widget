@@ -350,6 +350,32 @@ struct CodingUsageLoaderTests {
         #expect(claude.totalCounts.totalTokens == 7)
     }
 
+    @Test("skips malformed numeric fields of every json type without dropping later fields")
+    func skipsMalformedNumericFieldsOfEveryJSONType() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-MalformedFieldTypes")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-string","message":{"id":"msg-string","model":"claude-sonnet-4-20250514","usage":{"input_tokens":"oops","output_tokens":1}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:01.000Z","requestId":"req-null","message":{"id":"msg-null","model":"claude-sonnet-4-20250514","usage":{"input_tokens":null,"output_tokens":2}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:02.000Z","requestId":"req-bool","message":{"id":"msg-bool","model":"claude-sonnet-4-20250514","usage":{"input_tokens":true,"output_tokens":4}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:03.000Z","requestId":"req-object","message":{"id":"msg-object","model":"claude-sonnet-4-20250514","usage":{"input_tokens":{"nested":99},"output_tokens":8}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:04.000Z","requestId":"req-array","message":{"id":"msg-array","model":"claude-sonnet-4-20250514","usage":{"input_tokens":[1,2,3],"output_tokens":16}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.inputTokens == 0)
+        #expect(claude.totalCounts.outputTokens == 31)
+        #expect(claude.totalCounts.totalTokens == 31)
+    }
+
     @Test("calculates newer claude model pricing and fast multiplier")
     func calculatesNewerClaudeModelPricingAndFastMultiplier() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-NewClaudePricing")
@@ -635,6 +661,30 @@ struct CodingUsageLoaderTests {
         try writeFixture(
             #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":41,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":49},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
+            in: home,
+            modifiedAt: date(2026, 6, 18, 12, 1)
+        )
+
+        #expect(loader.usageScan(scope: scope()).fingerprint != first)
+    }
+
+    @Test("fingerprint changes when codex config pricing changes")
+    func fingerprintChangesWhenCodexConfigChanges() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ConfigFingerprint")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+        try writeFixture(#"service_tier = "standard""#, to: ".codex/config.toml", in: home)
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let first = loader.usageScan(scope: scope()).fingerprint
+
+        try writeFixture(
+            #"service_tier = "fast""#,
+            to: ".codex/config.toml",
             in: home,
             modifiedAt: date(2026, 6, 18, 12, 1)
         )
