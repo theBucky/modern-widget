@@ -15,11 +15,6 @@ struct WalkHistoryCalendarView: View {
         )
     }
 
-    private enum Palette {
-        static let supplementTaken = Color(red: 0, green: 0.45, blue: 0.12)
-        static let supplementMissed = Color(red: 0.75, green: 0, blue: 0)
-    }
-
     var body: some View {
         VStack(spacing: PanelLayout.sectionSpacing) {
             monthHeader
@@ -125,9 +120,9 @@ struct WalkHistoryCalendarView: View {
             return .secondary.opacity(0.5)
         }
         if supplementStore.isTaken(on: date) {
-            return Palette.supplementTaken
+            return PanelColor.statusGreen
         }
-        return Palette.supplementMissed
+        return PanelColor.statusOrange
     }
 
     private func cellFill(today: Bool, hasWalks: Bool) -> Color {

@@ -76,7 +76,7 @@ struct CodingUsageChart: View {
     private func chartHoverAnnotation(_ day: CodingUsageDaySummary) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(.primary)
             CodingUsageValueText(
                 counts: day.counts,
                 isLoading: isLoading
@@ -85,7 +85,7 @@ struct CodingUsageChart: View {
         .font(.caption2.monospacedDigit())
         .padding(.horizontal, 5)
         .padding(.vertical, 3)
-        .background(.regularMaterial, in: .rect(cornerRadius: 4))
+        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 4))
         .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
     }
 }

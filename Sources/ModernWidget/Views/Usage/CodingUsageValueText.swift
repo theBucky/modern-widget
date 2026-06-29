@@ -7,7 +7,8 @@ struct CodingUsageValueText: View {
     var body: some View {
         if isLoading {
             Text("loading")
-                .foregroundStyle(Color.black)
+                .fontWeight(.regular)
+                .foregroundStyle(.secondary)
         } else {
             HStack(spacing: 3) {
                 tokenText
@@ -22,12 +23,12 @@ struct CodingUsageValueText: View {
     private var tokenText: some View {
         Text(formatCodingUsageTokens(counts.totalTokens))
             .fontWeight(.regular)
-            .foregroundStyle(Color.secondary)
+            .foregroundStyle(.secondary)
     }
 
     private var costText: some View {
         Text(formatCodingUsageCost(counts.costUSD))
             .fontWeight(.semibold)
-            .foregroundStyle(Color.black)
+            .foregroundStyle(.primary)
     }
 }

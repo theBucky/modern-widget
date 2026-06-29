@@ -10,3 +10,8 @@ enum PanelLayout {
     static let tightSpacing: CGFloat = 4
     static let cornerRadius: CGFloat = 6
 }
+
+enum PanelColor {
+    static let statusGreen = Color(red: 0, green: 128 / 255, blue: 9 / 255)
+    static let statusOrange = Color(red: 182 / 255, green: 68 / 255, blue: 0)
+}

@@ -143,9 +143,9 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
 
         switch costTrend.direction {
         case .up:
-            return Color(red: 0, green: 128 / 255, blue: 9 / 255)
+            return PanelColor.statusGreen
         case .down:
-            return Color(red: 182 / 255, green: 68 / 255, blue: 0)
+            return PanelColor.statusOrange
         case .flat:
             return .gray
         }

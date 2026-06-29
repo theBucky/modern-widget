@@ -93,7 +93,7 @@ extension CodingUsageAgent {
         case .claude:
             return Color(red: 217 / 255, green: 119 / 255, blue: 87 / 255)
         case .codex:
-            return Color(red: 13 / 255, green: 13 / 255, blue: 13 / 255)
+            return .primary
         case .pi:
             return .accentColor
         }
