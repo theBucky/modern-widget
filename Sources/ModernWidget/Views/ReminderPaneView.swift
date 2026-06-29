@@ -5,17 +5,13 @@ struct ReminderPaneView: View {
     let walkHistoryStore: WalkHistoryStore
     @Bindable var dailySupplementStore: DailySupplementStore
 
-    private enum Layout {
-        static let actionButtonSize: CGFloat = 34
-    }
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let snapshot = engine.snapshot(at: context.date)
 
             VStack(spacing: PanelLayout.paneSpacing) {
                 intervalMenu
-                ReminderStatusView(snapshot: snapshot)
+                statusSection(snapshot: snapshot)
                 actionsSection(phase: snapshot.phase)
                 Toggle("daily supplement taken", isOn: $dailySupplementStore.isTakenToday)
                     .toggleStyle(.checkbox)
@@ -44,54 +40,16 @@ struct ReminderPaneView: View {
         .labelsHidden()
     }
 
-    private func actionsSection(phase: ReminderPhase) -> some View {
-        let pauseTitle = phase == .paused ? "Resume timer" : "Pause timer"
-        let pauseIcon = phase == .paused ? "play.fill" : "pause.fill"
+    private func statusSection(snapshot: ReminderSnapshot) -> some View {
+        let status = statusDisplay(for: snapshot)
 
-        return HStack(spacing: PanelLayout.contentSpacing) {
-            Button {
-                engine.togglePause()
-            } label: {
-                Label(pauseTitle, systemImage: pauseIcon)
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .help(pauseTitle)
-
-            Button {
-                let now = Date.now
-                engine.completeBreak(at: now)
-                walkHistoryStore.recordWalk(now)
-            } label: {
-                Label("Complete break", systemImage: "arrow.counterclockwise")
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
-            }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.circle)
-            .keyboardShortcut(.defaultAction)
-            .help("Complete break")
-        }
-    }
-}
-
-private struct ReminderStatusView: View {
-    let snapshot: ReminderSnapshot
-
-    var body: some View {
-        let currentStatus = status
-
-        VStack(spacing: PanelLayout.tightSpacing) {
-            Text(currentStatus.title)
+        return VStack(spacing: PanelLayout.tightSpacing) {
+            Text(status.title)
                 .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(currentStatus.tint)
+                .foregroundStyle(status.tint)
 
-            Text(currentStatus.message)
+            Text(status.message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -106,18 +64,55 @@ private struct ReminderStatusView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var status: (title: String, message: String, tint: Color) {
+    private func statusDisplay(for snapshot: ReminderSnapshot) -> (
+        title: String, message: String, tint: Color
+    ) {
         switch snapshot.phase {
         case .countingDown:
-            return (countdownLabel, "until next break", .primary)
+            return (countdownLabel(snapshot), "until next break", .primary)
         case .paused:
-            return (countdownLabel, "paused", .secondary)
+            return (countdownLabel(snapshot), "paused", .secondary)
         case .overdue:
             return ("MOVE", "muscles atrophy, circulation stops, you know...", .red)
         }
     }
 
-    private var countdownLabel: String {
+    private func countdownLabel(_ snapshot: ReminderSnapshot) -> String {
         String(format: "%02d:%02d", snapshot.secondsRemaining / 60, snapshot.secondsRemaining % 60)
+    }
+
+    private func actionsSection(phase: ReminderPhase) -> some View {
+        let pauseTitle = phase == .paused ? "Resume timer" : "Pause timer"
+        let pauseIcon = phase == .paused ? "play.fill" : "pause.fill"
+        let actionButtonSize: CGFloat = 34
+
+        return HStack(spacing: PanelLayout.contentSpacing) {
+            Button {
+                engine.togglePause()
+            } label: {
+                Label(pauseTitle, systemImage: pauseIcon)
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: actionButtonSize, height: actionButtonSize)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .help(pauseTitle)
+
+            Button {
+                let now = Date.now
+                engine.completeBreak(at: now)
+                walkHistoryStore.recordWalk(now)
+            } label: {
+                Label("Complete break", systemImage: "arrow.counterclockwise")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: actionButtonSize, height: actionButtonSize)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .keyboardShortcut(.defaultAction)
+            .help("Complete break")
+        }
     }
 }
