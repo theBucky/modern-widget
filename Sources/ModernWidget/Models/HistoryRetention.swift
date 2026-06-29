@@ -10,7 +10,9 @@ enum HistoryRetention {
     }
 
     static func earliestRetainedDay(now: Date = .now) -> LocalDay {
-        LocalDay(date: earliestMonth(now: now))
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return LocalDay(date: earliestMonth(now: now, calendar: calendar))
     }
 }
 

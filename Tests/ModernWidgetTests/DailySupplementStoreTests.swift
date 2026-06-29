@@ -126,6 +126,19 @@ struct DailySupplementStoreTests {
         #expect(savedDays == [validDay])
     }
 
+    @Test("malformed persisted payload is replaced with empty storage")
+    func malformedPersistedPayloadIsRewritten() throws {
+        let defaults = makeDefaults("DailySupplementStoreTests")
+        defaults.set(Data("not json".utf8), forKey: "dailySupplementTakenDays")
+
+        let store = DailySupplementStore(defaults: defaults)
+        let savedData = try #require(defaults.data(forKey: "dailySupplementTakenDays"))
+        let savedDays = try JSONDecoder().decode(Set<LocalDay>.self, from: savedData)
+
+        #expect(!store.isTakenToday)
+        #expect(savedDays.isEmpty)
+    }
+
     private struct StoredSupplementDay: Codable {
         let year: Int
         let month: Int

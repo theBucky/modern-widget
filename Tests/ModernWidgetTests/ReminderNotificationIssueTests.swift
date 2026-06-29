@@ -29,6 +29,12 @@ struct ReminderNotificationIssueTests {
         #expect(ReminderNotificationIssue(authorizationStatus: .notDetermined) == nil)
     }
 
+    @Test("ephemeral authorization produces no issue")
+    func ephemeralAuthorizationHasNoIssue() {
+        let ephemeral = unsafeBitCast(Int(4), to: UNAuthorizationStatus.self)
+        #expect(ReminderNotificationIssue(authorizationStatus: ephemeral) == nil)
+    }
+
     @Test("unknown authorization status normalizes to unknown permission state")
     func unknownAuthorizationStatus() {
         let unknown = unsafeBitCast(Int(99), to: UNAuthorizationStatus.self)

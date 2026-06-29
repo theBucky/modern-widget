@@ -60,7 +60,7 @@ final class DailySupplementStore {
             return (days: Set(dates.map(LocalDay.init(date:))), needsSave: true)
         }
 
-        return (days: [], needsSave: false)
+        return (days: [], needsSave: true)
     }
 
     private func save() {
