@@ -784,6 +784,31 @@ struct CodingUsageLoaderTests {
         #expect(abs(codex.totalCounts.costUSD - 0.001645) < 0.00000001)
     }
 
+    @Test("counts unknown codex model variant tokens at zero cost")
+    func countsUnknownCodexModelVariantTokensAtZeroCost() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-UnknownCodexModel")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":3,"total_tokens":105},"model":"gpt-5.9-codex"}}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = report.agents.first { $0.agent == .codex }!
+
+        #expect(codex.totalCounts.inputTokens == 60)
+        #expect(codex.totalCounts.cacheReadTokens == 40)
+        #expect(codex.totalCounts.outputTokens == 5)
+        #expect(codex.totalCounts.reasoningTokens == 3)
+        #expect(codex.totalCounts.totalTokens == 105)
+        #expect(codex.totalCounts.costUSD == 0)
+        #expect(dayCounts(codex, 2026, 6, 18).totalTokens == 105)
+        #expect(dayCounts(codex, 2026, 6, 18).costUSD == 0)
+    }
+
     @Test("empty directory overrides fall back to defaults")
     func emptyDirectoryOverridesFallBackToDefaults() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-EmptyDirectoryOverride")
