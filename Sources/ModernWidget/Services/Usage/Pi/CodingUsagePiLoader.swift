@@ -56,9 +56,7 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
         fields.input
         .saturatingAdd(fields.cacheWrite)
         .saturatingAdd(fields.cacheRead)
-    let outputTokens =
-        fields.rawOutput == 0
-        ? fields.totalTokens.saturatingSubtract(nonOutputTokens) : fields.rawOutput
+    let outputTokens = fields.output ?? fields.totalTokens.saturatingSubtract(nonOutputTokens)
     let totalTokens = max(fields.totalTokens, nonOutputTokens.saturatingAdd(outputTokens))
 
     guard totalTokens > 0 else {
@@ -105,7 +103,7 @@ private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields {
                     if inner == "input" {
                         fields.input = scanner.readUInt64() ?? 0
                     } else if inner == "output" {
-                        fields.rawOutput = scanner.readUInt64() ?? 0
+                        fields.output = scanner.readUInt64()
                     } else if inner == "cacheWrite" {
                         fields.cacheWrite = scanner.readUInt64() ?? 0
                     } else if inner == "cacheRead" {
@@ -131,7 +129,7 @@ private struct PiMessageFields {
     var model: String?
     var hasUsage = false
     var input: UInt64 = 0
-    var rawOutput: UInt64 = 0
+    var output: UInt64?
     var cacheWrite: UInt64 = 0
     var cacheWrite1h: UInt64 = 0
     var cacheRead: UInt64 = 0

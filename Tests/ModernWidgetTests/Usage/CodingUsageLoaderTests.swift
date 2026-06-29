@@ -385,6 +385,73 @@ struct CodingUsageLoaderTests {
         #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
     }
 
+    @Test("reads pi camelCase usage fields and ignores snake_case fields")
+    func readsPiCamelCaseUsageFieldsIgnoringSnakeCase() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-PiCamelCase")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input_tokens":999,"output_tokens":999,"cache_read_input_tokens":999,"cache_creation_input_tokens":999,"input":100,"output":50,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
+            to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let pi = report.agents.first { $0.agent == .pi }!
+
+        #expect(pi.totalCounts.inputTokens == 100)
+        #expect(pi.totalCounts.outputTokens == 50)
+        #expect(pi.totalCounts.cacheReadTokens == 10)
+        #expect(pi.totalCounts.cacheCreationTokens == 20)
+        #expect(pi.totalCounts.totalTokens == 180)
+    }
+
+    @Test("infers pi missing output but keeps explicit zero output")
+    func infersPiMissingOutputButKeepsExplicitZeroOutput() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-PiOutput")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":100,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
+                #"{"type":"message","timestamp":"2026-06-17T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":100,"output":0,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
+            ].joined(separator: "\n"),
+            to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let pi = report.agents.first { $0.agent == .pi }!
+
+        #expect(dayCounts(pi, 2026, 6, 18).outputTokens == 50)
+        #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 180)
+        #expect(dayCounts(pi, 2026, 6, 17).outputTokens == 0)
+        #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 180)
+        #expect(pi.totalCounts.outputTokens == 50)
+    }
+
+    @Test("clamps pi cacheWrite1h to cacheWrite without underflow")
+    func clampsPiCacheWrite1hToCacheWrite() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-PiCacheWrite1h")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":10,"output":20,"cacheWrite":20,"cacheWrite1h":50,"totalTokens":50}}}"#,
+            to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let pi = report.agents.first { $0.agent == .pi }!
+
+        #expect(pi.totalCounts.cacheCreationTokens == 20)
+        #expect(pi.totalCounts.totalTokens == 50)
+        #expect(abs(pi.totalCounts.costUSD - 0.000425) < 0.00000001)
+    }
+
     @Test("saturates malformed token totals")
     func saturatesMalformedTokenTotals() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-TokenOverflow")
