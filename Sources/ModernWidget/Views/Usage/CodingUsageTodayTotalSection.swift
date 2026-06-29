@@ -4,27 +4,23 @@ struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
     let isLoading: Bool
 
-    @State private var displayedCostUSD = 0.0
-    @State private var isTrendVisible = false
-
     var body: some View {
         HStack(alignment: .bottom) {
-            CodingUsageCostTrendGroup(
-                costUSD: displayedCostUSD,
-                costTrend: summary.costTrend,
-                hasUsage: summary.counts.hasUsage,
-                isLoading: isLoading,
-                isTrendVisible: isTrendVisible
-            )
+            if isLoading {
+                CodingUsageCostTrendGroup(
+                    display: .loading,
+                    costTrend: summary.costTrend,
+                    hasUsage: summary.counts.hasUsage
+                )
+            } else {
+                CodingUsageLoadedCostTrendGroup(summary: summary)
+            }
 
             Spacer(minLength: 16)
 
             dateTokenGroup
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: animationState) {
-            await animateTotal()
-        }
     }
 
     private var dateTokenGroup: some View {
@@ -46,54 +42,140 @@ struct CodingUsageTodayTotalSection: View {
         )
     }
 
-    private var animationState: CodingUsageTodayTotalAnimationState {
-        CodingUsageTodayTotalAnimationState(
-            isLoading: isLoading,
-            costUSD: summary.counts.costUSD
-        )
+}
+
+private struct CodingUsageLoadedCostTrendGroup: View {
+    let summary: CodingUsageTodaySummary
+
+    @State private var phase: CodingUsageTodayLoadedPhase
+
+    init(summary: CodingUsageTodaySummary) {
+        self.summary = summary
+        _phase = State(initialValue: .initial(costUSD: summary.counts.costUSD))
     }
 
-    private func animateTotal() async {
-        isTrendVisible = false
-
-        if isLoading {
-            displayedCostUSD = 0
-            return
-        }
-
-        withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
-            displayedCostUSD = summary.counts.costUSD
-        }
-
-        try? await Task.sleep(for: .seconds(Self.costAnimationDuration))
-        if Task.isCancelled {
-            return
-        }
-
-        withAnimation(.easeOut(duration: Self.trendFadeDuration)) {
-            isTrendVisible = true
+    var body: some View {
+        CodingUsageCostTrendGroup(
+            display: .loaded(phase),
+            costTrend: summary.costTrend,
+            hasUsage: summary.counts.hasUsage
+        )
+        .task(id: summary.counts.costUSD) {
+            await animateTotal(to: summary.counts.costUSD)
         }
     }
 
     private static let costAnimationDuration = 1.0
     private static let trendFadeDuration = 0.2
+
+    private func animateTotal(to costUSD: Double) async {
+        guard phase.costUSD != costUSD else {
+            phase = .settled(costUSD: costUSD)
+            return
+        }
+
+        phase = .entering(costUSD: phase.costUSD)
+        withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
+            phase = .entering(costUSD: costUSD)
+        }
+
+        try? await Task.sleep(for: .seconds(Self.costAnimationDuration))
+        guard !Task.isCancelled else {
+            return
+        }
+
+        withAnimation(.easeOut(duration: Self.trendFadeDuration)) {
+            phase = .settled(costUSD: costUSD)
+        }
+    }
 }
 
-private struct CodingUsageTodayTotalAnimationState: Equatable {
-    let isLoading: Bool
-    let costUSD: Double
+private enum CodingUsageTodayLoadedPhase {
+    case entering(costUSD: Double)
+    case settled(costUSD: Double)
+
+    static func initial(costUSD: Double) -> Self {
+        if costUSD == 0 {
+            return .settled(costUSD: costUSD)
+        }
+        return .entering(costUSD: 0)
+    }
+
+    var costUSD: Double {
+        switch self {
+        case let .entering(costUSD), let .settled(costUSD):
+            return costUSD
+        }
+    }
+
+    var showsTrendBadge: Bool {
+        switch self {
+        case .entering:
+            return false
+        case .settled:
+            return true
+        }
+    }
+
+    func withCostUSD(_ costUSD: Double) -> Self {
+        switch self {
+        case .entering:
+            return .entering(costUSD: costUSD)
+        case .settled:
+            return .settled(costUSD: costUSD)
+        }
+    }
+}
+
+private enum CodingUsageTodayTotalDisplay {
+    case loading
+    case loaded(CodingUsageTodayLoadedPhase)
+
+    var costUSD: Double {
+        switch self {
+        case .loading:
+            return 0
+        case let .loaded(phase):
+            return phase.costUSD
+        }
+    }
+
+    var isLoading: Bool {
+        switch self {
+        case .loading:
+            return true
+        case .loaded:
+            return false
+        }
+    }
+
+    var showsTrendBadge: Bool {
+        switch self {
+        case .loading:
+            return true
+        case let .loaded(phase):
+            return phase.showsTrendBadge
+        }
+    }
+
+    func withCostUSD(_ costUSD: Double) -> Self {
+        switch self {
+        case .loading:
+            return .loading
+        case let .loaded(phase):
+            return .loaded(phase.withCostUSD(costUSD))
+        }
+    }
 }
 
 private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
-    var costUSD: Double
+    var display: CodingUsageTodayTotalDisplay
     let costTrend: CodingUsageCostTrend
     let hasUsage: Bool
-    let isLoading: Bool
-    let isTrendVisible: Bool
 
     var animatableData: Double {
-        get { costUSD }
-        set { costUSD = newValue }
+        get { display.costUSD }
+        set { display = display.withCostUSD(newValue) }
     }
 
     var body: some View {
@@ -106,11 +188,11 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
 
     @ViewBuilder
     private var totalCostText: some View {
-        let text = Text(isLoading ? "loading" : formatCodingUsageCost(costUSD))
+        let text = Text(display.isLoading ? "loading" : formatCodingUsageCost(display.costUSD))
             .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
 
-        if isLoading {
+        if display.isLoading {
             text.foregroundStyle(.secondary)
         } else if !hasUsage {
             text.foregroundStyle(.tertiary)
@@ -125,7 +207,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     }
 
     private var trendBadge: some View {
-        Text(isLoading ? "loading" : formatCodingUsageCostTrendPercent(costTrend))
+        Text(display.isLoading ? "loading" : formatCodingUsageCostTrendPercent(costTrend))
             .font(.caption.monospacedDigit())
             .fontWeight(.regular)
             .foregroundStyle(.white)
@@ -133,11 +215,11 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
             .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
             .contentTransition(.numericText(value: costTrend.percent))
-            .opacity(isLoading || isTrendVisible ? 1 : 0)
+            .opacity(display.showsTrendBadge ? 1 : 0)
     }
 
     private var trendColor: Color {
-        if isLoading {
+        if display.isLoading {
             return .secondary
         }
 
