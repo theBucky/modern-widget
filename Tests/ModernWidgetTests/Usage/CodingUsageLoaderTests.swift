@@ -58,6 +58,157 @@ struct CodingUsageLoaderTests {
         #expect(claude.totalCounts.totalTokens == 15)
     }
 
+    @Test("counts only claude records with timestamp, message, and usage")
+    func countsOnlyClaudeRecordsWithTimestampMessageAndUsage() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeRequiredFields")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"message":{"id":"msg-no-timestamp","model":"claude-sonnet-4-20250514","usage":{"input_tokens":50,"output_tokens":5}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:01.000Z","usage":{"input_tokens":60,"output_tokens":6}}"#,
+                #"{"timestamp":"2026-06-18T01:00:02.000Z","message":{"id":"msg-no-usage","model":"claude-sonnet-4-20250514","note":"usage omitted"}}"#,
+                #"{"timestamp":"2026-06-18T01:00:03.000Z","requestId":"req-ok","message":{"id":"msg-ok","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":2}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.inputTokens == 10)
+        #expect(claude.totalCounts.outputTokens == 2)
+        #expect(claude.totalCounts.totalTokens == 12)
+    }
+
+    @Test("prefers claude cache creation object over flat fallback")
+    func prefersClaudeCacheCreationObjectOverFlatFallback() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeCacheObject")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":999,"cache_creation":{"ephemeral_5m_input_tokens":10,"ephemeral_1h_input_tokens":6},"cache_read_input_tokens":5}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.cacheCreationTokens == 16)
+        #expect(claude.totalCounts.totalTokens == 141)
+        #expect(abs(claude.totalCounts.costUSD - 0.000675) < 0.00000001)
+    }
+
+    @Test("prices flat claude cache creation as five minute only")
+    func pricesFlatClaudeCacheCreationAsFiveMinuteOnly() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeFlatCache")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":40,"cache_read_input_tokens":0}}}"#,
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.cacheCreationTokens == 40)
+        #expect(abs(claude.totalCounts.costUSD - 0.00015) < 0.00000001)
+    }
+
+    @Test("keeps non-sidechain claude record over sidechain duplicate")
+    func keepsNonSidechainClaudeRecordOverSidechainDuplicate() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeNonSidechainWins")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-main","message":{"id":"msg-z","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:01.000Z","isSidechain":true,"requestId":"req-side","message":{"id":"msg-z","model":"claude-sonnet-4-20250514","usage":{"input_tokens":500,"output_tokens":50}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.totalTokens == 11)
+    }
+
+    @Test("counts non-sidechain claude duplicates with different request ids")
+    func countsNonSidechainClaudeDuplicatesWithDifferentRequestIds() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeNonSidechainDuplicates")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-1","message":{"id":"msg-x","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:01.000Z","requestId":"req-2","message":{"id":"msg-x","model":"claude-sonnet-4-20250514","usage":{"input_tokens":20,"output_tokens":2}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.inputTokens == 30)
+        #expect(claude.totalCounts.outputTokens == 3)
+        #expect(claude.totalCounts.totalTokens == 33)
+    }
+
+    @Test("collapses equal-sidechain claude duplicates to the richer record")
+    func collapsesEqualSidechainClaudeDuplicatesToTheRicherRecord() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeSidechainCollapse")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","isSidechain":true,"requestId":"req-1","message":{"id":"msg-y","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+                #"{"timestamp":"2026-06-18T01:00:01.000Z","isSidechain":true,"requestId":"req-2","message":{"id":"msg-y","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":5}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(claude.totalCounts.totalTokens == 105)
+    }
+
+    @Test("uses claude speed not service tier for fast pricing")
+    func usesClaudeSpeedNotServiceTierForFastPricing() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeFastDisposition")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-tier","message":{"id":"msg-tier","model":"claude-opus-4-8","usage":{"input_tokens":10,"output_tokens":2,"service_tier":"priority"}}}"#,
+                #"{"timestamp":"2026-06-17T01:00:00.000Z","requestId":"req-speed","message":{"id":"msg-speed","model":"claude-opus-4-8","usage":{"input_tokens":10,"output_tokens":2,"speed":"fast"}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = report.agents.first { $0.agent == .claude }!
+
+        #expect(abs(dayCounts(claude, 2026, 6, 18).costUSD - 0.0001) < 0.00000001)
+        #expect(abs(dayCounts(claude, 2026, 6, 17).costUSD - 0.0002) < 0.00000001)
+    }
+
     @Test("loads codex usage from active sessions before archived duplicates")
     func loadsCodexUsageFromActiveSessionsBeforeArchivedDuplicates() throws {
         let home = try makeFixtureRoot("CodingUsageLoaderTests-Codex")
