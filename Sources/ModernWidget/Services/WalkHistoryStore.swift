@@ -6,7 +6,7 @@ import Observation
 final class WalkHistoryStore {
     private static let storageKey = "walkHistory"
 
-    private var countsByDayID: [WalkHistoryDay: Int]
+    private var countsByDay: [LocalDay: Int]
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -16,7 +16,7 @@ final class WalkHistoryStore {
         let loaded = Self.load(from: defaults)
         var counts = loaded.counts
         let pruned = Self.pruneOldEntries(in: &counts)
-        self.countsByDayID = counts
+        self.countsByDay = counts
 
         if loaded.needsSave || pruned {
             save()
@@ -24,36 +24,41 @@ final class WalkHistoryStore {
     }
 
     func recordWalk(_ date: Date = .now) {
-        let day = WalkHistoryDay(date: date)
-        countsByDayID[day, default: 0] += 1
-        Self.pruneOldEntries(in: &countsByDayID)
+        countsByDay[LocalDay(date: date), default: 0] += 1
+        Self.pruneOldEntries(in: &countsByDay)
         save()
     }
 
     func walkCount(on date: Date) -> Int {
-        countsByDayID[WalkHistoryDay(date: date)] ?? 0
+        countsByDay[LocalDay(date: date)] ?? 0
     }
 
     private static func load(from defaults: UserDefaults) -> (
-        counts: [WalkHistoryDay: Int], needsSave: Bool
+        counts: [LocalDay: Int], needsSave: Bool
     ) {
         guard let data = defaults.data(forKey: storageKey) else {
             return (counts: [:], needsSave: false)
         }
 
-        if let days = try? JSONDecoder().decode([StoredWalkDay].self, from: data) {
-            return (
-                counts: days.reduce(into: [:]) { counts, day in
-                    counts[day.historyDay, default: 0] += day.count
-                },
-                needsSave: false
-            )
+        if let stored = try? JSONDecoder().decode([StoredWalkDay].self, from: data) {
+            var counts: [LocalDay: Int] = [:]
+            var droppedInvalid = false
+            for record in stored {
+                guard record.count > 0,
+                    let day = LocalDay(year: record.year, month: record.month, day: record.day)
+                else {
+                    droppedInvalid = true
+                    continue
+                }
+                counts[day, default: 0] += record.count
+            }
+            return (counts: counts, needsSave: droppedInvalid)
         }
 
         if let dates = try? JSONDecoder().decode([Date].self, from: data) {
             return (
                 counts: dates.reduce(into: [:]) { counts, walk in
-                    counts[WalkHistoryDay(date: walk), default: 0] += 1
+                    counts[LocalDay(date: walk), default: 0] += 1
                 },
                 needsSave: true
             )
@@ -63,18 +68,21 @@ final class WalkHistoryStore {
     }
 
     private func save() {
-        let days =
-            countsByDayID
-            .map { StoredWalkDay(day: $0.key, count: $0.value) }
-            .sorted { $0.historyDay < $1.historyDay }
-        guard let data = try? JSONEncoder().encode(days) else { return }
+        let records =
+            countsByDay
+            .sorted { $0.key < $1.key }
+            .map {
+                StoredWalkDay(
+                    year: $0.key.year, month: $0.key.month, day: $0.key.day, count: $0.value)
+            }
+        guard let data = try? JSONEncoder().encode(records) else { return }
         defaults.set(data, forKey: Self.storageKey)
     }
 
     @discardableResult
-    private static func pruneOldEntries(in counts: inout [WalkHistoryDay: Int]) -> Bool {
+    private static func pruneOldEntries(in counts: inout [LocalDay: Int]) -> Bool {
         let previousCount = counts.count
-        let cutoff = WalkHistoryDay(date: HistoryRetention.earliestMonth())
+        let cutoff = HistoryRetention.earliestRetainedDay()
         counts = counts.filter { $0.key >= cutoff }
         return counts.count != previousCount
     }
@@ -85,40 +93,4 @@ private struct StoredWalkDay: Codable {
     let month: Int
     let day: Int
     let count: Int
-
-    init(day: WalkHistoryDay, count: Int) {
-        self.year = day.year
-        self.month = day.month
-        self.day = day.day
-        self.count = count
-    }
-
-    var historyDay: WalkHistoryDay {
-        WalkHistoryDay(year: year, month: month, day: day)
-    }
-}
-
-private struct WalkHistoryDay: Comparable, Codable, Hashable {
-    private static let calendar = Calendar(identifier: .gregorian)
-
-    let year: Int
-    let month: Int
-    let day: Int
-
-    init(year: Int, month: Int, day: Int) {
-        self.year = year
-        self.month = month
-        self.day = day
-    }
-
-    init(date: Date) {
-        let components = Self.calendar.dateComponents([.year, .month, .day], from: date)
-        self.year = components.year!
-        self.month = components.month!
-        self.day = components.day!
-    }
-
-    static func < (lhs: WalkHistoryDay, rhs: WalkHistoryDay) -> Bool {
-        (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
-    }
 }

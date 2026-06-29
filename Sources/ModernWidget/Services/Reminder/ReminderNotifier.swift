@@ -2,7 +2,12 @@ import Foundation
 import UserNotifications
 
 @MainActor
-final class ReminderNotifier {
+protocol ReminderNotifying {
+    func postReminder() async -> ReminderNotificationIssue?
+}
+
+@MainActor
+final class ReminderNotifier: ReminderNotifying {
     private let notificationCenter: UNUserNotificationCenter
     private let notificationDelegate = NotificationDelegate()
 
@@ -31,39 +36,24 @@ final class ReminderNotifier {
             try await notificationCenter.add(request)
             return nil
         } catch {
-            return issue(for: error)
+            return ReminderNotificationIssue(deliveryError: error)
         }
     }
 
     private func authorizationIssue() async -> ReminderNotificationIssue? {
-        let settings = await notificationCenter.notificationSettings()
-
-        switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral:
-            return nil
-        case .notDetermined:
-            do {
-                let granted = try await notificationCenter.requestAuthorization(options: [
-                    .alert, .sound,
-                ])
-                return granted ? nil : .notificationsBlocked
-            } catch {
-                return issue(for: error)
-            }
-        case .denied:
-            return .notificationsBlocked
-        @unknown default:
-            return .unknownPermissionState
+        let status = await notificationCenter.notificationSettings().authorizationStatus
+        guard status == .notDetermined else {
+            return ReminderNotificationIssue(authorizationStatus: status)
         }
-    }
 
-    private func issue(for error: Error) -> ReminderNotificationIssue {
-        let nsError = error as NSError
-
-        return nsError.domain == UNErrorDomain
-            && UNError.Code(rawValue: nsError.code) == .notificationsNotAllowed
-            ? .notificationsBlocked
-            : .deliveryFailure(error.localizedDescription)
+        do {
+            let granted = try await notificationCenter.requestAuthorization(options: [
+                .alert, .sound,
+            ])
+            return granted ? nil : .notificationsBlocked
+        } catch {
+            return ReminderNotificationIssue(deliveryError: error)
+        }
     }
 }
 

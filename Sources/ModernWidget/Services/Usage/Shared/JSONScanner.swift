@@ -65,15 +65,13 @@ struct JSONScanner {
         return JSONKey(start: key.start, count: key.count)
     }
 
-    /// Reads an unsigned integer, returning `nil` for fractional, negative, or
-    /// overflowing numbers while still consuming the full numeric token.
+    /// Reads an unsigned integer. Returns `nil` for fractional, negative, overflowing,
+    /// or non-numeric values, consuming the whole value either way so a malformed field
+    /// never swallows the sibling fields that follow it.
     mutating func readUInt64() -> UInt64? {
         skipWhitespace()
-        guard index < count else { return nil }
-        guard base[index].isDigit else {
-            if base[index].isNumberByte {
-                skipNumberToken()
-            }
+        guard index < count, base[index].isDigit else {
+            skipValue()
             return nil
         }
 
@@ -88,7 +86,7 @@ struct JSONScanner {
         }
 
         guard index == count || !base[index].isNumberByte else {
-            skipNumberToken()
+            skipValue()
             return nil
         }
         return overflow ? nil : value
@@ -147,12 +145,6 @@ struct JSONScanner {
 
     private mutating func skipWhitespace() {
         while index < count, base[index].isWhitespace {
-            index += 1
-        }
-    }
-
-    private mutating func skipNumberToken() {
-        while index < count, base[index].isNumberByte {
             index += 1
         }
     }

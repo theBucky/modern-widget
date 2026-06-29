@@ -46,6 +46,7 @@ Everything runs locally. State is stored with `UserDefaults`, and AI usage is re
 - Pi usage is loaded from `PI_AGENT_DIR` or `~/.pi/agent/sessions`.
 - Active and archived Codex sessions are deduplicated.
 - Claude sidechain duplicates are collapsed.
+- Pi entries with missing output infer output from total tokens; explicit zero output stays zero.
 - Cost estimates support known Claude and GPT/Codex/Pi model pricing.
 - The panel refreshes usage roughly every 10 minutes.
 
@@ -134,12 +135,15 @@ Sources/ModernWidget/
 │   └── ModernWidgetApp.swift              # SwiftUI app entry and MenuBarExtra scene
 ├── Models/
 │   ├── HistoryRetention.swift             # shared three-month retention window
+│   ├── LocalDay.swift                     # shared calendar-day key for walk, supplement, and retention logic
 │   ├── Reminder/
 │   │   ├── ReminderNotificationIssue.swift  # notification permission and delivery issues
 │   │   ├── ReminderSchedule.swift           # countdown phases and reminder timing
 │   │   └── ReminderState.swift              # timer state, presets, and snapshots
 │   ├── Usage/
-│   │   └── CodingUsage.swift                # coding agent usage report models
+│   │   ├── CodingTokenCounts.swift          # token and cost totals
+│   │   ├── CodingUsageDateScope.swift       # usage reporting windows
+│   │   └── CodingUsageSummary.swift         # coding agent usage report models
 │   └── WalkHistory/
 │       └── WalkHistoryCalendar.swift        # month grid and weekday helpers
 ├── Resources/                             # Claude, Codex, and Pi logo assets
@@ -158,12 +162,17 @@ Sources/ModernWidget/
 │   └── WalkHistoryStore.swift             # walk persistence and day counts
 └── Views/
     ├── MenuBarPanelView.swift             # tabbed menu bar panel shell
+    ├── PanelLayout.swift                  # shared panel layout constants
     ├── ReminderPaneView.swift             # timer, controls, supplement checkbox
+    ├── SettingsPaneView.swift             # settings and app controls
     ├── WalkHistoryCalendarView.swift      # calendar pane
-    ├── CodingUsageView.swift              # AI usage pane and chart
+    ├── Usage/                             # AI usage pane, chart, formatting, and totals
     └── MenuBarIconView.swift              # menu bar status icon
 
 Tests/ModernWidgetTests/
+├── LocalDayTests.swift                    # shared day-key behavior
+├── ReminderEngineTests.swift              # timer engine behavior
+├── ReminderNotificationIssueTests.swift   # notification issue mapping
 ├── ReminderScheduleTests.swift            # reminder schedule timing
 ├── ReminderStateTests.swift               # reminder state transitions
 ├── WalkHistoryCalendarTests.swift         # calendar grid
@@ -171,7 +180,7 @@ Tests/ModernWidgetTests/
 ├── HistoryRetentionTests.swift            # retention window
 ├── DailySupplementStoreTests.swift        # supplement persistence
 ├── TestSupport.swift                      # shared test helpers
-└── Usage/                                 # Claude/Codex/Pi loader, summary, benchmark tests
+└── Usage/                                 # Claude/Codex/Pi loader, parser hardening, summary, benchmark tests
 ```
 
 ## Data and privacy

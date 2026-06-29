@@ -27,7 +27,16 @@ final class CodingUsageStore {
         static let refreshInterval = "codingUsage.refreshInterval"
 
         static func enabledAgent(_ agent: CodingUsageAgent) -> String {
-            "codingUsage.enabledAgent.\(agent.defaultsName)"
+            let suffix: String
+            switch agent {
+            case .claude:
+                suffix = "claude"
+            case .codex:
+                suffix = "codex"
+            case .pi:
+                suffix = "pi"
+            }
+            return "codingUsage.enabledAgent.\(suffix)"
         }
     }
 
@@ -135,18 +144,5 @@ final class CodingUsageStore {
         }
         lastFingerprint = scan.fingerprint
         self.report = report
-    }
-}
-
-private extension CodingUsageAgent {
-    var defaultsName: String {
-        switch self {
-        case .claude:
-            return "claude"
-        case .codex:
-            return "codex"
-        case .pi:
-            return "pi"
-        }
     }
 }

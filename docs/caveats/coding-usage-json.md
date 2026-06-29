@@ -157,7 +157,7 @@ Important details:
 
 - Count only assistant messages with a `usage` object. User messages with usage are ignored.
 - Pi uses camelCase fields, not Claude/Codex snake case.
-- If `output` is zero, infer output from `totalTokens - (input + cacheWrite + cacheRead)` using saturating arithmetic.
+- If `output` is missing, infer output from `totalTokens - (input + cacheWrite + cacheRead)` using saturating arithmetic. An explicit `output: 0` stays zero and is not inferred.
 - `totalTokens` is the max of the raw `totalTokens` and the locally reconstructed `input + cacheWrite + cacheRead + output`.
 - `cacheWrite1h` is clamped to at most `cacheWrite`. The remainder is treated as 5 minute cache creation.
 - Keep output, non-output, and total sums saturating. Plain `UInt64` addition can trap on malformed-but-numeric logs.

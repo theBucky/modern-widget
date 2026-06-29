@@ -5,17 +5,13 @@ struct ReminderPaneView: View {
     let walkHistoryStore: WalkHistoryStore
     @Bindable var dailySupplementStore: DailySupplementStore
 
-    private enum Layout {
-        static let actionButtonSize: CGFloat = 34
-    }
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let snapshot = engine.snapshot(at: context.date)
 
             VStack(spacing: PanelLayout.paneSpacing) {
                 intervalMenu
-                ReminderStatusView(snapshot: snapshot)
+                statusSection(snapshot: snapshot)
                 actionsSection(phase: snapshot.phase)
                 Toggle("daily supplement taken", isOn: $dailySupplementStore.isTakenToday)
                     .toggleStyle(.checkbox)
@@ -44,9 +40,51 @@ struct ReminderPaneView: View {
         .labelsHidden()
     }
 
+    private func statusSection(snapshot: ReminderSnapshot) -> some View {
+        let status = statusDisplay(for: snapshot)
+
+        return VStack(spacing: PanelLayout.tightSpacing) {
+            Text(status.title)
+                .font(.system(size: 44, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(status.tint)
+
+            Text(status.message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let message = snapshot.notificationIssue?.message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func statusDisplay(for snapshot: ReminderSnapshot) -> (
+        title: String, message: String, tint: Color
+    ) {
+        switch snapshot.phase {
+        case .countingDown:
+            return (countdownLabel(snapshot), "until next break", .primary)
+        case .paused:
+            return (countdownLabel(snapshot), "paused", .secondary)
+        case .overdue:
+            return ("MOVE", "muscles atrophy, circulation stops, you know...", .red)
+        }
+    }
+
+    private func countdownLabel(_ snapshot: ReminderSnapshot) -> String {
+        String(format: "%02d:%02d", snapshot.secondsRemaining / 60, snapshot.secondsRemaining % 60)
+    }
+
     private func actionsSection(phase: ReminderPhase) -> some View {
         let pauseTitle = phase == .paused ? "Resume timer" : "Pause timer"
         let pauseIcon = phase == .paused ? "play.fill" : "pause.fill"
+        let actionButtonSize: CGFloat = 34
 
         return HStack(spacing: PanelLayout.contentSpacing) {
             Button {
@@ -55,7 +93,7 @@ struct ReminderPaneView: View {
                 Label(pauseTitle, systemImage: pauseIcon)
                     .labelStyle(.iconOnly)
                     .font(.system(size: 13, weight: .semibold))
-                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
+                    .frame(width: actionButtonSize, height: actionButtonSize)
             }
             .buttonStyle(.bordered)
             .buttonBorderShape(.circle)
@@ -69,70 +107,12 @@ struct ReminderPaneView: View {
                 Label("Complete break", systemImage: "arrow.counterclockwise")
                     .labelStyle(.iconOnly)
                     .font(.system(size: 13, weight: .semibold))
-                    .frame(width: Layout.actionButtonSize, height: Layout.actionButtonSize)
+                    .frame(width: actionButtonSize, height: actionButtonSize)
             }
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.circle)
             .keyboardShortcut(.defaultAction)
             .help("Complete break")
-        }
-    }
-}
-
-private struct ReminderStatusView: View {
-    let snapshot: ReminderSnapshot
-
-    var body: some View {
-        let currentStatus = status
-
-        VStack(spacing: PanelLayout.tightSpacing) {
-            Text(currentStatus.title)
-                .font(.system(size: 44, weight: .light, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(currentStatus.tint)
-
-            Text(currentStatus.message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let reminderStatusMessage {
-                Text(reminderStatusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var status: (title: String, message: String, tint: Color) {
-        switch snapshot.phase {
-        case .countingDown:
-            return (countdownLabel, "until next break", .primary)
-        case .paused:
-            return (countdownLabel, "paused", .secondary)
-        case .overdue:
-            return ("MOVE", "muscles atrophy, circulation stops, you know...", .red)
-        }
-    }
-
-    private var countdownLabel: String {
-        String(format: "%02d:%02d", snapshot.secondsRemaining / 60, snapshot.secondsRemaining % 60)
-    }
-
-    private var reminderStatusMessage: String? {
-        guard let issue = snapshot.notificationIssue else {
-            return nil
-        }
-
-        switch issue {
-        case .notificationsBlocked:
-            return "notifications blocked in System Settings"
-        case .unknownPermissionState:
-            return "unknown notification permission state"
-        case let .deliveryFailure(message):
-            return message
         }
     }
 }

@@ -13,9 +13,9 @@ struct ClaudeDedupeKey: Hashable {
     let requestID: String?
 }
 
-/// Scalar fields pulled from a Claude `message` object. The cache-creation split
-/// prefers the `cache_creation` object's ephemeral buckets and falls back to the flat
-/// `cache_creation_input_tokens` count, matching the original loader.
+/// Scalar fields pulled from a Claude `message` object. Cache creation prefers the
+/// `cache_creation` object's ephemeral buckets; the flat `cache_creation_input_tokens`
+/// fallback counts only as 5 minute cache creation, never 1 hour.
 private struct ClaudeMessageFields {
     var id: String?
     var model: String?

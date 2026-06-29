@@ -133,7 +133,7 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
             .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
             .contentTransition(.numericText(value: costTrend.percent))
-            .opacity(isTrendVisible ? 1 : 0)
+            .opacity(isLoading || isTrendVisible ? 1 : 0)
     }
 
     private var trendColor: Color {
