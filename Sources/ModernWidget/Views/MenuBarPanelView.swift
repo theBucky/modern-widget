@@ -6,7 +6,10 @@ struct MenuBarPanelView: View {
     let dailySupplementStore: DailySupplementStore
     let usageStore: CodingUsageStore
 
-    @State private var paneTransition = PaneTransition(initialPane: .timer)
+    @State private var selectedPane: Pane = .timer
+    @State private var displayedPane: Pane = .timer
+    @State private var contentOpacity = 1.0
+    @State private var transitionID = 0
 
     private enum Pane: Hashable {
         case timer
@@ -52,57 +55,26 @@ struct MenuBarPanelView: View {
         static let pickerCases: [Pane] = [.timer, .calendar, .usage]
     }
 
-    private struct PaneTransition {
-        var selectedPane: Pane
-        var displayedPane: Pane
-        var contentOpacity = 1.0
-
-        private var transitionID = 0
-
-        init(initialPane: Pane) {
-            self.selectedPane = initialPane
-            self.displayedPane = initialPane
-        }
-
-        mutating func beginSwitch(to pane: Pane) -> Int? {
-            selectedPane = pane
-            transitionID += 1
-
-            guard pane != displayedPane else {
-                return nil
-            }
-            return transitionID
-        }
-
-        func matches(_ id: Int) -> Bool {
-            transitionID == id
-        }
-
-        mutating func displaySelectedPane() {
-            displayedPane = selectedPane
-        }
-    }
-
-    private enum Layout {
-        static let fadeOutAnimation = Animation.easeOut(duration: 0.06)
-        static let paneAnimation = Animation.smooth(duration: 0.11)
-        static let fadeInAnimation = Animation.easeIn(duration: 0.06)
+    private enum PaneTransitionAnimation {
+        static let fadeOut = Animation.easeOut(duration: 0.06)
+        static let swap = Animation.smooth(duration: 0.11)
+        static let fadeIn = Animation.easeIn(duration: 0.06)
     }
 
     var body: some View {
         VStack(spacing: PanelLayout.paneSpacing) {
             topBar
             paneBody
-                .opacity(paneTransition.contentOpacity)
+                .opacity(contentOpacity)
             UpdateAvailableButton()
         }
-        .frame(width: paneTransition.displayedPane.width)
+        .frame(width: displayedPane.width)
         .padding(PanelLayout.outerPadding)
     }
 
     @ViewBuilder
     private var paneBody: some View {
-        switch paneTransition.displayedPane {
+        switch displayedPane {
         case .timer:
             ReminderPaneView(
                 engine: engine,
@@ -140,7 +112,7 @@ struct MenuBarPanelView: View {
         Picker(
             "Pane",
             selection: Binding(
-                get: { paneTransition.selectedPane },
+                get: { selectedPane },
                 set: { pane in switchPane(to: pane) }
             )
         ) {
@@ -154,29 +126,35 @@ struct MenuBarPanelView: View {
     }
 
     private func switchPane(to pane: Pane) {
-        guard let transitionID = paneTransition.beginSwitch(to: pane) else {
-            withAnimation(Layout.fadeInAnimation) {
-                paneTransition.contentOpacity = 1
+        selectedPane = pane
+        // A newer switch bumps transitionID, so completion handlers from an interrupted
+        // transition bail out instead of swapping or fading a superseded pane.
+        transitionID += 1
+        let activeTransition = transitionID
+
+        guard pane != displayedPane else {
+            withAnimation(PaneTransitionAnimation.fadeIn) {
+                contentOpacity = 1
             }
             return
         }
 
-        withAnimation(Layout.fadeOutAnimation) {
-            paneTransition.contentOpacity = 0
+        withAnimation(PaneTransitionAnimation.fadeOut) {
+            contentOpacity = 0
         } completion: {
-            guard paneTransition.matches(transitionID) else {
+            guard transitionID == activeTransition else {
                 return
             }
 
-            withAnimation(Layout.paneAnimation) {
-                paneTransition.displaySelectedPane()
+            withAnimation(PaneTransitionAnimation.swap) {
+                displayedPane = selectedPane
             } completion: {
-                guard paneTransition.matches(transitionID) else {
+                guard transitionID == activeTransition else {
                     return
                 }
 
-                withAnimation(Layout.fadeInAnimation) {
-                    paneTransition.contentOpacity = 1
+                withAnimation(PaneTransitionAnimation.fadeIn) {
+                    contentOpacity = 1
                 }
             }
         }
