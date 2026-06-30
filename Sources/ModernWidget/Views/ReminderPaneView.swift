@@ -84,16 +84,12 @@ struct ReminderPaneView: View {
     private func actionsSection(phase: ReminderPhase) -> some View {
         let pauseTitle = phase == .paused ? "Resume timer" : "Pause timer"
         let pauseIcon = phase == .paused ? "play.fill" : "pause.fill"
-        let actionButtonSize: CGFloat = 34
 
         return HStack(spacing: PanelLayout.contentSpacing) {
             Button {
                 engine.togglePause()
             } label: {
-                Label(pauseTitle, systemImage: pauseIcon)
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: actionButtonSize, height: actionButtonSize)
+                actionLabel(pauseTitle, systemImage: pauseIcon)
             }
             .buttonStyle(.bordered)
             .buttonBorderShape(.circle)
@@ -104,15 +100,19 @@ struct ReminderPaneView: View {
                 engine.completeBreak(at: now)
                 walkHistoryStore.recordWalk(now)
             } label: {
-                Label("Complete break", systemImage: "arrow.counterclockwise")
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: actionButtonSize, height: actionButtonSize)
+                actionLabel("Complete break", systemImage: "arrow.counterclockwise")
             }
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.circle)
             .keyboardShortcut(.defaultAction)
             .help("Complete break")
         }
+    }
+
+    private func actionLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .labelStyle(.iconOnly)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(width: 34, height: 34)
     }
 }
