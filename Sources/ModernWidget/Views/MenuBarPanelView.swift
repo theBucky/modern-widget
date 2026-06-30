@@ -66,7 +66,6 @@ struct MenuBarPanelView: View {
             topBar
             paneBody
                 .opacity(contentOpacity)
-            UpdateAvailableButton()
         }
         .frame(width: displayedPane.width)
         .padding(PanelLayout.outerPadding)
@@ -97,6 +96,7 @@ struct MenuBarPanelView: View {
         HStack {
             panePicker
             Spacer()
+            UpdateAvailableButton()
             Button {
                 switchPane(to: .settings)
             } label: {
@@ -165,16 +165,18 @@ private struct UpdateAvailableButton: View {
     @ObservedObject private var updaterManager = UpdaterManager.shared
 
     var body: some View {
-        if updaterManager.isUpdateAvailable {
+        if updaterManager.showsUpdateAvailableBadge {
             Button {
                 updaterManager.checkForUpdates()
             } label: {
-                Label("Update Available", systemImage: "arrow.down.circle.fill")
-                    .frame(maxWidth: .infinity)
+                Text("Update")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.vertical, 2)
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(!updaterManager.canCheckForUpdates)
+            .buttonBorderShape(.capsule)
+            .controlSize(.mini)
+            .disabled(!updaterManager.canUseUpdateAvailableBadge)
             .help("Update Available")
         }
     }

@@ -7,6 +7,16 @@ import Sparkle
 final class UpdaterManager: NSObject, ObservableObject {
     static let shared = UpdaterManager()
 
+    private enum BuildMode {
+        #if DEBUG
+            static let usesSparkle = false
+            static let previewsUpdateAvailableBadge = true
+        #else
+            static let usesSparkle = true
+            static let previewsUpdateAvailableBadge = false
+        #endif
+    }
+
     private lazy var controller = SPUStandardUpdaterController(
         startingUpdater: false,
         updaterDelegate: self,
@@ -16,31 +26,43 @@ final class UpdaterManager: NSObject, ObservableObject {
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var isUpdateAvailable = false
 
+    var showsUpdateAvailableBadge: Bool {
+        BuildMode.previewsUpdateAvailableBadge || isUpdateAvailable
+    }
+
+    var canUseUpdateAvailableBadge: Bool {
+        BuildMode.previewsUpdateAvailableBadge || canCheckForUpdates
+    }
+
     private var activationPolicyBeforeUpdateUI: NSApplication.ActivationPolicy?
 
     private override init() {
         super.init()
+
+        guard BuildMode.usesSparkle else {
+            return
+        }
 
         controller.updater.publisher(for: \.canCheckForUpdates)
             .assign(to: &$canCheckForUpdates)
     }
 
     func start() {
-        #if DEBUG
+        guard BuildMode.usesSparkle else {
             return
-        #else
-            controller.startUpdater()
-            controller.updater.checkForUpdateInformation()
-        #endif
+        }
+
+        controller.startUpdater()
+        controller.updater.checkForUpdateInformation()
     }
 
     func checkForUpdates() {
-        #if DEBUG
+        guard BuildMode.usesSparkle else {
             return
-        #else
-            activateForUpdateUI()
-            controller.checkForUpdates(nil)
-        #endif
+        }
+
+        activateForUpdateUI()
+        controller.checkForUpdates(nil)
     }
 
     private func activateForUpdateUI() {
