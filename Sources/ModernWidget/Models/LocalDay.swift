@@ -44,7 +44,8 @@ struct LocalDay: Comparable, Hashable, Codable {
         case year, month, day
     }
 
-    private static var calendar: Calendar {
+    /// Gregorian calendar in the current time zone; defines local-day boundaries.
+    static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
         return calendar
