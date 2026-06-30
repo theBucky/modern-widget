@@ -188,95 +188,7 @@ extension CodingUsageLoader {
         let tokenCountNeedle = JSONLineNeedle(#""token_count""#)
         let turnContextNeedle = JSONLineNeedle(#""turn_context""#)
         let threadSpawnNeedle = JSONLineNeedle(#""thread_spawn""#)
-        var previousTotals: CodexRawUsage?
-        var currentModel: String?
-        var replayState = CodexReplayState.idle
-
-        func updatePreviousTotals(from fields: CodexLineFields) {
-            if let totalUsage = fields.totalUsage {
-                previousTotals = totalUsage
-            }
-        }
-
-        func appendEvent(from fields: CodexLineFields, at timestamp: Date) {
-            let rawUsage = fields.lastUsage ?? fields.totalUsage?.subtracting(previousTotals)
-            updatePreviousTotals(from: fields)
-            guard let rawUsage, !rawUsage.isEmpty else {
-                return
-            }
-
-            let model = fields.payloadModel ?? fields.infoModel ?? currentModel ?? "gpt-5"
-            currentModel = model
-            visit(
-                CodexUsageEvent(
-                    timestamp: timestamp,
-                    model: model,
-                    counts: rawUsage.tokenCounts(model: model, usesFastPricing: usesFastPricing)
-                )
-            )
-        }
-
-        func appendPendingReplayEvent() {
-            switch replayState {
-            case let .pendingReplay(timestamp, fields):
-                appendEvent(from: fields, at: timestamp)
-                replayState = .idle
-            case .awaitingReplay:
-                replayState = .idle
-            case let .suppressingThenAwaitingReplay(second):
-                replayState = .suppressing(second: second)
-            case .idle, .suppressing:
-                break
-            }
-        }
-
-        func beginReplay() {
-            switch replayState {
-            case .idle, .awaitingReplay:
-                replayState = .awaitingReplay
-            case let .pendingReplay(timestamp, fields):
-                appendEvent(from: fields, at: timestamp)
-                replayState = .awaitingReplay
-            case let .suppressing(second):
-                replayState = .suppressingThenAwaitingReplay(second: second)
-            case .suppressingThenAwaitingReplay:
-                break
-            }
-        }
-
-        func consumeReplay(_ fields: CodexLineFields, at timestamp: Date) -> Bool {
-            let second = codexSecond(timestamp)
-            switch replayState {
-            case let .suppressing(activeSecond):
-                if activeSecond == second {
-                    updatePreviousTotals(from: fields)
-                    return true
-                }
-                replayState = .idle
-            case let .suppressingThenAwaitingReplay(activeSecond):
-                if activeSecond == second {
-                    updatePreviousTotals(from: fields)
-                    return true
-                }
-                replayState = .pendingReplay(timestamp: timestamp, fields: fields)
-                return true
-            case .awaitingReplay:
-                replayState = .pendingReplay(timestamp: timestamp, fields: fields)
-                return true
-            case let .pendingReplay(previousTimestamp, previousFields):
-                if codexSecond(previousTimestamp) == second {
-                    updatePreviousTotals(from: previousFields)
-                    updatePreviousTotals(from: fields)
-                    replayState = .suppressing(second: second)
-                    return true
-                }
-                appendEvent(from: previousFields, at: previousTimestamp)
-                replayState = .idle
-            case .idle:
-                break
-            }
-            return false
-        }
+        var deduper = CodexReplayDeduper(usesFastPricing: usesFastPricing)
 
         forEachJSONLine(in: file) { line in
             let hasTokenCount = line.contains(tokenCountNeedle)
@@ -289,13 +201,12 @@ extension CodingUsageLoader {
             guard let fields = scanCodexLine(line) else { return }
 
             if isThreadSpawnLine, fields.type == .sessionMeta, fields.hasThreadSpawn {
-                beginReplay()
+                deduper.onThreadSpawn(emit: visit)
                 return
             }
 
-            if fields.type == .turnContext, let model = fields.payloadModel?.nilIfEmpty {
-                appendPendingReplayEvent()
-                currentModel = model
+            if fields.type == .turnContext, let model = fields.payloadModel, !model.isEmpty {
+                deduper.onTurnContext(model: model, emit: visit)
                 return
             }
 
@@ -305,14 +216,10 @@ extension CodingUsageLoader {
                 return
             }
 
-            if consumeReplay(fields, at: timestamp) {
-                return
-            }
-
-            appendEvent(from: fields, at: timestamp)
+            deduper.onTokenCount(fields, at: timestamp, emit: visit)
         }
 
-        appendPendingReplayEvent()
+        deduper.finish(emit: visit)
     }
 }
 
@@ -475,4 +382,131 @@ private enum CodexReplayState {
     case suppressing(second: Int64)
     /// Suppressing `second`, with another spawn awaiting replay once that second passes.
     case suppressingThenAwaitingReplay(second: Int64)
+}
+
+/// Folds a session's token-count lines into deduplicated usage events. The caller
+/// classifies each line; this type owns the running totals, the carried-over model,
+/// and the `CodexReplayState` machine that drops the cumulative snapshots a subagent
+/// thread-spawn replays within the same second while keeping genuinely new events.
+private struct CodexReplayDeduper {
+    private let usesFastPricing: Bool
+    private var previousTotals: CodexRawUsage?
+    private var currentModel: String?
+    private var replayState = CodexReplayState.idle
+
+    init(usesFastPricing: Bool) {
+        self.usesFastPricing = usesFastPricing
+    }
+
+    /// A `session_meta` line whose source is a subagent thread-spawn.
+    mutating func onThreadSpawn(emit: (CodexUsageEvent) -> Void) {
+        switch replayState {
+        case .idle, .awaitingReplay:
+            replayState = .awaitingReplay
+        case let .pendingReplay(timestamp, fields):
+            emitEvent(from: fields, at: timestamp, emit: emit)
+            replayState = .awaitingReplay
+        case let .suppressing(second):
+            replayState = .suppressingThenAwaitingReplay(second: second)
+        case .suppressingThenAwaitingReplay:
+            break
+        }
+    }
+
+    /// A `turn_context` line carrying the model for subsequent events.
+    mutating func onTurnContext(model: String, emit: (CodexUsageEvent) -> Void) {
+        flushPendingReplay(emit: emit)
+        currentModel = model
+    }
+
+    /// An `event_msg` `token_count` line.
+    mutating func onTokenCount(
+        _ fields: CodexLineFields, at timestamp: Date, emit: (CodexUsageEvent) -> Void
+    ) {
+        if consumeReplay(fields, at: timestamp, emit: emit) {
+            return
+        }
+        emitEvent(from: fields, at: timestamp, emit: emit)
+    }
+
+    /// Flushes any snapshot still held back when the session ends.
+    mutating func finish(emit: (CodexUsageEvent) -> Void) {
+        flushPendingReplay(emit: emit)
+    }
+
+    private mutating func flushPendingReplay(emit: (CodexUsageEvent) -> Void) {
+        switch replayState {
+        case let .pendingReplay(timestamp, fields):
+            replayState = .idle
+            emitEvent(from: fields, at: timestamp, emit: emit)
+        case .awaitingReplay:
+            replayState = .idle
+        case let .suppressingThenAwaitingReplay(second):
+            replayState = .suppressing(second: second)
+        case .idle, .suppressing:
+            break
+        }
+    }
+
+    private mutating func consumeReplay(
+        _ fields: CodexLineFields, at timestamp: Date, emit: (CodexUsageEvent) -> Void
+    ) -> Bool {
+        let second = codexSecond(timestamp)
+        switch replayState {
+        case let .suppressing(activeSecond):
+            if activeSecond == second {
+                updatePreviousTotals(from: fields)
+                return true
+            }
+            replayState = .idle
+        case let .suppressingThenAwaitingReplay(activeSecond):
+            if activeSecond == second {
+                updatePreviousTotals(from: fields)
+                return true
+            }
+            replayState = .pendingReplay(timestamp: timestamp, fields: fields)
+            return true
+        case .awaitingReplay:
+            replayState = .pendingReplay(timestamp: timestamp, fields: fields)
+            return true
+        case let .pendingReplay(previousTimestamp, previousFields):
+            if codexSecond(previousTimestamp) == second {
+                updatePreviousTotals(from: previousFields)
+                updatePreviousTotals(from: fields)
+                replayState = .suppressing(second: second)
+                return true
+            }
+            emitEvent(from: previousFields, at: previousTimestamp, emit: emit)
+            replayState = .idle
+        case .idle:
+            break
+        }
+        return false
+    }
+
+    private mutating func emitEvent(
+        from fields: CodexLineFields, at timestamp: Date, emit: (CodexUsageEvent) -> Void
+    ) {
+        let rawUsage = fields.lastUsage ?? fields.totalUsage?.subtracting(previousTotals)
+        updatePreviousTotals(from: fields)
+        guard let rawUsage, !rawUsage.isEmpty else {
+            return
+        }
+
+        let model = fields.payloadModel ?? fields.infoModel ?? currentModel ?? "gpt-5"
+        currentModel = model
+        emit(
+            CodexUsageEvent(
+                timestamp: timestamp,
+                model: model,
+                counts: rawUsage.tokenCounts(model: model, usesFastPricing: usesFastPricing)
+            )
+        )
+    }
+
+    private mutating func updatePreviousTotals(from fields: CodexLineFields) {
+        if let totalUsage = fields.totalUsage {
+            previousTotals = totalUsage
+        }
+    }
 }
