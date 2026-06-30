@@ -1,5 +1,49 @@
 import SwiftUI
 
+private enum Pane: Hashable {
+    case timer
+    case calendar
+    case usage
+    case settings
+
+    var title: String {
+        switch self {
+        case .timer:
+            return "Timer"
+        case .calendar:
+            return "Calendar"
+        case .usage:
+            return "Usage"
+        case .settings:
+            return "Settings"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .timer:
+            return "timer"
+        case .calendar:
+            return "calendar"
+        case .usage:
+            return "chart.line.uptrend.xyaxis"
+        case .settings:
+            return "gearshape"
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .timer:
+            return PanelLayout.mainPaneWidth
+        case .calendar, .usage, .settings:
+            return PanelLayout.detailPaneWidth
+        }
+    }
+
+    static let pickerCases: [Pane] = [.timer, .calendar, .usage]
+}
+
 struct MenuBarPanelView: View {
     let engine: ReminderEngine
     let walkHistoryStore: WalkHistoryStore
@@ -11,50 +55,6 @@ struct MenuBarPanelView: View {
     @State private var contentOpacity = 1.0
     @State private var transitionID = 0
 
-    private enum Pane: Hashable {
-        case timer
-        case calendar
-        case usage
-        case settings
-
-        var title: String {
-            switch self {
-            case .timer:
-                return "Timer"
-            case .calendar:
-                return "Calendar"
-            case .usage:
-                return "Usage"
-            case .settings:
-                return "Settings"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .timer:
-                return "timer"
-            case .calendar:
-                return "calendar"
-            case .usage:
-                return "chart.line.uptrend.xyaxis"
-            case .settings:
-                return "gearshape"
-            }
-        }
-
-        var width: CGFloat {
-            switch self {
-            case .timer:
-                return PanelLayout.mainPaneWidth
-            case .calendar, .usage, .settings:
-                return PanelLayout.detailPaneWidth
-            }
-        }
-
-        static let pickerCases: [Pane] = [.timer, .calendar, .usage]
-    }
-
     private enum PaneTransitionAnimation {
         static let fadeOut = Animation.easeOut(duration: 0.06)
         static let swap = Animation.smooth(duration: 0.11)
@@ -63,12 +63,15 @@ struct MenuBarPanelView: View {
 
     var body: some View {
         VStack(spacing: PanelLayout.paneSpacing) {
-            topBar
+            PanelTopBar(selection: $selectedPane)
             paneBody
                 .opacity(contentOpacity)
         }
         .frame(width: displayedPane.width)
         .padding(PanelLayout.outerPadding)
+        .onChange(of: selectedPane) { _, target in
+            transition(to: target)
+        }
     }
 
     @ViewBuilder
@@ -92,41 +95,7 @@ struct MenuBarPanelView: View {
         }
     }
 
-    private var topBar: some View {
-        HStack {
-            panePicker
-            Spacer()
-            UpdateAvailableButton()
-            Button {
-                switchPane(to: .settings)
-            } label: {
-                Image(systemName: Pane.settings.systemImage)
-            }
-            .buttonStyle(.borderless)
-            .help(Pane.settings.title)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var panePicker: some View {
-        Picker(
-            "Pane",
-            selection: Binding(
-                get: { selectedPane },
-                set: { pane in switchPane(to: pane) }
-            )
-        ) {
-            ForEach(Pane.pickerCases, id: \.self) { pane in
-                Label(pane.title, systemImage: pane.systemImage).tag(pane)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelStyle(.iconOnly)
-        .labelsHidden()
-    }
-
-    private func switchPane(to pane: Pane) {
-        selectedPane = pane
+    private func transition(to pane: Pane) {
         // A newer switch bumps transitionID, so completion handlers from an interrupted
         // transition bail out instead of swapping or fading a superseded pane.
         transitionID += 1
@@ -147,7 +116,7 @@ struct MenuBarPanelView: View {
             }
 
             withAnimation(PaneTransitionAnimation.swap) {
-                displayedPane = selectedPane
+                displayedPane = pane
             } completion: {
                 guard transitionID == activeTransition else {
                     return
@@ -158,6 +127,34 @@ struct MenuBarPanelView: View {
                 }
             }
         }
+    }
+}
+
+private struct PanelTopBar: View {
+    @Binding var selection: Pane
+
+    var body: some View {
+        HStack {
+            Picker("Pane", selection: $selection) {
+                ForEach(Pane.pickerCases, id: \.self) { pane in
+                    Label(pane.title, systemImage: pane.systemImage).tag(pane)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelStyle(.iconOnly)
+            .labelsHidden()
+
+            Spacer()
+            UpdateAvailableButton()
+            Button {
+                selection = .settings
+            } label: {
+                Image(systemName: Pane.settings.systemImage)
+            }
+            .buttonStyle(.borderless)
+            .help(Pane.settings.title)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

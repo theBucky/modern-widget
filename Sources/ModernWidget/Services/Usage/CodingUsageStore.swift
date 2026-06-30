@@ -49,12 +49,28 @@ final class CodingUsageStore {
             for agent in CodingUsageAgent.allCases {
                 defaults.set(enabledAgents.contains(agent), forKey: DefaultsKey.enabledAgent(agent))
             }
+            report = report.showingAgents(enabledAgents)
+            restartRefresh()
         }
     }
 
     var refreshInterval: CodingUsageRefreshInterval {
         didSet {
             defaults.set(refreshInterval.rawValue, forKey: DefaultsKey.refreshInterval)
+            restartRefresh()
+        }
+    }
+
+    /// Bool projection per agent so SwiftUI binds through `$store[agentEnabled:]`
+    /// instead of fabricating a get/set closure binding on every body pass.
+    subscript(agentEnabled agent: CodingUsageAgent) -> Bool {
+        get { enabledAgents.contains(agent) }
+        set {
+            if newValue {
+                enabledAgents.insert(agent)
+            } else {
+                enabledAgents.remove(agent)
+            }
         }
     }
 
@@ -84,21 +100,6 @@ final class CodingUsageStore {
 
     deinit {
         refreshTask?.cancel()
-    }
-
-    func setAgent(_ agent: CodingUsageAgent, enabled: Bool) {
-        if enabled {
-            enabledAgents.insert(agent)
-        } else {
-            enabledAgents.remove(agent)
-        }
-        report = report.showingAgents(enabledAgents)
-        restartRefresh()
-    }
-
-    func setRefreshInterval(_ refreshInterval: CodingUsageRefreshInterval) {
-        self.refreshInterval = refreshInterval
-        restartRefresh()
     }
 
     private func restartRefresh() {
