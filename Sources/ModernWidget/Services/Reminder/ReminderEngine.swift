@@ -79,16 +79,18 @@ final class ReminderEngine {
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        // Missing paused seconds clamp to the full supported duration inside ReminderState.
+        let reminderMinutes = ReminderState.supportedReminderMinutes(
+            for: defaults.integer(forKey: Keys.reminderMinutes))
+        let fullDurationSeconds = reminderMinutes * 60
         let mode: ReminderMode =
             defaults.bool(forKey: Keys.isPaused)
             ? .paused(
                 secondsRemaining: defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int
-                    ?? .max)
+                    ?? fullDurationSeconds)
             : .running
 
         return ReminderState(
-            reminderMinutes: defaults.integer(forKey: Keys.reminderMinutes),
+            reminderMinutes: reminderMinutes,
             startedAt: loadStartedAt(defaults: defaults),
             mode: mode,
             notificationIssue: nil

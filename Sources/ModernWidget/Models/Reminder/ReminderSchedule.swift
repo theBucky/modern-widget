@@ -23,6 +23,8 @@ struct ReminderCountdown {
             return nil
         }
 
+        // Refresh on the next whole-second boundary: a full second away when already
+        // sitting on one, otherwise the fractional remainder left until it.
         let fractional = remainingTime.truncatingRemainder(dividingBy: 1)
         if remainingTime > secondBoundaryEpsilon && fractional <= secondBoundaryEpsilon {
             return 1
