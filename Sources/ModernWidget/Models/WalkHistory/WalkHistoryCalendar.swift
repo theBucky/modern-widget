@@ -4,11 +4,18 @@ struct WalkHistoryMonth {
     let month: Date
     let dayCells: [DayCell]
 
-    /// A grid slot carrying its own identity: a real day keys off its date, a
-    /// leading blank keys off its position, so ForEach never falls back to indices.
-    struct DayCell: Identifiable {
-        let id: String
-        let date: Date?
+    /// A grid slot identified by its content: a real day keys off its exact date, a
+    /// leading blank off its position, so ForEach never falls back to collection indices.
+    enum DayCell: Identifiable, Hashable {
+        case day(Date)
+        case blank(position: Int)
+
+        var id: Self { self }
+
+        var date: Date? {
+            guard case let .day(date) = self else { return nil }
+            return date
+        }
     }
 
     init(containing date: Date, calendar: Calendar = .current) {
@@ -22,14 +29,9 @@ struct WalkHistoryMonth {
         dayCells = (0..<filledCells).map { cellIndex in
             let dayOffset = cellIndex - leadingBlanks
             guard (0..<dayCount).contains(dayOffset) else {
-                return DayCell(id: "blank-\(cellIndex)", date: nil)
+                return .blank(position: cellIndex)
             }
-            let day = calendar.date(byAdding: .day, value: dayOffset, to: firstDay)!
-            let components = calendar.dateComponents([.year, .month, .day], from: day)
-            return DayCell(
-                id: "\(components.year!)-\(components.month!)-\(components.day!)",
-                date: day
-            )
+            return .day(calendar.date(byAdding: .day, value: dayOffset, to: firstDay)!)
         }
     }
 
