@@ -25,18 +25,8 @@ struct WalkHistoryCalendarView: View {
 
     private var monthHeader: some View {
         HStack(spacing: 0) {
-            Button {
-                shiftMonth(by: -1)
-            } label: {
-                Label("Previous month", systemImage: "chevron.left")
-                    .labelStyle(.iconOnly)
-                    .font(.caption.weight(.semibold))
-                    .frame(width: Layout.chevronButtonSize, height: Layout.chevronButtonSize)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .disabled(!canGoBack)
-            .opacity(canGoBack ? 1 : 0.4)
+            monthStepButton(
+                "Previous month", systemImage: "chevron.left", delta: -1, enabled: canGoBack)
 
             Spacer()
 
@@ -46,19 +36,26 @@ struct WalkHistoryCalendarView: View {
 
             Spacer()
 
-            Button {
-                shiftMonth(by: 1)
-            } label: {
-                Label("Next month", systemImage: "chevron.right")
-                    .labelStyle(.iconOnly)
-                    .font(.caption.weight(.semibold))
-                    .frame(width: Layout.chevronButtonSize, height: Layout.chevronButtonSize)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .disabled(!canGoForward)
-            .opacity(canGoForward ? 1 : 0.4)
+            monthStepButton(
+                "Next month", systemImage: "chevron.right", delta: 1, enabled: canGoForward)
         }
+    }
+
+    private func monthStepButton(
+        _ label: String, systemImage: String, delta: Int, enabled: Bool
+    ) -> some View {
+        Button {
+            shiftMonth(by: delta)
+        } label: {
+            Label(label, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+                .font(.caption.weight(.semibold))
+                .frame(width: Layout.chevronButtonSize, height: Layout.chevronButtonSize)
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
     }
 
     private var weekdayHeader: some View {

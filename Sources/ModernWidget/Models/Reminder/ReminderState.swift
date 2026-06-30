@@ -30,8 +30,15 @@ struct ReminderState: Equatable {
         self.notificationIssue = notificationIssue
     }
 
-    nonisolated static func supportedReminderMinutes(for minutes: Int) -> Int {
-        minutes <= 90 ? 60 : 120
+    /// Snaps any requested minutes onto the nearest supported preset, ties to the lower.
+    static func supportedReminderMinutes(for minutes: Int) -> Int {
+        let presets = minutePresets.sorted()
+        for (lower, upper) in zip(presets, presets.dropFirst()) {
+            if minutes <= (lower + upper) / 2 {
+                return lower
+            }
+        }
+        return presets.last!
     }
 
     private static func normalizedMode(_ mode: ReminderMode, reminderSeconds: Int) -> ReminderMode {

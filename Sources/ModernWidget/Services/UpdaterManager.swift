@@ -78,12 +78,12 @@ final class UpdaterManager: NSObject, ObservableObject {
     }
 
     private func restoreActivationPolicy() {
-        guard let activationPolicyBeforeUpdateUI else {
+        guard let previousPolicy = activationPolicyBeforeUpdateUI else {
             return
         }
 
-        self.activationPolicyBeforeUpdateUI = nil
-        NSApp.setActivationPolicy(activationPolicyBeforeUpdateUI)
+        activationPolicyBeforeUpdateUI = nil
+        NSApp.setActivationPolicy(previousPolicy)
     }
 }
 

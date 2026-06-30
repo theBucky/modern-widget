@@ -8,7 +8,3 @@ extension UInt64 {
         self >= other ? self - other : 0
     }
 }
-
-extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
