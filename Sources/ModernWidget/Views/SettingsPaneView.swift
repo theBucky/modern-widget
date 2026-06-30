@@ -1,34 +1,20 @@
 import SwiftUI
 
 struct SettingsPaneView: View {
-    let store: CodingUsageStore
+    @Bindable var store: CodingUsageStore
 
-    @ObservedObject private var launchAtLoginManager = LaunchAtLoginManager.shared
+    @Bindable private var launchAtLoginManager = LaunchAtLoginManager.shared
     @ObservedObject private var updaterManager = UpdaterManager.shared
 
     var body: some View {
         Form {
             Section("Coding Usage") {
                 ForEach(CodingUsageAgent.allCases, id: \.self) { agent in
-                    Toggle(
-                        agent.title,
-                        isOn: Binding(
-                            get: { store.enabledAgents.contains(agent) },
-                            set: { isEnabled in
-                                store.setAgent(agent, enabled: isEnabled)
-                            }
-                        )
-                    )
-                    .toggleStyle(.switch)
+                    Toggle(agent.title, isOn: $store[agentEnabled: agent])
+                        .toggleStyle(.switch)
                 }
 
-                Picker(
-                    "Refresh Interval",
-                    selection: Binding(
-                        get: { store.refreshInterval },
-                        set: { store.setRefreshInterval($0) }
-                    )
-                ) {
+                Picker("Refresh Interval", selection: $store.refreshInterval) {
                     ForEach(CodingUsageRefreshInterval.allCases) { interval in
                         Text(interval.title).tag(interval)
                     }
@@ -37,17 +23,11 @@ struct SettingsPaneView: View {
             }
 
             Section("System") {
-                Toggle(
-                    "Launch at Login",
-                    isOn: Binding(
-                        get: { launchAtLoginManager.isEnabled },
-                        set: { launchAtLoginManager.setEnabled($0) }
-                    )
-                )
-                .toggleStyle(.switch)
-                .disabled(!launchAtLoginManager.canChange)
+                Toggle("Launch at Login", isOn: $launchAtLoginManager.launchAtLogin)
+                    .toggleStyle(.switch)
+                    .disabled(!launchAtLoginManager.canChange)
 
-                LabeledContent("Build", value: buildVersion)
+                LabeledContent("Build", value: Self.buildVersion)
 
                 Button {
                     updaterManager.checkForUpdates()
@@ -68,10 +48,12 @@ struct SettingsPaneView: View {
         }
     }
 
-    private var buildVersion: String {
+    /// Bundle metadata is process-constant, so it is resolved once instead of on
+    /// every body pass.
+    private static let buildVersion: String = {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0.1.0"
         let build = info?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
-    }
+    }()
 }

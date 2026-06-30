@@ -59,11 +59,9 @@ struct WalkHistoryCalendarView: View {
     }
 
     private var weekdayHeader: some View {
-        let symbols = WalkHistoryMonth.weekdaySymbols()
-
-        return HStack(spacing: Layout.cellSpacing) {
-            ForEach(symbols.indices, id: \.self) { index in
-                Text(symbols[index])
+        HStack(spacing: Layout.cellSpacing) {
+            ForEach(WalkHistoryMonth.weekdayLabels()) { weekday in
+                Text(weekday.symbol)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
@@ -73,8 +71,8 @@ struct WalkHistoryCalendarView: View {
 
     private var daysGrid: some View {
         LazyVGrid(columns: Layout.columns, spacing: Layout.cellSpacing) {
-            ForEach(monthGrid.dayCells.indices, id: \.self) { index in
-                if let date = monthGrid.dayCells[index] {
+            ForEach(monthGrid.dayCells) { cell in
+                if let date = cell.date {
                     dayCell(for: date, count: historyStore.walkCount(on: date))
                 } else {
                     Color.clear.frame(height: Layout.cellHeight)

@@ -15,7 +15,7 @@ struct WalkHistoryCalendarTests {
         }
 
         #expect(month.month == firstDay)
-        #expect(month.dayCells.compactMap { $0 } == expectedDays)
+        #expect(month.dayCells.compactMap(\.date) == expectedDays)
     }
 
     @Test("month start aligns with the calendar first weekday")
@@ -23,7 +23,7 @@ struct WalkHistoryCalendarTests {
         let calendar = gregorianUTC(firstWeekday: 2)
         let firstDay = date(2026, 5, 1)
         let month = WalkHistoryMonth(containing: date(2026, 5, 13), calendar: calendar)
-        let firstDayIndex = try #require(month.dayCells.firstIndex(of: firstDay))
+        let firstDayIndex = try #require(month.dayCells.firstIndex { $0.date == firstDay })
         let actualColumn = firstDayIndex % 7
         let expectedColumn =
             (calendar.component(.weekday, from: firstDay) - calendar.firstWeekday + 7) % 7
@@ -36,7 +36,7 @@ struct WalkHistoryCalendarTests {
         let calendar = gregorianUTC(firstWeekday: 2)
 
         #expect(
-            WalkHistoryMonth.weekdaySymbols(calendar: calendar)
+            WalkHistoryMonth.weekdayLabels(calendar: calendar).map(\.symbol)
                 == ["M", "T", "W", "T", "F", "S", "S"]
         )
     }

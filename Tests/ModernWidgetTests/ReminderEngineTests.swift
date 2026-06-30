@@ -104,7 +104,7 @@ struct ReminderEngineTests {
         defaults.set(Date.now.addingTimeInterval(-600), forKey: "reminderStartedAt")
 
         let engine = makeEngine(defaults)
-        engine.setReminderMinutes(120)
+        engine.reminderMinutes = 120
         let snapshot = engine.snapshot(at: .now)
 
         #expect(engine.reminderMinutes == 120)
@@ -120,7 +120,7 @@ struct ReminderEngineTests {
         defaults.set(now.addingTimeInterval(-600), forKey: "reminderStartedAt")
 
         let engine = makeEngine(defaults)
-        engine.setReminderMinutes(45)
+        engine.reminderMinutes = 45
         let snapshot = engine.snapshot(at: now)
 
         #expect(engine.reminderMinutes == 60)
@@ -137,7 +137,7 @@ struct ReminderEngineTests {
         await waitForNotificationIssue(engine, expected: .notificationsBlocked)
         #expect(engine.snapshot(at: .now).notificationIssue == .notificationsBlocked)
 
-        engine.setReminderMinutes(120)
+        engine.reminderMinutes = 120
 
         #expect(engine.snapshot(at: .now).notificationIssue == nil)
     }

@@ -12,14 +12,17 @@ final class ReminderEngine {
         static let pausedRemainingSeconds = "pausedRemainingSeconds"
     }
 
-    private(set) var menuBarSnapshot: ReminderSnapshot
+    /// Boundary-aligned countdown snapshot driving both the menu bar icon and the
+    /// panel; refreshed exactly on whole-second boundaries so the displayed digit
+    /// never lags the true remaining time.
+    private(set) var currentSnapshot: ReminderSnapshot
 
     @ObservationIgnored
     private let defaults: UserDefaults
     @ObservationIgnored
     private let notifier: ReminderNotifying
     @ObservationIgnored
-    private var menuBarSnapshotTask: Task<Void, Never>?
+    private var snapshotRefreshTask: Task<Void, Never>?
     @ObservationIgnored
     private var reminderTask: Task<Void, Never>?
     @ObservationIgnored
@@ -27,7 +30,8 @@ final class ReminderEngine {
     private var state: ReminderState
 
     var reminderMinutes: Int {
-        state.reminderMinutes
+        get { state.reminderMinutes }
+        set { applyReminderMinutes(newValue) }
     }
 
     func snapshot(at date: Date) -> ReminderSnapshot {
@@ -39,18 +43,18 @@ final class ReminderEngine {
         self.defaults = defaults
         self.notifier = notifier
         self.state = state
-        self.menuBarSnapshot = state.snapshot(at: .now)
+        self.currentSnapshot = state.snapshot(at: .now)
 
         syncReminderTaskToState()
-        refreshMenuBarSnapshot()
+        refreshSnapshot()
     }
 
     deinit {
-        menuBarSnapshotTask?.cancel()
+        snapshotRefreshTask?.cancel()
         reminderTask?.cancel()
     }
 
-    func setReminderMinutes(_ minutes: Int) {
+    private func applyReminderMinutes(_ minutes: Int) {
         let reminderMinutes = ReminderState.supportedReminderMinutes(for: minutes)
         if reminderMinutes == state.reminderMinutes {
             return
@@ -120,7 +124,7 @@ final class ReminderEngine {
         if state.schedule != previousState.schedule {
             syncReminderTaskToState()
         }
-        refreshMenuBarSnapshot()
+        refreshSnapshot()
     }
 
     private func persistState() {
@@ -137,32 +141,32 @@ final class ReminderEngine {
         }
     }
 
-    private func refreshMenuBarSnapshot() {
+    private func refreshSnapshot() {
         let now = Date.now
         let nextSnapshot = state.snapshot(at: now)
-        if nextSnapshot != menuBarSnapshot {
-            menuBarSnapshot = nextSnapshot
+        if nextSnapshot != currentSnapshot {
+            currentSnapshot = nextSnapshot
         }
 
-        scheduleMenuBarSnapshotRefresh(after: state.schedule.countdown(at: now).nextRefreshDelay)
+        scheduleSnapshotRefresh(after: state.schedule.countdown(at: now).nextRefreshDelay)
     }
 
-    private func scheduleMenuBarSnapshotRefresh(after delay: TimeInterval?) {
-        menuBarSnapshotTask?.cancel()
-        menuBarSnapshotTask = nil
+    private func scheduleSnapshotRefresh(after delay: TimeInterval?) {
+        snapshotRefreshTask?.cancel()
+        snapshotRefreshTask = nil
 
         guard let delay else {
             return
         }
 
-        menuBarSnapshotTask = Task { @MainActor [weak self] in
+        snapshotRefreshTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
             } catch {
                 return
             }
 
-            self?.refreshMenuBarSnapshot()
+            self?.refreshSnapshot()
         }
     }
 

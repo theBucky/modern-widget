@@ -1,11 +1,12 @@
-import Combine
+import Observation
 import ServiceManagement
 
 @MainActor
-final class LaunchAtLoginManager: ObservableObject {
+@Observable
+final class LaunchAtLoginManager {
     static let shared = LaunchAtLoginManager()
 
-    @Published private(set) var isEnabled = false
+    private(set) var isEnabled = false
     private init() {
         refresh()
     }
@@ -16,6 +17,13 @@ final class LaunchAtLoginManager: ObservableObject {
         #else
             true
         #endif
+    }
+
+    /// Settable projection for SwiftUI bindings; assigning runs the SMAppService work
+    /// and reconciles `isEnabled` with the real registration status.
+    var launchAtLogin: Bool {
+        get { isEnabled }
+        set { setEnabled(newValue) }
     }
 
     func refresh() {
@@ -33,7 +41,7 @@ final class LaunchAtLoginManager: ObservableObject {
         #endif
     }
 
-    func setEnabled(_ enabled: Bool) {
+    private func setEnabled(_ enabled: Bool) {
         #if DEBUG
             refresh()
         #else
