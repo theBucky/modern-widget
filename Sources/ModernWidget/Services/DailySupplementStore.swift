@@ -52,7 +52,7 @@ final class DailySupplementStore {
         }
 
         if let stored = try? JSONDecoder().decode([StoredSupplementDay].self, from: data) {
-            let days = Set(stored.compactMap(\.day))
+            let days = Set(stored.compactMap(\.localDay))
             return (days: days, needsSave: days.count != stored.count)
         }
 
@@ -78,15 +78,12 @@ final class DailySupplementStore {
 }
 
 private struct StoredSupplementDay: Decodable {
-    let day: LocalDay?
+    let year: Int
+    let month: Int
+    let day: Int
 
-    init(from decoder: Decoder) throws {
-        // Drop invalid persisted identities while letting legacy date shapes fall
-        // through to migration: only LocalDay's identity rejection is swallowed.
-        do {
-            day = try LocalDay(from: decoder)
-        } catch DecodingError.dataCorrupted {
-            day = nil
-        }
+    /// `nil` drops persisted identities that no longer name a valid Gregorian day.
+    var localDay: LocalDay? {
+        LocalDay(year: year, month: month, day: day)
     }
 }

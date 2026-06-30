@@ -48,7 +48,7 @@ final class LaunchAtLoginManager: ObservableObject {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                return
+                // ignored: the defer refresh reconciles isEnabled with the real status
             }
         #endif
     }
