@@ -47,16 +47,16 @@ struct CodingUsageTodayTotalSection: View {
 private struct CodingUsageLoadedCostTrendGroup: View {
     let summary: CodingUsageTodaySummary
 
-    @State private var phase: CodingUsageTodayLoadedPhase
+    @State private var display: CodingUsageTodayTotalDisplay
 
     init(summary: CodingUsageTodaySummary) {
         self.summary = summary
-        _phase = State(initialValue: .initial(costUSD: summary.counts.costUSD))
+        _display = State(initialValue: .initial(costUSD: summary.counts.costUSD))
     }
 
     var body: some View {
         CodingUsageCostTrendGroup(
-            display: .loaded(phase),
+            display: display,
             costTrend: summary.costTrend,
             hasUsage: summary.counts.hasUsage
         )
@@ -69,14 +69,14 @@ private struct CodingUsageLoadedCostTrendGroup: View {
     private static let trendFadeDuration = 0.2
 
     private func animateTotal(to costUSD: Double) async {
-        guard phase.costUSD != costUSD else {
-            phase = .settled(costUSD: costUSD)
+        guard display.costUSD != costUSD else {
+            display = .settled(costUSD: costUSD)
             return
         }
 
-        phase = .entering(costUSD: phase.costUSD)
+        display = .entering(costUSD: display.costUSD)
         withAnimation(.easeOut(duration: Self.costAnimationDuration)) {
-            phase = .entering(costUSD: costUSD)
+            display = .entering(costUSD: costUSD)
         }
 
         try? await Task.sleep(for: .seconds(Self.costAnimationDuration))
@@ -85,76 +85,43 @@ private struct CodingUsageLoadedCostTrendGroup: View {
         }
 
         withAnimation(.easeOut(duration: Self.trendFadeDuration)) {
-            phase = .settled(costUSD: costUSD)
-        }
-    }
-}
-
-private enum CodingUsageTodayLoadedPhase {
-    case entering(costUSD: Double)
-    case settled(costUSD: Double)
-
-    static func initial(costUSD: Double) -> Self {
-        if costUSD == 0 {
-            return .settled(costUSD: costUSD)
-        }
-        return .entering(costUSD: 0)
-    }
-
-    var costUSD: Double {
-        switch self {
-        case let .entering(costUSD), let .settled(costUSD):
-            return costUSD
-        }
-    }
-
-    var showsTrendBadge: Bool {
-        switch self {
-        case .entering:
-            return false
-        case .settled:
-            return true
-        }
-    }
-
-    func withCostUSD(_ costUSD: Double) -> Self {
-        switch self {
-        case .entering:
-            return .entering(costUSD: costUSD)
-        case .settled:
-            return .settled(costUSD: costUSD)
+            display = .settled(costUSD: costUSD)
         }
     }
 }
 
 private enum CodingUsageTodayTotalDisplay {
     case loading
-    case loaded(CodingUsageTodayLoadedPhase)
+    case entering(costUSD: Double)
+    case settled(costUSD: Double)
+
+    /// Already-zero totals settle immediately; a real total counts up from zero.
+    static func initial(costUSD: Double) -> Self {
+        costUSD == 0 ? .settled(costUSD: costUSD) : .entering(costUSD: 0)
+    }
 
     var costUSD: Double {
         switch self {
         case .loading:
             return 0
-        case let .loaded(phase):
-            return phase.costUSD
+        case let .entering(costUSD), let .settled(costUSD):
+            return costUSD
         }
     }
 
     var isLoading: Bool {
-        switch self {
-        case .loading:
+        if case .loading = self {
             return true
-        case .loaded:
-            return false
         }
+        return false
     }
 
     var showsTrendBadge: Bool {
         switch self {
-        case .loading:
+        case .loading, .settled:
             return true
-        case let .loaded(phase):
-            return phase.showsTrendBadge
+        case .entering:
+            return false
         }
     }
 
@@ -162,8 +129,10 @@ private enum CodingUsageTodayTotalDisplay {
         switch self {
         case .loading:
             return .loading
-        case let .loaded(phase):
-            return .loaded(phase.withCostUSD(costUSD))
+        case .entering:
+            return .entering(costUSD: costUSD)
+        case .settled:
+            return .settled(costUSD: costUSD)
         }
     }
 }

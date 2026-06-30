@@ -108,7 +108,7 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
     }
 
     func chartDays(endingAt date: Date, calendar: Calendar = .current) -> [CodingUsageDaySummary] {
-        let dayCount = 30
+        let dayCount = CodingUsageDateScope.historyDayCount
         if !dailyCounts.isEmpty {
             return Array(dailyCounts.suffix(dayCount))
         }

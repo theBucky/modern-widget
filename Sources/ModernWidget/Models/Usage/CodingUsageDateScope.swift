@@ -29,5 +29,5 @@ struct CodingUsageDateScope: Equatable, Sendable {
     }
 
     /// Rolling window covering today and the preceding 29 days.
-    private static let historyDayCount = 30
+    static let historyDayCount = 30
 }
