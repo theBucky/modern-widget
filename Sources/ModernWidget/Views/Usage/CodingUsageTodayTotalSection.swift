@@ -19,6 +19,7 @@ struct CodingUsageTodayTotalSection: View {
             Spacer(minLength: 16)
 
             dateTokenGroup
+                .layoutPriority(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -41,7 +42,6 @@ struct CodingUsageTodayTotalSection: View {
             calendar.component(.day, from: summary.date)
         )
     }
-
 }
 
 private struct CodingUsageLoadedCostTrendGroup: View {
@@ -148,37 +148,36 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: PanelLayout.contentSpacing) {
+        HStack(alignment: .trendBadgeTop, spacing: PanelLayout.contentSpacing) {
             totalCostText
+                .alignmentGuide(.trendBadgeTop) { $0.height * trendBadgeTopInsetRatio }
             trendBadge
-                .padding(.top, 7)
         }
     }
 
-    @ViewBuilder
     private var totalCostText: some View {
-        let text = Text(display.isLoading ? "loading" : formatCodingUsageCost(display.costUSD))
+        Text(display.isLoading ? "loading" : formatCodingUsageCost(display.costUSD))
             .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.9)
+            .foregroundStyle(totalCostStyle)
+    }
 
+    private var totalCostStyle: AnyShapeStyle {
         if display.isLoading {
-            text.foregroundStyle(.secondary)
-        } else if !hasUsage {
-            text.foregroundStyle(.tertiary)
-        } else {
-            text.foregroundStyle(
-                LinearGradient(
-                    colors: [.primary, .secondary],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ))
+            return AnyShapeStyle(.secondary)
         }
+        if !hasUsage {
+            return AnyShapeStyle(.tertiary)
+        }
+        return AnyShapeStyle(
+            LinearGradient(colors: [.primary, .secondary], startPoint: .top, endPoint: .bottom))
     }
 
     private var trendBadge: some View {
         Text(display.isLoading ? "loading" : formatCodingUsageCostTrendPercent(costTrend))
-            .font(.caption.monospacedDigit())
-            .fontWeight(.regular)
+            .font(.caption.monospacedDigit().weight(.regular))
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -201,4 +200,20 @@ private struct CodingUsageCostTrendGroup: View, @MainActor Animatable {
             return .gray
         }
     }
+}
+
+/// Optical top inset tuned against the 32pt cost text, expressed as a fraction of the rendered
+/// line height so it tracks `minimumScaleFactor` shrinkage.
+private let trendBadgeTopInsetRatio: CGFloat = 7.0 / 38.0
+
+extension VerticalAlignment {
+    private enum TrendBadgeTop: AlignmentID {
+        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat {
+            dimensions[.top]
+        }
+    }
+
+    /// Anchors the trend badge top partway down the cost text so the two stay optically
+    /// coupled as the cost scales.
+    fileprivate static let trendBadgeTop = VerticalAlignment(TrendBadgeTop.self)
 }

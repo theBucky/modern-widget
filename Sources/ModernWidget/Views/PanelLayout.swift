@@ -2,7 +2,7 @@ import SwiftUI
 
 enum PanelLayout {
     static let mainPaneWidth: CGFloat = 180
-    static let detailPaneWidth: CGFloat = 280
+    static let detailPaneWidth: CGFloat = 300
     static let outerPadding: CGFloat = 20
     static let paneSpacing: CGFloat = 20
     static let sectionSpacing: CGFloat = 12
