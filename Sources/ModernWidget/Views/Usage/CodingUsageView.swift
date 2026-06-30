@@ -57,7 +57,7 @@ struct CodingUsageView: View {
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
-                        .frame(width: 64, alignment: .leading)
+                        .frame(width: 80, alignment: .leading)
                     CodingUsageValueText(counts: row.counts, isLoading: isLoading)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }

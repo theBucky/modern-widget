@@ -20,12 +20,12 @@ struct CodingUsageSummaryTests {
 
         let rows = summary.usageRows(now: now, calendar: calendar)
 
-        #expect(rows.map(\.title) == ["Yesterday", "Today", "Weekly", "Monthly"])
-        #expect(rows.map(\.counts.costUSD) == [2, 3, 5, 6])
+        #expect(rows.map(\.title) == ["Today", "Yesterday", "Last 7 Days", "Last 30 Days"])
+        #expect(rows.map(\.counts.costUSD) == [3, 2, 5, 6])
         #expect(
             rows.map(\.counts.totalTokens) == [
-                2_000_000_000,
                 3_000_000_000,
+                2_000_000_000,
                 5_000_000_000,
                 6_000_000_000,
             ])

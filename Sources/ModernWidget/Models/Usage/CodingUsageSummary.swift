@@ -27,32 +27,10 @@ struct CodingUsageDaySummary: Equatable, Sendable {
 }
 
 struct CodingUsagePeriodRow: Equatable, Identifiable, Sendable {
-    enum ID: Hashable, Sendable {
-        case yesterday
-        case today
-        case weekly
-        case monthly
-
-        var title: String {
-            switch self {
-            case .yesterday:
-                return "Yesterday"
-            case .today:
-                return "Today"
-            case .weekly:
-                return "Weekly"
-            case .monthly:
-                return "Monthly"
-            }
-        }
-    }
-
-    let id: ID
+    let title: String
     let counts: CodingTokenCounts
 
-    var title: String {
-        id.title
-    }
+    var id: String { title }
 }
 
 struct CodingUsageCostTrend: Equatable, Sendable {
@@ -105,23 +83,19 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
 
     func usageRows(now: Date, calendar: Calendar = .current) -> [CodingUsagePeriodRow] {
         let todayStart = calendar.startOfDay(for: now)
-        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
-        let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
-        let week = calendar.dateInterval(of: .weekOfYear, for: now)!
-        let month = calendar.dateInterval(of: .month, for: now)!
+        func day(_ offset: Int) -> Date {
+            calendar.date(byAdding: .day, value: offset, to: todayStart)!
+        }
 
         return [
+            ("Today", day(0), day(1)),
+            ("Yesterday", day(-1), day(0)),
+            ("Last 7 Days", day(-6), day(1)),
+            ("Last 30 Days", day(-29), day(1)),
+        ].map { title, start, end in
             CodingUsagePeriodRow(
-                id: .yesterday,
-                counts: counts(in: DateInterval(start: yesterdayStart, end: todayStart))
-            ),
-            CodingUsagePeriodRow(
-                id: .today,
-                counts: counts(in: DateInterval(start: todayStart, end: tomorrowStart))
-            ),
-            CodingUsagePeriodRow(id: .weekly, counts: counts(in: week)),
-            CodingUsagePeriodRow(id: .monthly, counts: counts(in: month)),
-        ]
+                title: title, counts: counts(in: DateInterval(start: start, end: end)))
+        }
     }
 
     func counts(in interval: DateInterval) -> CodingTokenCounts {

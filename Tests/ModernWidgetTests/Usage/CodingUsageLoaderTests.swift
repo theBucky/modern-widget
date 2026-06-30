@@ -833,13 +833,16 @@ struct CodingUsageLoaderTests {
         #expect(customLoader.codexHomeDirectories() == [customHome.standardizedFileURL])
     }
 
-    @Test("keeps the full current month in the scan window")
-    func keepsFullCurrentMonthInScanWindow() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-FullMonth")
+    @Test("limits the scan window to the trailing thirty days")
+    func limitsScanWindowToTrailingThirtyDays() throws {
+        let home = try makeFixtureRoot("CodingUsageLoaderTests-RollingWindow")
         defer { try? FileManager.default.removeItem(at: home) }
 
         try writeFixture(
-            #"{"timestamp":"2026-01-01T03:04:05.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+            [
+                #"{"timestamp":"2026-01-01T03:04:05.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-old","message":{"id":"msg-old","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+                #"{"timestamp":"2026-01-02T03:04:05.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-edge","message":{"id":"msg-edge","model":"claude-sonnet-4-20250514","usage":{"input_tokens":20,"output_tokens":2}}}"#,
+            ].joined(separator: "\n"),
             to: ".claude/projects/project-a/session-a/chat.jsonl",
             in: home,
             modifiedAt: date(2026, 1, 31, 12)
@@ -854,9 +857,10 @@ struct CodingUsageLoaderTests {
             )
         let claude = report.agents.first { $0.agent == .claude }!
 
-        #expect(claude.dailyCounts.first?.date == date(2026, 1, 1))
-        #expect(claude.dailyCounts.count == 31)
-        #expect(dayCounts(claude, 2026, 1, 1).totalTokens == 11)
+        #expect(claude.dailyCounts.first?.date == date(2026, 1, 2))
+        #expect(claude.dailyCounts.count == 30)
+        #expect(dayCounts(claude, 2026, 1, 2).totalTokens == 22)
+        #expect(claude.totalCounts.totalTokens == 22)
     }
 
     @Test("home scan only reads app data directories")

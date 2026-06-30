@@ -10,15 +10,13 @@ struct CodingUsageDateScope: Equatable, Sendable {
     init(now: Date = .now, calendar: Calendar = .current) {
         let todayStart = calendar.startOfDay(for: now)
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
-        let rollingStart = calendar.date(byAdding: .day, value: -29, to: todayStart)!
-        let monthStart = calendar.dateInterval(of: .month, for: now)!.start
-        let historyStart = min(rollingStart, monthStart)
-        let dayCount = calendar.dateComponents([.day], from: historyStart, to: tomorrowStart).day!
+        let historyStart = calendar.date(
+            byAdding: .day, value: -(Self.historyDayCount - 1), to: todayStart)!
 
         self.now = now
         self.calendar = calendar
         self.history = DateInterval(start: historyStart, end: tomorrowStart)
-        self.historyDays = (0..<dayCount).map {
+        self.historyDays = (0..<Self.historyDayCount).map {
             calendar.date(byAdding: .day, value: $0, to: historyStart)!
         }
     }
@@ -29,4 +27,7 @@ struct CodingUsageDateScope: Equatable, Sendable {
         }
         return calendar.startOfDay(for: date)
     }
+
+    /// Rolling window covering today and the preceding 29 days.
+    private static let historyDayCount = 30
 }
