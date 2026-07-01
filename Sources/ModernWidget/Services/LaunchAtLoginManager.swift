@@ -19,8 +19,6 @@ final class LaunchAtLoginManager {
         #endif
     }
 
-    /// Settable projection for SwiftUI bindings; assigning runs the SMAppService work
-    /// and reconciles `isEnabled` with the real registration status.
     var launchAtLogin: Bool {
         get { isEnabled }
         set { setEnabled(newValue) }

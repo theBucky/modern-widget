@@ -4,19 +4,33 @@ struct CodingUsageView: View {
     let store: CodingUsageStore
 
     var body: some View {
+        let report = store.report
+        let (isLoading, referenceDate): (Bool, Date) =
+            switch report.state {
+            case .loading: (true, Date.now)
+            case .loaded(let generatedAt): (false, generatedAt)
+            }
+
         VStack(spacing: PanelLayout.sectionSpacing) {
             CodingUsageTodayTotalSection(
-                summary: store.report.todaySummary(now: reportDate),
+                summary: report.todaySummary(now: referenceDate),
                 isLoading: isLoading
             )
             Divider()
-            ForEach(store.report.agents, id: \.agent) { summary in
-                agentSection(summary)
+            ForEach(report.agents, id: \.agent) { summary in
+                AgentUsageSection(
+                    summary: summary, referenceDate: referenceDate, isLoading: isLoading)
             }
         }
     }
+}
 
-    private func agentSection(_ summary: CodingUsageAgentSummary) -> some View {
+private struct AgentUsageSection: View {
+    let summary: CodingUsageAgentSummary
+    let referenceDate: Date
+    let isLoading: Bool
+
+    var body: some View {
         VStack(alignment: .leading, spacing: PanelLayout.contentSpacing) {
             HStack(spacing: 6) {
                 Image(summary.agent.logoResourceName)
@@ -30,10 +44,10 @@ struct CodingUsageView: View {
             }
 
             VStack(alignment: .leading, spacing: PanelLayout.sectionSpacing) {
-                usageTable(for: summary)
+                usageTable
 
                 CodingUsageChart(
-                    days: summary.chartDays(endingAt: reportDate),
+                    days: summary.chartDays(endingAt: referenceDate),
                     isLoading: isLoading,
                     barColor: summary.agent.barColor
                 )
@@ -47,13 +61,13 @@ struct CodingUsageView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func usageTable(for summary: CodingUsageAgentSummary) -> some View {
+    private var usageTable: some View {
         Grid(
             alignment: .leading,
             horizontalSpacing: PanelLayout.contentSpacing,
             verticalSpacing: PanelLayout.tightSpacing
         ) {
-            ForEach(summary.usageRows(now: reportDate)) { row in
+            ForEach(summary.usageRows(now: referenceDate)) { row in
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)
@@ -65,14 +79,6 @@ struct CodingUsageView: View {
         }
         .font(.caption.monospacedDigit())
         .frame(maxWidth: .infinity)
-    }
-
-    private var isLoading: Bool {
-        store.report.generatedAt == nil
-    }
-
-    private var reportDate: Date {
-        store.report.generatedAt ?? .now
     }
 }
 

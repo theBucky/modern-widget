@@ -48,8 +48,6 @@ struct SettingsPaneView: View {
         }
     }
 
-    /// Bundle metadata is process-constant, so it is resolved once instead of on
-    /// every body pass.
     private static let buildVersion: String = {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0.1.0"

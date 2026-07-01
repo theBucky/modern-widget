@@ -2,7 +2,6 @@ import Foundation
 
 /// Parses the UTC ISO-8601 timestamp strings the agent logs emit.
 enum LogTimestamp {
-    /// Parses a textual timestamp.
     static func parse(_ value: String) -> Date? {
         let count = value.utf8.count
         return value.withCString {

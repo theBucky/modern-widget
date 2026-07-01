@@ -67,7 +67,7 @@ struct CodingUsageLoader: Sendable {
         loadPiUsage(files: scan.piFiles, into: &accumulator)
 
         return CodingUsageReport(
-            generatedAt: scan.scope.now,
+            state: .loaded(generatedAt: scan.scope.now),
             agents: accumulator.agentSummaries(for: scan.fingerprint.agents)
         )
     }

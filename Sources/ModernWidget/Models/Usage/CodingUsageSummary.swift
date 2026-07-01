@@ -125,8 +125,12 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
 }
 
 struct CodingUsageReport: Equatable, Sendable {
-    /// `nil` until the first load completes.
-    let generatedAt: Date?
+    enum State: Equatable, Sendable {
+        case loading
+        case loaded(generatedAt: Date)
+    }
+
+    let state: State
     let agents: [CodingUsageAgentSummary]
 
     var hasUsage: Bool {
@@ -162,19 +166,17 @@ struct CodingUsageReport: Equatable, Sendable {
         let summariesByAgent = Dictionary(uniqueKeysWithValues: agents.map { ($0.agent, $0) })
 
         return Self(
-            generatedAt: generatedAt,
+            state: state,
             agents: CodingUsageAgent.ordered(enabledAgents).map { agent in
                 summariesByAgent[agent] ?? CodingUsageAgentSummary(agent: agent, dailyCounts: [])
             }
         )
     }
 
-    static var empty: Self {
-        Self(
-            generatedAt: nil,
-            agents: CodingUsageAgent.allCases.map { agent in
-                CodingUsageAgentSummary(agent: agent, dailyCounts: [])
-            }
-        )
-    }
+    static let empty = Self(
+        state: .loading,
+        agents: CodingUsageAgent.allCases.map { agent in
+            CodingUsageAgentSummary(agent: agent, dailyCounts: [])
+        }
+    )
 }
