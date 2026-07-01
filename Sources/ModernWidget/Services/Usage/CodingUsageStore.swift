@@ -61,8 +61,6 @@ final class CodingUsageStore {
         }
     }
 
-    /// Bool projection per agent so SwiftUI binds through `$store[agentEnabled:]`
-    /// instead of fabricating a get/set closure binding on every body pass.
     subscript(agentEnabled agent: CodingUsageAgent) -> Bool {
         get { enabledAgents.contains(agent) }
         set {
