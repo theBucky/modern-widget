@@ -3,54 +3,63 @@ import SwiftUI
 struct WalkHistoryCalendarView: View {
     let historyStore: WalkHistoryStore
     let supplementStore: DailySupplementStore
-    @State private var visibleMonth = Calendar.current.startOfMonth(for: .now)
-
-    private enum Layout {
-        static let cellSpacing: CGFloat = 3
-        static let cellHeight: CGFloat = 44
-        static let chevronButtonSize: CGFloat = 22
-        static let columns = Array(
-            repeating: GridItem(.flexible(), spacing: cellSpacing),
-            count: 7
-        )
-    }
+    @State private var visibleMonth = HistoryRetention.currentMonth()
 
     var body: some View {
+        let month = WalkHistoryMonth(containing: visibleMonth)
+
         VStack(spacing: PanelLayout.sectionSpacing) {
-            monthHeader
-            weekdayHeader
-            daysGrid
+            MonthNavigationHeader(visibleMonth: $visibleMonth)
+            WeekdayHeader()
+            WalkDaysGrid(
+                cells: month.dayCells,
+                historyStore: historyStore,
+                supplementStore: supplementStore
+            )
         }
     }
+}
 
-    private var monthHeader: some View {
+private enum CalendarLayout {
+    static let cellSpacing: CGFloat = 3
+    static let cellHeight: CGFloat = 44
+    static let columns = Array(
+        repeating: GridItem(.flexible(), spacing: cellSpacing),
+        count: 7
+    )
+}
+
+private struct MonthNavigationHeader: View {
+    @Binding var visibleMonth: Date
+
+    private static let chevronButtonSize: CGFloat = 22
+
+    var body: some View {
         HStack(spacing: 0) {
-            monthStepButton(
-                "Previous month", systemImage: "chevron.left", delta: -1, enabled: canGoBack)
+            stepButton("Previous month", systemImage: "chevron.left", delta: -1, enabled: canGoBack)
 
             Spacer()
 
-            Text(monthGrid.month, format: .dateTime.month(.wide).year())
+            Text(visibleMonth, format: .dateTime.month(.wide).year())
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
 
             Spacer()
 
-            monthStepButton(
-                "Next month", systemImage: "chevron.right", delta: 1, enabled: canGoForward)
+            stepButton("Next month", systemImage: "chevron.right", delta: 1, enabled: canGoForward)
         }
     }
 
-    private func monthStepButton(
+    private func stepButton(
         _ label: String, systemImage: String, delta: Int, enabled: Bool
     ) -> some View {
         Button {
-            shiftMonth(by: delta)
+            visibleMonth = Calendar.current.date(byAdding: .month, value: delta, to: visibleMonth)!
         } label: {
             Label(label, systemImage: systemImage)
                 .labelStyle(.iconOnly)
                 .font(.caption.weight(.semibold))
-                .frame(width: Layout.chevronButtonSize, height: Layout.chevronButtonSize)
+                .frame(width: Self.chevronButtonSize, height: Self.chevronButtonSize)
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
@@ -58,8 +67,18 @@ struct WalkHistoryCalendarView: View {
         .opacity(enabled ? 1 : 0.4)
     }
 
-    private var weekdayHeader: some View {
-        HStack(spacing: Layout.cellSpacing) {
+    private var canGoBack: Bool {
+        visibleMonth > HistoryRetention.earliestMonth()
+    }
+
+    private var canGoForward: Bool {
+        visibleMonth < HistoryRetention.currentMonth()
+    }
+}
+
+private struct WeekdayHeader: View {
+    var body: some View {
+        HStack(spacing: CalendarLayout.cellSpacing) {
             ForEach(WalkHistoryMonth.weekdayLabels()) { weekday in
                 Text(weekday.symbol)
                     .font(.system(size: 9, weight: .semibold))
@@ -68,23 +87,37 @@ struct WalkHistoryCalendarView: View {
             }
         }
     }
+}
 
-    private var daysGrid: some View {
-        LazyVGrid(columns: Layout.columns, spacing: Layout.cellSpacing) {
-            ForEach(monthGrid.dayCells) { cell in
+private struct WalkDaysGrid: View {
+    let cells: [WalkHistoryMonth.DayCell]
+    let historyStore: WalkHistoryStore
+    let supplementStore: DailySupplementStore
+
+    var body: some View {
+        LazyVGrid(columns: CalendarLayout.columns, spacing: CalendarLayout.cellSpacing) {
+            ForEach(cells) { cell in
                 if let date = cell.date {
-                    dayCell(for: date, count: historyStore.walkCount(on: date))
+                    WalkDayCell(
+                        date: date,
+                        count: historyStore.walkCount(on: date),
+                        isSupplementTaken: supplementStore.isTaken(on: date)
+                    )
                 } else {
-                    Color.clear.frame(height: Layout.cellHeight)
+                    Color.clear.frame(height: CalendarLayout.cellHeight)
                 }
             }
         }
     }
+}
 
-    private func dayCell(for date: Date, count: Int) -> some View {
-        let today = Calendar.current.isDateInToday(date)
+private struct WalkDayCell: View {
+    let date: Date
+    let count: Int
+    let isSupplementTaken: Bool
 
-        return ZStack {
+    var body: some View {
+        ZStack {
             if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
@@ -96,53 +129,36 @@ struct WalkHistoryCalendarView: View {
 
             Text(date, format: .dateTime.day())
                 .font(.system(size: 8, weight: .regular).monospacedDigit())
-                .foregroundStyle(dayLabelColor(for: date))
+                .foregroundStyle(labelColor)
                 .padding(.top, 4)
                 .padding(.trailing, 5)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
-        .frame(height: Layout.cellHeight)
+        .frame(height: CalendarLayout.cellHeight)
         .background(
             RoundedRectangle(cornerRadius: PanelLayout.cornerRadius, style: .continuous)
-                .fill(cellFill(today: today, hasWalks: count > 0))
+                .fill(fill)
         )
     }
 
-    private func dayLabelColor(for date: Date) -> Color {
+    private var labelColor: Color {
         let calendar = Calendar.current
-
         if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
             return .secondary.opacity(0.5)
         }
-        if supplementStore.isTaken(on: date) {
+        if isSupplementTaken {
             return PanelColor.statusGreen
         }
         return PanelColor.statusOrange
     }
 
-    private func cellFill(today: Bool, hasWalks: Bool) -> Color {
-        if today {
+    private var fill: Color {
+        if Calendar.current.isDateInToday(date) {
             return Color.accentColor.opacity(0.15)
         }
-        if hasWalks {
+        if count > 0 {
             return Color.primary.opacity(0.05)
         }
         return .clear
-    }
-
-    private var canGoBack: Bool {
-        monthGrid.month > HistoryRetention.earliestMonth()
-    }
-
-    private var canGoForward: Bool {
-        monthGrid.month < Calendar.current.startOfMonth(for: .now)
-    }
-
-    private func shiftMonth(by delta: Int) {
-        visibleMonth = Calendar.current.date(byAdding: .month, value: delta, to: visibleMonth)!
-    }
-
-    private var monthGrid: WalkHistoryMonth {
-        WalkHistoryMonth(containing: visibleMonth)
     }
 }
