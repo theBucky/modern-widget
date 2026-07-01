@@ -36,7 +36,7 @@ struct CodingUsageSummaryTests {
         let calendar = gregorianUTC()
         let now = date(2026, 6, 18, 12)
         let report = CodingUsageReport(
-            generatedAt: now,
+            state: .loaded(generatedAt: now),
             agents: [
                 CodingUsageAgentSummary(
                     agent: .claude,
@@ -64,7 +64,7 @@ struct CodingUsageSummaryTests {
         let calendar = gregorianUTC()
         let now = date(2026, 6, 18, 12)
         let report = CodingUsageReport(
-            generatedAt: now,
+            state: .loaded(generatedAt: now),
             agents: [
                 CodingUsageAgentSummary(
                     agent: .claude,
@@ -88,14 +88,14 @@ struct CodingUsageSummaryTests {
     func showsOnlyEnabledAgentsInStableOrder() {
         let now = date(2026, 6, 18, 12)
         let report = CodingUsageReport(
-            generatedAt: now,
+            state: .loaded(generatedAt: now),
             agents: [
                 CodingUsageAgentSummary(agent: .claude, dailyCounts: [day(2026, 6, 18, 1)]),
                 CodingUsageAgentSummary(agent: .codex, dailyCounts: [day(2026, 6, 18, 2)]),
             ]
         ).showingAgents([.pi, .claude])
 
-        #expect(report.generatedAt == now)
+        #expect(report.state == .loaded(generatedAt: now))
         #expect(report.agents.map(\.agent) == [.claude, .pi])
         #expect(report.agents[0].totalCounts.costUSD == 1)
         #expect(report.agents[1].dailyCounts.isEmpty)
