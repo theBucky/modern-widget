@@ -54,7 +54,7 @@ private struct MonthNavigationHeader: View {
         _ label: String, systemImage: String, delta: Int, enabled: Bool
     ) -> some View {
         Button {
-            visibleMonth = Calendar.current.date(byAdding: .month, value: delta, to: visibleMonth)!
+            visibleMonth = LocalDay.calendar.date(byAdding: .month, value: delta, to: visibleMonth)!
         } label: {
             Label(label, systemImage: systemImage)
                 .labelStyle(.iconOnly)
@@ -142,7 +142,7 @@ private struct WalkDayCell: View {
     }
 
     private var labelColor: Color {
-        let calendar = Calendar.current
+        let calendar = LocalDay.calendar
         if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
             return .secondary.opacity(0.5)
         }
@@ -153,7 +153,7 @@ private struct WalkDayCell: View {
     }
 
     private var fill: Color {
-        if Calendar.current.isDateInToday(date) {
+        if LocalDay.calendar.isDateInToday(date) {
             return Color.accentColor.opacity(0.15)
         }
         if count > 0 {
