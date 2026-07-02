@@ -1,10 +1,12 @@
 import AppKit
 import Combine
 import Foundation
+import Observation
 import Sparkle
 
 @MainActor
-final class UpdaterManager: NSObject, ObservableObject {
+@Observable
+final class UpdaterManager: NSObject {
     static let shared = UpdaterManager()
 
     private enum BuildMode {
@@ -17,23 +19,33 @@ final class UpdaterManager: NSObject, ObservableObject {
         #endif
     }
 
+    private(set) var canCheckForUpdates = false
+    private(set) var isUpdateAvailable = false
+
+    /// The menu bar "Update" badge is shown when an update is waiting and enabled when
+    /// the updater is ready to act. DEBUG forces both on so the layout previews without
+    /// a real Sparkle update; that override lives only in `previewsBadge`.
+    var updateBadgeVisible: Bool {
+        previewsBadge || isUpdateAvailable
+    }
+
+    var updateBadgeEnabled: Bool {
+        previewsBadge || canCheckForUpdates
+    }
+
+    private var previewsBadge: Bool {
+        BuildMode.previewsUpdateAvailableBadge
+    }
+
+    @ObservationIgnored
     private lazy var controller = SPUStandardUpdaterController(
         startingUpdater: false,
         updaterDelegate: self,
         userDriverDelegate: self
     )
-
-    @Published private(set) var canCheckForUpdates = false
-    @Published private(set) var isUpdateAvailable = false
-
-    var showsUpdateAvailableBadge: Bool {
-        BuildMode.previewsUpdateAvailableBadge || isUpdateAvailable
-    }
-
-    var canUseUpdateAvailableBadge: Bool {
-        BuildMode.previewsUpdateAvailableBadge || canCheckForUpdates
-    }
-
+    @ObservationIgnored
+    private var canCheckObservation: AnyCancellable?
+    @ObservationIgnored
     private var activationPolicyBeforeUpdateUI: NSApplication.ActivationPolicy?
 
     private override init() {
@@ -43,8 +55,12 @@ final class UpdaterManager: NSObject, ObservableObject {
             return
         }
 
-        controller.updater.publisher(for: \.canCheckForUpdates)
-            .assign(to: &$canCheckForUpdates)
+        canCheckObservation = controller.updater.publisher(for: \.canCheckForUpdates)
+            .sink { [weak self] canCheck in
+                Task { @MainActor in
+                    self?.canCheckForUpdates = canCheck
+                }
+            }
     }
 
     func start() {

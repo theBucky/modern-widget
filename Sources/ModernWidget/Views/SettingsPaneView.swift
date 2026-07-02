@@ -4,7 +4,7 @@ struct SettingsPaneView: View {
     @Bindable var store: CodingUsageStore
 
     @Bindable private var launchAtLoginManager = LaunchAtLoginManager.shared
-    @ObservedObject private var updaterManager = UpdaterManager.shared
+    private let updaterManager = UpdaterManager.shared
 
     var body: some View {
         Form {

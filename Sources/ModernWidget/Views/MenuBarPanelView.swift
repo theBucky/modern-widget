@@ -132,10 +132,10 @@ private struct PanelTopBar: View {
 }
 
 private struct UpdateAvailableButton: View {
-    @ObservedObject private var updaterManager = UpdaterManager.shared
+    private let updaterManager = UpdaterManager.shared
 
     var body: some View {
-        if updaterManager.showsUpdateAvailableBadge {
+        if updaterManager.updateBadgeVisible {
             Button {
                 updaterManager.checkForUpdates()
             } label: {
@@ -146,7 +146,7 @@ private struct UpdateAvailableButton: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.mini)
-            .disabled(!updaterManager.canUseUpdateAvailableBadge)
+            .disabled(!updaterManager.updateBadgeEnabled)
             .help("Update Available")
         }
     }
