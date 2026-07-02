@@ -10,16 +10,16 @@ struct CodingUsageView: View {
             case .loading: (true, Date.now)
             case .loaded(let generatedAt): (false, generatedAt)
             }
+        let scope = CodingUsageDateScope(now: referenceDate)
 
         VStack(spacing: PanelLayout.sectionSpacing) {
             CodingUsageTodayTotalSection(
-                summary: report.todaySummary(now: referenceDate),
+                summary: report.todaySummary(in: scope),
                 isLoading: isLoading
             )
             Divider()
             ForEach(report.agents, id: \.agent) { summary in
-                AgentUsageSection(
-                    summary: summary, referenceDate: referenceDate, isLoading: isLoading)
+                AgentUsageSection(summary: summary, scope: scope, isLoading: isLoading)
             }
         }
     }
@@ -27,7 +27,7 @@ struct CodingUsageView: View {
 
 private struct AgentUsageSection: View {
     let summary: CodingUsageAgentSummary
-    let referenceDate: Date
+    let scope: CodingUsageDateScope
     let isLoading: Bool
 
     var body: some View {
@@ -47,7 +47,7 @@ private struct AgentUsageSection: View {
                 usageTable
 
                 CodingUsageChart(
-                    days: summary.chartDays(endingAt: referenceDate),
+                    days: summary.dailyCounts,
                     isLoading: isLoading,
                     barColor: summary.agent.barColor
                 )
@@ -67,7 +67,7 @@ private struct AgentUsageSection: View {
             horizontalSpacing: PanelLayout.contentSpacing,
             verticalSpacing: PanelLayout.tightSpacing
         ) {
-            ForEach(summary.usageRows(now: referenceDate)) { row in
+            ForEach(summary.usageRows(in: scope)) { row in
                 GridRow {
                     Text(row.title)
                         .foregroundStyle(.secondary)

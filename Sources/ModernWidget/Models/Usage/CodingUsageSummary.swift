@@ -1,6 +1,6 @@
 import Foundation
 
-enum CodingUsageAgent: CaseIterable, Hashable, Sendable {
+enum CodingUsageAgent: String, CaseIterable, Hashable, Sendable {
     case claude
     case codex
     case pi
@@ -75,26 +75,29 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
     let agent: CodingUsageAgent
     let dailyCounts: [CodingUsageDaySummary]
 
+    /// A full zero-usage grid over `days`, matching the shape the loader produces so
+    /// placeholders and freshly enabled agents share the real data's day axis.
+    static func zeroed(agent: CodingUsageAgent, days: [Date]) -> Self {
+        Self(
+            agent: agent,
+            dailyCounts: days.map { CodingUsageDaySummary(date: $0, counts: CodingTokenCounts()) }
+        )
+    }
+
     var totalCounts: CodingTokenCounts {
         dailyCounts.reduce(into: CodingTokenCounts()) { total, day in
             total.add(day.counts)
         }
     }
 
-    func usageRows(now: Date, calendar: Calendar = .current) -> [CodingUsagePeriodRow] {
-        let todayStart = calendar.startOfDay(for: now)
-        func day(_ offset: Int) -> Date {
-            calendar.date(byAdding: .day, value: offset, to: todayStart)!
-        }
-
-        return [
-            ("Today", day(0), day(1)),
-            ("Yesterday", day(-1), day(0)),
-            ("Last 7 Days", day(-6), day(1)),
-            ("Last 30 Days", day(-29), day(1)),
-        ].map { title, start, end in
-            CodingUsagePeriodRow(
-                title: title, counts: counts(in: DateInterval(start: start, end: end)))
+    func usageRows(in scope: CodingUsageDateScope) -> [CodingUsagePeriodRow] {
+        [
+            ("Today", scope.today),
+            ("Yesterday", scope.yesterday),
+            ("Last 7 Days", scope.last7Days),
+            ("Last 30 Days", scope.last30Days),
+        ].map { title, interval in
+            CodingUsagePeriodRow(title: title, counts: counts(in: interval))
         }
     }
 
@@ -104,22 +107,6 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
                 return
             }
             total.add(day.counts)
-        }
-    }
-
-    func chartDays(endingAt date: Date, calendar: Calendar = .current) -> [CodingUsageDaySummary] {
-        let dayCount = CodingUsageDateScope.historyDayCount
-        if !dailyCounts.isEmpty {
-            return Array(dailyCounts.suffix(dayCount))
-        }
-        let today = calendar.startOfDay(for: date)
-        let start = calendar.date(byAdding: .day, value: -(dayCount - 1), to: today)!
-
-        return (0..<dayCount).map { offset in
-            CodingUsageDaySummary(
-                date: calendar.date(byAdding: .day, value: offset, to: start)!,
-                counts: CodingTokenCounts()
-            )
         }
     }
 }
@@ -145,15 +132,12 @@ struct CodingUsageReport: Equatable, Sendable {
         }
     }
 
-    func todaySummary(now: Date, calendar: Calendar = .current) -> CodingUsageTodaySummary {
-        let todayInterval = calendar.dateInterval(of: .day, for: now)!
-        let todayStart = todayInterval.start
-        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
-        let today = counts(in: todayInterval)
-        let yesterday = counts(in: DateInterval(start: yesterdayStart, end: todayStart))
+    func todaySummary(in scope: CodingUsageDateScope) -> CodingUsageTodaySummary {
+        let today = counts(in: scope.today)
+        let yesterday = counts(in: scope.yesterday)
 
         return CodingUsageTodaySummary(
-            date: todayStart,
+            date: scope.today.start,
             counts: today,
             costTrend: CodingUsageCostTrend(
                 currentCostUSD: today.costUSD,
@@ -164,19 +148,25 @@ struct CodingUsageReport: Equatable, Sendable {
 
     func showingAgents(_ enabledAgents: Set<CodingUsageAgent>) -> Self {
         let summariesByAgent = Dictionary(uniqueKeysWithValues: agents.map { ($0.agent, $0) })
+        let dayAxis = agents.first?.dailyCounts.map(\.date) ?? []
 
         return Self(
             state: state,
             agents: CodingUsageAgent.ordered(enabledAgents).map { agent in
-                summariesByAgent[agent] ?? CodingUsageAgentSummary(agent: agent, dailyCounts: [])
+                summariesByAgent[agent] ?? .zeroed(agent: agent, days: dayAxis)
             }
         )
     }
 
-    static let empty = Self(
-        state: .loading,
-        agents: CodingUsageAgent.allCases.map { agent in
-            CodingUsageAgentSummary(agent: agent, dailyCounts: [])
-        }
-    )
+    /// Loading placeholder with the same full-grid shape as a loaded report, so the
+    /// chart skeleton renders every day and no leaf method has to repair an empty axis.
+    static func placeholder(
+        scope: CodingUsageDateScope,
+        agents: [CodingUsageAgent] = CodingUsageAgent.allCases
+    ) -> Self {
+        Self(
+            state: .loading,
+            agents: agents.map { .zeroed(agent: $0, days: scope.historyDays) }
+        )
+    }
 }

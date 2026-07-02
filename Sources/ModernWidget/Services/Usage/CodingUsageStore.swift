@@ -27,23 +27,21 @@ final class CodingUsageStore {
         static let refreshInterval = "codingUsage.refreshInterval"
 
         static func enabledAgent(_ agent: CodingUsageAgent) -> String {
-            let suffix: String
-            switch agent {
-            case .claude:
-                suffix = "claude"
-            case .codex:
-                suffix = "codex"
-            case .pi:
-                suffix = "pi"
-            }
-            return "codingUsage.enabledAgent.\(suffix)"
+            "codingUsage.enabledAgent.\(agent.rawValue)"
         }
     }
 
     @ObservationIgnored
     private let defaults: UserDefaults
+    @ObservationIgnored
+    private let loader: CodingUsageLoader
+    @ObservationIgnored
+    private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var lastFingerprint: CodingUsageFingerprint?
 
-    private(set) var report = CodingUsageReport.empty
+    private(set) var report: CodingUsageReport
+
     var enabledAgents: Set<CodingUsageAgent> {
         didSet {
             for agent in CodingUsageAgent.allCases {
@@ -74,27 +72,23 @@ final class CodingUsageStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self.loader = CodingUsageLoader()
         let storedEnabledAgents = Set(
             CodingUsageAgent.allCases.filter { agent in
                 defaults.object(forKey: DefaultsKey.enabledAgent(agent)) as? Bool ?? true
             }
         )
-        enabledAgents = storedEnabledAgents
-        report = CodingUsageReport.empty.showingAgents(storedEnabledAgents)
-        refreshInterval =
+        self.enabledAgents = storedEnabledAgents
+        self.refreshInterval =
             CodingUsageRefreshInterval(
                 rawValue: defaults.integer(forKey: DefaultsKey.refreshInterval))
             ?? .tenMinutes
-        self.loader = CodingUsageLoader()
+        self.report = CodingUsageReport.placeholder(
+            scope: CodingUsageDateScope(),
+            agents: CodingUsageAgent.ordered(storedEnabledAgents)
+        )
         startRefreshTask()
     }
-
-    @ObservationIgnored
-    private let loader: CodingUsageLoader
-    @ObservationIgnored
-    private var refreshTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var lastFingerprint: CodingUsageFingerprint?
 
     deinit {
         refreshTask?.cancel()
