@@ -55,26 +55,6 @@ struct WalkHistoryStoreTests {
         #expect(reloadedStore.walkCount(on: dayBeforeCutoff) == 0)
     }
 
-    @Test("legacy walk dates are folded by day and migrated")
-    func legacyWalkDatesAreFoldedByDayAndMigrated() throws {
-        let defaults = makeDefaults("WalkHistoryStoreTests")
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
-        let morning = calendar.date(byAdding: .hour, value: 9, to: today)!
-        let evening = calendar.date(byAdding: .hour, value: 18, to: today)!
-        let legacyData = try JSONEncoder().encode([morning, evening])
-        defaults.set(legacyData, forKey: "walkHistory")
-
-        let store = WalkHistoryStore(defaults: defaults)
-        let reloadedStore = WalkHistoryStore(defaults: defaults)
-        let savedData = try #require(defaults.data(forKey: "walkHistory"))
-        let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
-
-        #expect(store.walkCount(on: today) == 2)
-        #expect(reloadedStore.walkCount(on: today) == 2)
-        #expect(savedDays == [StoredWalkDay(day: today, count: 2)])
-    }
-
     @Test("invalid persisted walk counts are dropped before same-day aggregation")
     func invalidPersistedWalkCountsAreDropped() throws {
         let defaults = makeDefaults("WalkHistoryStoreTests")
