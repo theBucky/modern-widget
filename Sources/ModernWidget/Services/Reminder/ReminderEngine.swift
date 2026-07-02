@@ -109,7 +109,10 @@ final class ReminderEngine {
             return nil
         }
 
-        let reminderMinutes = defaults.integer(forKey: Keys.legacyMinutes)
+        // Normalize before deriving the paused fallback, so out-of-range legacy
+        // minutes cannot import a paused timer with an already-expired remaining count.
+        let reminderMinutes = ReminderState.supportedReminderMinutes(
+            for: defaults.integer(forKey: Keys.legacyMinutes))
         let mode: ReminderMode =
             defaults.bool(forKey: Keys.legacyIsPaused)
             ? .paused(
