@@ -51,32 +51,39 @@ struct MenuBarPanelView: View {
     let usageStore: CodingUsageStore
 
     @State private var selectedPane: Pane = .timer
-    @State private var displayedPane: Pane = .timer
-    @State private var contentOpacity = 1.0
-    @State private var transitionID = 0
-
-    private enum PaneTransitionAnimation {
-        static let fadeOut = Animation.easeOut(duration: 0.06)
-        static let swap = Animation.smooth(duration: 0.11)
-        static let fadeIn = Animation.easeIn(duration: 0.06)
-    }
 
     var body: some View {
         VStack(spacing: PanelLayout.paneSpacing) {
-            PanelTopBar(selection: $selectedPane)
-            paneBody
-                .opacity(contentOpacity)
+            PanelTopBar(selection: animatedSelection)
+            // The ZStack overlays the outgoing and incoming panes during the crossfade;
+            // as direct VStack children they would stack vertically and jump the layout.
+            ZStack(alignment: .top) {
+                paneBody
+                    .id(selectedPane)
+                    .transition(.opacity)
+            }
         }
-        .frame(width: displayedPane.width)
+        .frame(width: selectedPane.width)
         .padding(PanelLayout.outerPadding)
-        .onChange(of: selectedPane) { _, target in
-            transition(to: target)
-        }
+    }
+
+    /// Pane switches must run in an explicit `withAnimation` transaction: a scoped
+    /// `.animation(value:)` animates the crossfade, but the MenuBarExtra window snaps
+    /// to the new content size instead of tracking the animated width.
+    private var animatedSelection: Binding<Pane> {
+        Binding(
+            get: { selectedPane },
+            set: { pane in
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedPane = pane
+                }
+            }
+        )
     }
 
     @ViewBuilder
     private var paneBody: some View {
-        switch displayedPane {
+        switch selectedPane {
         case .timer:
             ReminderPaneView(
                 engine: engine,
@@ -92,40 +99,6 @@ struct MenuBarPanelView: View {
             CodingUsageView(store: usageStore)
         case .settings:
             SettingsPaneView(store: usageStore)
-        }
-    }
-
-    private func transition(to pane: Pane) {
-        // A newer switch bumps transitionID, so completion handlers from an interrupted
-        // transition bail out instead of swapping or fading a superseded pane.
-        transitionID += 1
-        let activeTransition = transitionID
-
-        guard pane != displayedPane else {
-            withAnimation(PaneTransitionAnimation.fadeIn) {
-                contentOpacity = 1
-            }
-            return
-        }
-
-        withAnimation(PaneTransitionAnimation.fadeOut) {
-            contentOpacity = 0
-        } completion: {
-            guard transitionID == activeTransition else {
-                return
-            }
-
-            withAnimation(PaneTransitionAnimation.swap) {
-                displayedPane = pane
-            } completion: {
-                guard transitionID == activeTransition else {
-                    return
-                }
-
-                withAnimation(PaneTransitionAnimation.fadeIn) {
-                    contentOpacity = 1
-                }
-            }
         }
     }
 }
@@ -159,10 +132,10 @@ private struct PanelTopBar: View {
 }
 
 private struct UpdateAvailableButton: View {
-    @ObservedObject private var updaterManager = UpdaterManager.shared
+    private let updaterManager = UpdaterManager.shared
 
     var body: some View {
-        if updaterManager.showsUpdateAvailableBadge {
+        if updaterManager.updateBadgeVisible {
             Button {
                 updaterManager.checkForUpdates()
             } label: {
@@ -173,7 +146,7 @@ private struct UpdateAvailableButton: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.mini)
-            .disabled(!updaterManager.canUseUpdateAvailableBadge)
+            .disabled(!updaterManager.updateBadgeEnabled)
             .help("Update Available")
         }
     }

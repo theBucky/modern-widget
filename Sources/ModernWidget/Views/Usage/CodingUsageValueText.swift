@@ -11,24 +11,16 @@ struct CodingUsageValueText: View {
                 .foregroundStyle(.secondary)
         } else {
             HStack(spacing: 3) {
-                tokenText
+                Text(formatCodingUsageTokens(counts.totalTokens))
+                    .fontWeight(.regular)
+                    .foregroundStyle(.secondary)
                 Text("/")
                     .fontWeight(.regular)
                     .foregroundStyle(Color.secondary)
-                costText
+                Text(formatCodingUsageCost(counts.costUSD))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
             }
         }
-    }
-
-    private var tokenText: some View {
-        Text(formatCodingUsageTokens(counts.totalTokens))
-            .fontWeight(.regular)
-            .foregroundStyle(.secondary)
-    }
-
-    private var costText: some View {
-        Text(formatCodingUsageCost(counts.costUSD))
-            .fontWeight(.semibold)
-            .foregroundStyle(.primary)
     }
 }

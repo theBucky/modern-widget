@@ -56,10 +56,6 @@ final class DailySupplementStore {
             return (days: days, needsSave: days.count != stored.count)
         }
 
-        if let dates = try? JSONDecoder().decode(Set<Date>.self, from: data) {
-            return (days: Set(dates.map(LocalDay.init(date:))), needsSave: true)
-        }
-
         return (days: [], needsSave: true)
     }
 

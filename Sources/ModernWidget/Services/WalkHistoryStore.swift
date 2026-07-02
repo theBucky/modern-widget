@@ -55,15 +55,6 @@ final class WalkHistoryStore {
             return (counts: counts, needsSave: droppedInvalid)
         }
 
-        if let dates = try? JSONDecoder().decode([Date].self, from: data) {
-            return (
-                counts: dates.reduce(into: [:]) { counts, walk in
-                    counts[LocalDay(date: walk), default: 0] += 1
-                },
-                needsSave: true
-            )
-        }
-
         return (counts: [:], needsSave: false)
     }
 

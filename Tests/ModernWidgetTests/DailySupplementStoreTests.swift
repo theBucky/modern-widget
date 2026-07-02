@@ -62,10 +62,14 @@ struct DailySupplementStoreTests {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: .now)
         let expiredDay = calendar.date(byAdding: .month, value: -4, to: today)!
-        let storedDays: Set<Date> = [expiredDay, today]
+        let stored = [expiredDay, today].map { day -> StoredSupplementDay in
+            let localDay = LocalDay(date: day)
+            return StoredSupplementDay(
+                year: localDay.year, month: localDay.month, day: localDay.day)
+        }
 
         defaults.set(
-            try JSONEncoder().encode(storedDays),
+            try JSONEncoder().encode(stored),
             forKey: "dailySupplementTakenDays"
         )
 
@@ -77,31 +81,6 @@ struct DailySupplementStoreTests {
         let savedData = try #require(defaults.data(forKey: "dailySupplementTakenDays"))
         let savedDays = try JSONDecoder().decode(Set<LocalDay>.self, from: savedData)
         #expect(savedDays == [LocalDay(date: today)])
-    }
-
-    @Test("persisted dates with arbitrary times normalize to one local day")
-    func persistedDatesNormalizeToLocalDays() throws {
-        let defaults = makeDefaults("DailySupplementStoreTests")
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: .now)
-        let morning = calendar.date(byAdding: .hour, value: 8, to: today)!
-        let evening = calendar.date(byAdding: .hour, value: 21, to: today)!
-        let legacyDays: Set<Date> = [morning, evening]
-
-        defaults.set(
-            try JSONEncoder().encode(legacyDays),
-            forKey: "dailySupplementTakenDays"
-        )
-
-        let store = DailySupplementStore(defaults: defaults)
-        #expect(store.isTaken(on: today))
-        #expect(store.isTaken(on: morning))
-        #expect(store.isTaken(on: evening))
-
-        let savedData = try #require(defaults.data(forKey: "dailySupplementTakenDays"))
-        let savedDays = try JSONDecoder().decode(Set<LocalDay>.self, from: savedData)
-        #expect(savedDays == [LocalDay(date: today)])
-        #expect((try? JSONDecoder().decode(Set<Date>.self, from: savedData)) == nil)
     }
 
     @Test("invalid persisted supplement day identities are dropped and not resurrected")

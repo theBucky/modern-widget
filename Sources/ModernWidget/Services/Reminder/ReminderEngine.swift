@@ -5,17 +5,23 @@ import Observation
 @Observable
 final class ReminderEngine {
     private enum Keys {
-        static let reminderMinutes = "reminderMinutes"
-        static let startedAt = "reminderStartedAt"
-        static let legacyStartedAt = "lastWalkAt"
-        static let isPaused = "isPaused"
-        static let pausedRemainingSeconds = "pausedRemainingSeconds"
+        static let state = "reminderState"
+        // Pre-Codable scheme, migrated once into `state` then removed.
+        static let legacyMinutes = "reminderMinutes"
+        static let legacyStartedAt = "reminderStartedAt"
+        static let legacyIsPaused = "isPaused"
+        static let legacyPausedSeconds = "pausedRemainingSeconds"
     }
 
     /// Boundary-aligned countdown snapshot driving both the menu bar icon and the
     /// panel; refreshed exactly on whole-second boundaries so the displayed digit
-    /// never lags the true remaining time.
+    /// never lags the true remaining time. Carries the latest delivery status too.
     private(set) var currentSnapshot: ReminderSnapshot
+
+    /// Latest notification delivery status. Delivery is not timer state, so it lives
+    /// here rather than in `ReminderState`; it reaches the UI folded into snapshots.
+    @ObservationIgnored
+    private var notificationIssue: ReminderNotificationIssue?
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -35,7 +41,7 @@ final class ReminderEngine {
     }
 
     func snapshot(at date: Date) -> ReminderSnapshot {
-        state.snapshot(at: date)
+        ReminderSnapshot(state.countdown(at: date), notificationIssue: notificationIssue)
     }
 
     init(defaults: UserDefaults = .standard, notifier: ReminderNotifying = ReminderNotifier()) {
@@ -43,7 +49,8 @@ final class ReminderEngine {
         self.defaults = defaults
         self.notifier = notifier
         self.state = state
-        self.currentSnapshot = state.snapshot(at: .now)
+        self.notificationIssue = nil
+        self.currentSnapshot = ReminderSnapshot(state.countdown(at: .now), notificationIssue: nil)
 
         syncReminderTaskToState()
         refreshSnapshot()
@@ -83,72 +90,87 @@ final class ReminderEngine {
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        let reminderMinutes = ReminderState.supportedReminderMinutes(
-            for: defaults.integer(forKey: Keys.reminderMinutes))
-        let fullDurationSeconds = reminderMinutes * 60
-        let mode: ReminderMode =
-            defaults.bool(forKey: Keys.isPaused)
-            ? .paused(
-                secondsRemaining: defaults.object(forKey: Keys.pausedRemainingSeconds) as? Int
-                    ?? fullDurationSeconds)
-            : .running
-
+        if let data = defaults.data(forKey: Keys.state),
+            let decoded = try? JSONDecoder().decode(ReminderState.self, from: data)
+        {
+            return decoded
+        }
+        if let migrated = migrateLegacyState(defaults: defaults) {
+            return migrated
+        }
         return ReminderState(
-            reminderMinutes: reminderMinutes,
-            startedAt: loadStartedAt(defaults: defaults),
-            mode: mode,
-            notificationIssue: nil
+            reminderMinutes: ReminderState.minutePresets.min()!,
+            mode: .running(startedAt: .now)
         )
     }
 
-    private static func loadStartedAt(defaults: UserDefaults) -> Date {
-        let storedStartedAt = defaults.object(forKey: Keys.startedAt) as? Date
-        let legacyStartedAt = defaults.object(forKey: Keys.legacyStartedAt) as? Date
-        let startedAt = storedStartedAt ?? legacyStartedAt ?? .now
-
-        if storedStartedAt == nil, legacyStartedAt != nil {
-            defaults.set(startedAt, forKey: Keys.startedAt)
+    private static func migrateLegacyState(defaults: UserDefaults) -> ReminderState? {
+        guard defaults.object(forKey: Keys.legacyMinutes) != nil else {
+            return nil
         }
-        defaults.removeObject(forKey: Keys.legacyStartedAt)
-        return startedAt
+
+        // Normalize before deriving the paused fallback, so out-of-range legacy
+        // minutes cannot import a paused timer with an already-expired remaining count.
+        let reminderMinutes = ReminderState.supportedReminderMinutes(
+            for: defaults.integer(forKey: Keys.legacyMinutes))
+        let mode: ReminderMode =
+            defaults.bool(forKey: Keys.legacyIsPaused)
+            ? .paused(
+                secondsRemaining: defaults.object(forKey: Keys.legacyPausedSeconds) as? Int
+                    ?? reminderMinutes * 60)
+            : .running(startedAt: defaults.object(forKey: Keys.legacyStartedAt) as? Date ?? .now)
+
+        let state = ReminderState(reminderMinutes: reminderMinutes, mode: mode)
+        persist(state, to: defaults)
+        for key in [
+            Keys.legacyMinutes, Keys.legacyStartedAt, Keys.legacyIsPaused, Keys.legacyPausedSeconds,
+        ] {
+            defaults.removeObject(forKey: key)
+        }
+        return state
     }
 
+    private static func persist(_ state: ReminderState, to defaults: UserDefaults) {
+        guard let data = try? JSONEncoder().encode(state) else {
+            return
+        }
+        defaults.set(data, forKey: Keys.state)
+    }
+
+    /// A user timer action supersedes any prior delivery status, so mutating the
+    /// state clears the issue in the same beat and refreshes the snapshot once.
     private func updateState(_ update: (inout ReminderState) -> Void) {
         let previousState = state
+        let hadIssue = notificationIssue != nil
         update(&state)
-        if state == previousState {
+        notificationIssue = nil
+        guard state != previousState || hadIssue else {
             return
         }
 
-        persistState()
-        if state.schedule != previousState.schedule {
+        if state != previousState {
+            Self.persist(state, to: defaults)
             syncReminderTaskToState()
         }
         refreshSnapshot()
     }
 
-    private func persistState() {
-        defaults.set(state.reminderMinutes, forKey: Keys.reminderMinutes)
-        defaults.set(state.startedAt, forKey: Keys.startedAt)
-
-        switch state.mode {
-        case .running:
-            defaults.set(false, forKey: Keys.isPaused)
-            defaults.removeObject(forKey: Keys.pausedRemainingSeconds)
-        case let .paused(secondsRemaining):
-            defaults.set(true, forKey: Keys.isPaused)
-            defaults.set(secondsRemaining, forKey: Keys.pausedRemainingSeconds)
+    private func applyNotificationIssue(_ issue: ReminderNotificationIssue?) {
+        guard issue != notificationIssue else {
+            return
         }
+        notificationIssue = issue
+        refreshSnapshot()
     }
 
     private func refreshSnapshot() {
-        let now = Date.now
-        let nextSnapshot = state.snapshot(at: now)
+        let countdown = state.countdown(at: .now)
+        let nextSnapshot = ReminderSnapshot(countdown, notificationIssue: notificationIssue)
         if nextSnapshot != currentSnapshot {
             currentSnapshot = nextSnapshot
         }
 
-        scheduleSnapshotRefresh(after: state.schedule.countdown(at: now).nextRefreshDelay)
+        scheduleSnapshotRefresh(after: countdown.nextRefreshDelay)
     }
 
     private func scheduleSnapshotRefresh(after delay: TimeInterval?) {
@@ -181,8 +203,8 @@ final class ReminderEngine {
         reminderTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let delay = state.schedule.nextReminderDelay(
-                    lastReminderAt: lastReminderAt, now: .now)
+                guard let delay = state.nextReminderDelay(lastReminderAt: lastReminderAt, now: .now)
+                else { return }
 
                 if delay > 0 {
                     do {
@@ -198,7 +220,9 @@ final class ReminderEngine {
     }
 
     private func sendReminderIfDue(now: Date) async {
-        guard state.schedule.nextReminderDelay(lastReminderAt: lastReminderAt, now: now) == 0 else {
+        guard let delay = state.nextReminderDelay(lastReminderAt: lastReminderAt, now: now),
+            delay == 0
+        else {
             return
         }
 
@@ -208,8 +232,6 @@ final class ReminderEngine {
             return
         }
 
-        updateState {
-            $0.notificationIssue = issue
-        }
+        applyNotificationIssue(issue)
     }
 }

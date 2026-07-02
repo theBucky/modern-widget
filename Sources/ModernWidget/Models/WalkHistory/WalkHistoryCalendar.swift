@@ -18,7 +18,7 @@ struct WalkHistoryMonth {
         }
     }
 
-    init(containing date: Date, calendar: Calendar = .current) {
+    init(containing date: Date, calendar: Calendar = LocalDay.calendar) {
         let firstDay = calendar.startOfMonth(for: date)
         let dayCount = calendar.range(of: .day, in: .month, for: firstDay)!.count
         let firstWeekday = calendar.component(.weekday, from: firstDay)
@@ -42,7 +42,7 @@ struct WalkHistoryMonth {
         let symbol: String
     }
 
-    static func weekdayLabels(calendar: Calendar = .current) -> [WeekdayLabel] {
+    static func weekdayLabels(calendar: Calendar = LocalDay.calendar) -> [WeekdayLabel] {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols
         return (0..<7).map { column in
             let weekday = (calendar.firstWeekday - 1 + column) % 7

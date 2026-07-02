@@ -25,13 +25,15 @@ struct ReminderEngineTests {
         ReminderEngine(defaults: defaults, notifier: StubNotifier(issue: issue))
     }
 
-    @Test("loads persisted running minutes and start date as a visible countdown")
-    func loadsRunningStateAsVisibleTimer() {
+    @Test("loads a persisted codable running state as a visible countdown")
+    func loadsPersistedCodableState() throws {
         let defaults = makeDefaults("ReminderEngineTests")
         let now = Date.now
-        defaults.set(120, forKey: "reminderMinutes")
-        defaults.set(now.addingTimeInterval(-1800), forKey: "reminderStartedAt")
-        defaults.set(false, forKey: "isPaused")
+        let state = ReminderState(
+            reminderMinutes: 120,
+            mode: .running(startedAt: now.addingTimeInterval(-1800))
+        )
+        defaults.set(try JSONEncoder().encode(state), forKey: "reminderState")
 
         let engine = makeEngine(defaults)
         let snapshot = engine.snapshot(at: now)
@@ -42,8 +44,56 @@ struct ReminderEngineTests {
         #expect(snapshot.notificationIssue == nil)
     }
 
-    @Test("loads persisted paused state with clamped remaining seconds")
-    func loadsPausedStateClamped() {
+    @Test("falls back to a fresh default when the persisted state is unreadable")
+    func fallsBackOnUnreadableState() {
+        let defaults = makeDefaults("ReminderEngineTests")
+        defaults.set(Data("not json".utf8), forKey: "reminderState")
+
+        let engine = makeEngine(defaults)
+        let snapshot = engine.snapshot(at: .now)
+
+        #expect(engine.reminderMinutes == 60)
+        #expect(snapshot.phase == .countingDown)
+        #expect(snapshot.secondsRemaining == 3600)
+    }
+
+    @Test("persists state changes across engine reloads")
+    func persistsAcrossReloads() {
+        let defaults = makeDefaults("ReminderEngineTests")
+        defaults.set(60, forKey: "reminderMinutes")
+        defaults.set(Date.now.addingTimeInterval(-600), forKey: "reminderStartedAt")
+
+        let first = makeEngine(defaults)
+        first.togglePause()
+
+        let reloaded = makeEngine(defaults)
+        let snapshot = reloaded.snapshot(at: .now)
+
+        #expect(snapshot.phase == .paused)
+        #expect(snapshot.secondsRemaining == 3000)
+    }
+
+    @Test("migrates the legacy defaults keys into one codable state")
+    func migratesLegacyKeys() {
+        let defaults = makeDefaults("ReminderEngineTests")
+        let now = Date.now
+        defaults.set(60, forKey: "reminderMinutes")
+        defaults.set(now.addingTimeInterval(-600), forKey: "reminderStartedAt")
+        defaults.set(false, forKey: "isPaused")
+
+        let engine = makeEngine(defaults)
+        let snapshot = engine.snapshot(at: now)
+
+        #expect(snapshot.phase == .countingDown)
+        #expect(snapshot.secondsRemaining == 3000)
+        #expect(defaults.data(forKey: "reminderState") != nil)
+        #expect(defaults.object(forKey: "reminderMinutes") == nil)
+        #expect(defaults.object(forKey: "reminderStartedAt") == nil)
+        #expect(defaults.object(forKey: "isPaused") == nil)
+    }
+
+    @Test("migrates a legacy paused state with clamped remaining seconds")
+    func migratesLegacyPausedStateClamped() {
         let defaults = makeDefaults("ReminderEngineTests")
         defaults.set(60, forKey: "reminderMinutes")
         defaults.set(true, forKey: "isPaused")
@@ -57,8 +107,8 @@ struct ReminderEngineTests {
         #expect(snapshot.progress == 1)
     }
 
-    @Test("paused state without stored seconds defaults to the full duration")
-    func loadsPausedStateMissingSecondsDefaultsFull() {
+    @Test("legacy paused state without stored seconds defaults to the full duration")
+    func migratesLegacyPausedStateMissingSecondsDefaultsFull() {
         let defaults = makeDefaults("ReminderEngineTests")
         defaults.set(60, forKey: "reminderMinutes")
         defaults.set(true, forKey: "isPaused")
@@ -79,22 +129,6 @@ struct ReminderEngineTests {
         let highDefaults = makeDefaults("ReminderEngineTests")
         highDefaults.set(200, forKey: "reminderMinutes")
         #expect(makeEngine(highDefaults).reminderMinutes == 120)
-    }
-
-    @Test("migrates a legacy start date and stops reading the legacy key")
-    func migratesLegacyStartDate() {
-        let defaults = makeDefaults("ReminderEngineTests")
-        let now = Date.now
-        defaults.set(60, forKey: "reminderMinutes")
-        defaults.set(now.addingTimeInterval(-600), forKey: "lastWalkAt")
-
-        let engine = makeEngine(defaults)
-        let snapshot = engine.snapshot(at: now)
-
-        #expect(snapshot.phase == .countingDown)
-        #expect(snapshot.secondsRemaining == 3000)
-        #expect(defaults.object(forKey: "reminderStartedAt") != nil)
-        #expect(defaults.object(forKey: "lastWalkAt") == nil)
     }
 
     @Test("changing to a different preset restarts the countdown")

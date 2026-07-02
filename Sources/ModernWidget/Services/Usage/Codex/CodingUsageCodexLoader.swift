@@ -206,7 +206,7 @@ extension CodingUsageLoader {
                 return
             }
 
-            if fields.type == .turnContext, let model = fields.payloadModel, !model.isEmpty {
+            if fields.type == .turnContext, let model = fields.payloadModel {
                 deduper.onTurnContext(model: model, emit: visit)
                 return
             }
@@ -226,6 +226,12 @@ extension CodingUsageLoader {
 
 private func codexSecond(_ timestamp: Date) -> Int64 {
     Int64(timestamp.timeIntervalSince1970.rounded(.down))
+}
+
+/// Empty model strings count as missing everywhere: they must neither reach pricing
+/// nor overwrite the carried-over `currentModel`.
+private func nonEmptyString(_ value: String?) -> String? {
+    value?.isEmpty == false ? value : nil
 }
 
 /// Extracts the fields of one Codex log line, returning `nil` as soon as the line
@@ -271,7 +277,7 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
         } else if key == "info" {
             codexInfo(&scanner, into: &fields)
         } else if key == "model" {
-            fields.payloadModel = scanner.readString()
+            fields.payloadModel = nonEmptyString(scanner.readString())
         } else if key == "source" {
             fields.hasThreadSpawn = codexSourceHasThreadSpawn(&scanner)
         } else {
@@ -314,7 +320,7 @@ private func codexInfo(_ scanner: inout JSONScanner, into fields: inout CodexLin
         } else if key == "total_token_usage" {
             fields.totalUsage = codexUsage(&scanner)
         } else if key == "model" {
-            fields.infoModel = scanner.readString()
+            fields.infoModel = nonEmptyString(scanner.readString())
         } else {
             scanner.skipValue()
         }
@@ -407,6 +413,9 @@ private enum CodexReplayState {
 /// and the `CodexReplayState` machine that drops the cumulative snapshots a subagent
 /// thread-spawn replays within the same second while keeping genuinely new events.
 private struct CodexReplayDeduper {
+    /// Model assumed when a Codex line names none, so pricing has something to resolve.
+    private static let codexDefaultModel = "gpt-5"
+
     private let usesFastPricing: Bool
     private var previousTotals: CodexRawUsage?
     private var currentModel: String?
@@ -511,7 +520,8 @@ private struct CodexReplayDeduper {
             return
         }
 
-        let model = fields.payloadModel ?? fields.infoModel ?? currentModel ?? "gpt-5"
+        let model =
+            fields.payloadModel ?? fields.infoModel ?? currentModel ?? Self.codexDefaultModel
         currentModel = model
         emit(
             CodexUsageEvent(

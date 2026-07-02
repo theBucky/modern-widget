@@ -45,9 +45,12 @@ struct LocalDay: Comparable, Hashable, Codable {
     }
 
     /// Gregorian calendar in the current time zone; defines local-day boundaries.
+    /// Carries the current locale so presentation derived from it (weekday order,
+    /// symbols) matches the user while day identity stays Gregorian.
     static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
+        calendar.locale = .current
         return calendar
     }
 }

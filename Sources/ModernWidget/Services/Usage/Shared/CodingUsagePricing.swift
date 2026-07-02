@@ -30,6 +30,8 @@ enum CodingUsagePricing {
         let input: Double
         let output: Double
         let cacheCreate: Double
+        /// 1h cache writes bill at twice the input rate unless a model overrides it.
+        let cacheCreate1h: Double
         let cacheRead: Double
         let fastMultiplier: Double
 
@@ -38,11 +40,13 @@ enum CodingUsagePricing {
             output: Double,
             cacheCreate: Double,
             cacheRead: Double,
+            cacheCreate1h: Double? = nil,
             fastMultiplier: Double = 2.0
         ) {
             self.input = input
             self.output = output
             self.cacheCreate = cacheCreate
+            self.cacheCreate1h = cacheCreate1h ?? input * 2
             self.cacheRead = cacheRead
             self.fastMultiplier = fastMultiplier
         }
@@ -61,7 +65,7 @@ enum CodingUsagePricing {
             * (Double(tokens.input) * pricing.input
                 + Double(tokens.output) * pricing.output
                 + Double(tokens.cacheCreation5m) * pricing.cacheCreate
-                + Double(tokens.cacheCreation1h) * pricing.input * 2
+                + Double(tokens.cacheCreation1h) * pricing.cacheCreate1h
                 + Double(tokens.cacheRead) * pricing.cacheRead)
     }
 
