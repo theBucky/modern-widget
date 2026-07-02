@@ -82,10 +82,7 @@ extension CodingUsageLoader {
             normalize: normalizeClaudeConfigPath
         )
 
-        return
-            directories
-            .filter { isDirectory($0.appendingPathComponent("projects")) }
-            .uniquedByPath()
+        return directories.filter { isDirectory($0.appendingPathComponent("projects")) }
     }
 
     func normalizeClaudeConfigPath(_ url: URL) -> URL {

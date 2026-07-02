@@ -38,7 +38,7 @@ struct CodingUsageLoader: Sendable {
         let files =
             ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
             + extraCodexFiles.compactMap(usageFileFingerprint))
-            .uniquedByPath()
+            .uniqued(by: \.path)
             .sorted { $0.path < $1.path }
         let fingerprint = CodingUsageFingerprint(
             agents: CodingUsageAgent.ordered(enabledAgents),
