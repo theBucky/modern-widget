@@ -407,6 +407,9 @@ private enum CodexReplayState {
 /// and the `CodexReplayState` machine that drops the cumulative snapshots a subagent
 /// thread-spawn replays within the same second while keeping genuinely new events.
 private struct CodexReplayDeduper {
+    /// Model assumed when a Codex line names none, so pricing has something to resolve.
+    private static let codexDefaultModel = "gpt-5"
+
     private let usesFastPricing: Bool
     private var previousTotals: CodexRawUsage?
     private var currentModel: String?
@@ -511,7 +514,8 @@ private struct CodexReplayDeduper {
             return
         }
 
-        let model = fields.payloadModel ?? fields.infoModel ?? currentModel ?? "gpt-5"
+        let model =
+            fields.payloadModel ?? fields.infoModel ?? currentModel ?? Self.codexDefaultModel
         currentModel = model
         emit(
             CodexUsageEvent(
