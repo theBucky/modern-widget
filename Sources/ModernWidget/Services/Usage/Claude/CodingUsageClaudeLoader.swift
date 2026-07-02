@@ -39,22 +39,27 @@ private struct ClaudeMessageFields {
 
 extension CodingUsageLoader {
     func loadClaudeUsage(
-        files: [URL],
+        files: [CodingUsageFile],
         scope: CodingUsageDateScope,
         into accumulator: inout CodingUsageAccumulator
     ) {
-        let usageNeedle = JSONLineNeedle(#""usage""#)
-        let entries =
-            files
-            .flatMap { usageRecords(in: $0, needles: [usageNeedle], parse: claudeUsageEntry) }
+        // Files parse in parallel; the date filter stays ahead of the dedupe below so an
+        // out-of-window duplicate can never beat an in-window record.
+        let entries = concurrentMap(files) { file in
+            usageRecords(
+                in: file.url,
+                needles: [JSONLineNeedle(#""usage""#)],
+                parse: claudeUsageEntry
+            )
             .filter { scope.historyDay(containing: $0.timestamp) != nil }
+        }
 
-        for entry in dedupeClaudeEntries(entries) {
+        for entry in dedupeClaudeEntries(entries.flatMap { $0 }) {
             accumulator.add(.claude, counts: entry.counts, at: entry.timestamp)
         }
     }
 
-    func claudeUsageFiles(scope: CodingUsageDateScope) -> [URL] {
+    func claudeUsageFiles(scope: CodingUsageDateScope) -> [CodingUsageFile] {
         claudeConfigDirectories().flatMap {
             usageFiles(
                 in: $0.appendingPathComponent("projects"), modifiedSince: scope.history.start)

@@ -2,18 +2,22 @@ import Foundation
 
 extension CodingUsageLoader {
     func loadPiUsage(
-        files: [URL],
+        files: [CodingUsageFile],
         into accumulator: inout CodingUsageAccumulator
     ) {
-        let needles = [JSONLineNeedle(#""usage""#), JSONLineNeedle(#""message""#)]
-        for file in files {
-            for record in usageRecords(in: file, needles: needles, parse: piUsageRecord) {
-                accumulator.add(.pi, counts: record.counts, at: record.timestamp)
-            }
+        let records = concurrentMap(files) { file in
+            usageRecords(
+                in: file.url,
+                needles: [JSONLineNeedle(#""usage""#), JSONLineNeedle(#""message""#)],
+                parse: piUsageRecord
+            )
+        }
+        for record in records.joined() {
+            accumulator.add(.pi, counts: record.counts, at: record.timestamp)
         }
     }
 
-    func piUsageFiles(scope: CodingUsageDateScope) -> [URL] {
+    func piUsageFiles(scope: CodingUsageDateScope) -> [CodingUsageFile] {
         piUsageDirectories().flatMap {
             usageFiles(in: $0, modifiedSince: scope.history.start)
         }

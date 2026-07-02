@@ -3,7 +3,7 @@ import Foundation
 struct CodexUsageSource: Sendable {
     let directory: URL
     let home: URL
-    let files: [URL]
+    let files: [CodingUsageFile]
 }
 
 struct CodexUsageFileKey: Hashable {
@@ -97,20 +97,28 @@ extension CodingUsageLoader {
                 fastPricingByHome[homePath] = usesFastPricing
             }
 
-            for file in source.files {
+            let files = source.files.filter { file in
                 let fileKey = CodexUsageFileKey(
                     scope: homePath,
-                    path: relativePath(file, from: source.directory)
+                    path: relativePath(file.url, from: source.directory)
                 )
-                guard seenFiles.insert(fileKey).inserted else {
-                    continue
-                }
+                return seenFiles.insert(fileKey).inserted
+            }
 
-                forEachCodexUsageEvent(in: file, usesFastPricing: usesFastPricing) { event in
-                    let eventKey = CodexScopedEventKey(scope: homePath, event: event)
-                    if seenEvents.insert(eventKey).inserted {
-                        accumulator.add(.codex, counts: event.counts, at: event.timestamp)
-                    }
+            // Sessions parse in parallel; the cross-file event dedupe below stays
+            // sequential in file order so active files keep beating archived ones.
+            let eventLists = concurrentMap(files) { file in
+                var events: [CodexUsageEvent] = []
+                forEachCodexUsageEvent(in: file.url, usesFastPricing: usesFastPricing) {
+                    events.append($0)
+                }
+                return events
+            }
+
+            for event in eventLists.joined() {
+                let eventKey = CodexScopedEventKey(scope: homePath, event: event)
+                if seenEvents.insert(eventKey).inserted {
+                    accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                 }
             }
         }

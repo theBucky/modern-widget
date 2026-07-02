@@ -7,37 +7,54 @@ struct CodingUsageFileFingerprint: Equatable, Sendable {
     let byteCount: Int?
 }
 
+/// A usage log file paired with the fingerprint captured while enumerating it, so
+/// change detection never has to stat the file a second time.
+struct CodingUsageFile: Sendable {
+    let url: URL
+    let fingerprint: CodingUsageFileFingerprint
+}
+
 extension CodingUsageLoader {
-    func usageFiles(in directory: URL, modifiedSince: Date) -> [URL] {
+    func usageFiles(in directory: URL, modifiedSince: Date) -> [CodingUsageFile] {
         guard
             let enumerator = FileManager.default.enumerator(
                 at: directory,
-                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey]
+                includingPropertiesForKeys: [
+                    .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
+                ]
             )
         else {
             return []
         }
 
-        var files: [URL] = []
+        var files: [CodingUsageFile] = []
         for case let file as URL in enumerator {
             guard file.pathExtension == "jsonl" else {
                 continue
             }
 
             let values = try? file.resourceValues(forKeys: [
-                .isRegularFileKey, .contentModificationDateKey,
+                .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
             ])
             guard values?.isRegularFile == true else {
                 continue
             }
-            if let modifiedAt = values?.contentModificationDate,
-                modifiedAt < modifiedSince
-            {
+            let modifiedAt = values?.contentModificationDate
+            if let modifiedAt, modifiedAt < modifiedSince {
                 continue
             }
-            files.append(file)
+            files.append(
+                CodingUsageFile(
+                    url: file,
+                    fingerprint: CodingUsageFileFingerprint(
+                        path: file.standardizedFileURL.path,
+                        modifiedAt: modifiedAt,
+                        byteCount: values?.fileSize
+                    )
+                )
+            )
         }
-        return files.sorted { $0.path < $1.path }
+        return files.sorted { $0.fingerprint.path < $1.fingerprint.path }
     }
 
     func usageFileFingerprint(_ file: URL) -> CodingUsageFileFingerprint? {
@@ -107,6 +124,22 @@ extension CodingUsageLoader {
         }
     }
 
+    /// Maps `elements` on all cores, preserving order. Usage logs are hundreds of
+    /// megabytes across thousands of independent files, and parsing dominates every
+    /// reload; one file per core is what keeps a reload interactive.
+    func concurrentMap<Element: Sendable, Transformed: Sendable>(
+        _ elements: [Element],
+        _ transform: @Sendable (Element) -> Transformed
+    ) -> [Transformed] {
+        Array(unsafeUninitializedCapacity: elements.count) { buffer, initializedCount in
+            nonisolated(unsafe) let results = buffer
+            DispatchQueue.concurrentPerform(iterations: elements.count) { index in
+                results.initializeElement(at: index, to: transform(elements[index]))
+            }
+            initializedCount = elements.count
+        }
+    }
+
     /// Collects whatever `parse` extracts from each line of `file`, skipping lines that
     /// lack any needle so the scanner only descends into candidate lines.
     func usageRecords<Record>(
@@ -149,6 +182,13 @@ extension CodingUsageLoader {
             return String(path.dropFirst(basePath.count + 1))
         }
         return url.lastPathComponent
+    }
+}
+
+extension Array where Element == CodingUsageFileFingerprint {
+    func uniquedByPath() -> [CodingUsageFileFingerprint] {
+        var seen: Set<String> = []
+        return filter { seen.insert($0.path).inserted }
     }
 }
 
