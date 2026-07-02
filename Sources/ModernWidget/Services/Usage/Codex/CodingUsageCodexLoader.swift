@@ -3,7 +3,7 @@ import Foundation
 struct CodexUsageSource: Sendable {
     let directory: URL
     let home: URL
-    let files: [URL]
+    let files: [CodingUsageFile]
 }
 
 struct CodexUsageFileKey: Hashable {
@@ -97,20 +97,28 @@ extension CodingUsageLoader {
                 fastPricingByHome[homePath] = usesFastPricing
             }
 
-            for file in source.files {
+            let files = source.files.filter { file in
                 let fileKey = CodexUsageFileKey(
                     scope: homePath,
-                    path: relativePath(file, from: source.directory)
+                    path: relativePath(file.url, from: source.directory)
                 )
-                guard seenFiles.insert(fileKey).inserted else {
-                    continue
-                }
+                return seenFiles.insert(fileKey).inserted
+            }
 
-                forEachCodexUsageEvent(in: file, usesFastPricing: usesFastPricing) { event in
-                    let eventKey = CodexScopedEventKey(scope: homePath, event: event)
-                    if seenEvents.insert(eventKey).inserted {
-                        accumulator.add(.codex, counts: event.counts, at: event.timestamp)
-                    }
+            // Sessions parse in parallel; the cross-file event dedupe below stays
+            // sequential in file order so active files keep beating archived ones.
+            let eventLists = concurrentMap(files) { file in
+                var events: [CodexUsageEvent] = []
+                forEachCodexUsageEvent(in: file.url, usesFastPricing: usesFastPricing) {
+                    events.append($0)
+                }
+                return events
+            }
+
+            for event in eventLists.joined() {
+                let eventKey = CodexScopedEventKey(scope: homePath, event: event)
+                if seenEvents.insert(eventKey).inserted {
+                    accumulator.add(.codex, counts: event.counts, at: event.timestamp)
                 }
             }
         }
@@ -185,22 +193,15 @@ extension CodingUsageLoader {
         usesFastPricing: Bool,
         visit: (CodexUsageEvent) -> Void
     ) {
-        let tokenCountNeedle = JSONLineNeedle(#""token_count""#)
-        let turnContextNeedle = JSONLineNeedle(#""turn_context""#)
-        let threadSpawnNeedle = JSONLineNeedle(#""thread_spawn""#)
         var deduper = CodexReplayDeduper(usesFastPricing: usesFastPricing)
 
         forEachJSONLine(in: file) { line in
-            let hasTokenCount = line.contains(tokenCountNeedle)
-            let hasTurnContext = line.contains(turnContextNeedle)
-            let isThreadSpawnLine = line.contains(threadSpawnNeedle)
-            guard hasTokenCount || hasTurnContext || isThreadSpawnLine else {
-                return
-            }
-
+            // Codex lines lead with `timestamp` and `type`, so the scanner classifies a
+            // line from its first bytes and abandons the irrelevant majority, payloads
+            // untouched. A needle prefilter would rescan every full line instead.
             guard let fields = scanCodexLine(line) else { return }
 
-            if isThreadSpawnLine, fields.type == .sessionMeta, fields.hasThreadSpawn {
+            if fields.type == .sessionMeta, fields.hasThreadSpawn {
                 deduper.onThreadSpawn(emit: visit)
                 return
             }
@@ -227,6 +228,9 @@ private func codexSecond(_ timestamp: Date) -> Int64 {
     Int64(timestamp.timeIntervalSince1970.rounded(.down))
 }
 
+/// Extracts the fields of one Codex log line, returning `nil` as soon as the line
+/// proves irrelevant: an uninteresting top-level `type` stops before the payload, and
+/// a non-token-count `event_msg` stops at the payload's leading `type`.
 private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLineFields? {
     guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
         return nil
@@ -235,10 +239,15 @@ private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLineFields?
     while let key = scanner.nextKey() {
         if key == "type" {
             fields.type = CodexLineType(scanner.readStringValue())
+            if fields.type == .other {
+                return nil
+            }
         } else if key == "timestamp" {
             fields.timestamp = scanner.readTimestamp()
         } else if key == "payload" {
-            codexPayload(&scanner, into: &fields)
+            guard codexPayload(&scanner, into: &fields) else {
+                return nil
+            }
         } else {
             scanner.skipValue()
         }
@@ -246,11 +255,19 @@ private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLineFields?
     return fields
 }
 
-private func codexPayload(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) {
-    guard scanner.beginObject() else { return }
+/// Returns `false` when the payload proves the line irrelevant, so the caller can
+/// abandon it mid-scan. Bailing on a non-token-count `payload.type` is only safe once
+/// the top-level type is known to be `event_msg`; a payload that precedes the type
+/// (never observed, but legal JSON) is scanned in full.
+private func codexPayload(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) -> Bool
+{
+    guard scanner.beginObject() else { return true }
     while let key = scanner.nextKey() {
         if key == "type" {
             fields.isTokenCount = scanner.readStringEquals("token_count")
+            if !fields.isTokenCount, fields.type == .eventMessage {
+                return false
+            }
         } else if key == "info" {
             codexInfo(&scanner, into: &fields)
         } else if key == "model" {
@@ -261,6 +278,7 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
             scanner.skipValue()
         }
     }
+    return true
 }
 
 private func codexSourceHasThreadSpawn(_ scanner: inout JSONScanner) -> Bool {

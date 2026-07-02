@@ -3,9 +3,9 @@ import Foundation
 struct CodingUsageScan: Sendable {
     let scope: CodingUsageDateScope
     let fingerprint: CodingUsageFingerprint
-    let claudeFiles: [URL]
+    let claudeFiles: [CodingUsageFile]
     let codexSources: [CodexUsageSource]
-    let piFiles: [URL]
+    let piFiles: [CodingUsageFile]
 }
 
 struct CodingUsageFingerprint: Equatable, Sendable {
@@ -36,9 +36,9 @@ struct CodingUsageLoader: Sendable {
         let piFiles = enabledAgents.contains(.pi) ? piUsageFiles(scope: scope) : []
         let extraCodexFiles = enabledAgents.contains(.codex) ? codexFingerprintFiles() : []
         let files =
-            (claudeFiles + codexSources.flatMap(\.files) + piFiles + extraCodexFiles)
+            ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
+            + extraCodexFiles.compactMap(usageFileFingerprint))
             .uniquedByPath()
-            .compactMap(usageFileFingerprint)
             .sorted { $0.path < $1.path }
         let fingerprint = CodingUsageFingerprint(
             agents: CodingUsageAgent.ordered(enabledAgents),
