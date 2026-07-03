@@ -1,3 +1,4 @@
+import Foundation
 import UserNotifications
 
 enum ReminderNotificationIssue: Equatable {
@@ -5,14 +6,14 @@ enum ReminderNotificationIssue: Equatable {
     case unknownPermissionState
     case deliveryFailure(String)
 
-    var message: String {
+    var message: LocalizedStringResource {
         switch self {
         case .notificationsBlocked:
             return "notifications blocked in System Settings"
         case .unknownPermissionState:
             return "unknown notification permission state"
         case let .deliveryFailure(message):
-            return message
+            return "\(message)"
         }
     }
 

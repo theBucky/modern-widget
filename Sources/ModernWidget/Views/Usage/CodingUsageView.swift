@@ -4,52 +4,41 @@ struct CodingUsageView: View {
     let store: CodingUsageStore
 
     var body: some View {
-        let report = store.report
-        let (isLoading, referenceDate): (Bool, Date) =
-            switch report.state {
-            case .loading: (true, Date.now)
-            case .loaded(let generatedAt): (false, generatedAt)
-            }
-        let scope = CodingUsageDateScope(now: referenceDate)
+        let presentation = store.presentation
 
         VStack(spacing: PanelLayout.sectionSpacing) {
-            CodingUsageTodayTotalSection(
-                summary: report.todaySummary(in: scope),
-                isLoading: isLoading
-            )
+            CodingUsageTodayTotalSection(summary: presentation.today)
             Divider()
-            ForEach(report.agents, id: \.agent) { summary in
-                AgentUsageSection(summary: summary, scope: scope, isLoading: isLoading)
+            ForEach(presentation.sections) { section in
+                AgentUsageSection(section: section)
             }
         }
+        .redacted(reason: presentation.isLoading ? .placeholder : [])
     }
 }
 
 private struct AgentUsageSection: View {
-    let summary: CodingUsageAgentSummary
-    let scope: CodingUsageDateScope
-    let isLoading: Bool
+    let section: CodingUsagePresentation.AgentSection
 
     var body: some View {
         VStack(alignment: .leading, spacing: PanelLayout.contentSpacing) {
             HStack(spacing: 6) {
-                Image(summary.agent.logoResourceName)
+                Image(section.agent.logoResourceName)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 14, height: 14)
                     .accessibilityHidden(true)
 
-                Text(summary.agent.title)
+                Text(section.agent.title)
                     .font(.subheadline.weight(.semibold))
             }
 
             VStack(alignment: .leading, spacing: PanelLayout.sectionSpacing) {
-                usageTable
+                CodingUsageTable(periodTotals: section.periodTotals)
 
                 CodingUsageChart(
-                    days: summary.dailyCounts,
-                    isLoading: isLoading,
-                    barColor: summary.agent.barColor
+                    days: section.chartDays,
+                    barColor: section.agent.barColor
                 )
                 .padding(.top, 2)
             }
@@ -60,25 +49,44 @@ private struct AgentUsageSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
 
-    private var usageTable: some View {
+private struct CodingUsageTable: View {
+    let periodTotals: [CodingUsagePresentation.PeriodTotal]
+
+    var body: some View {
         Grid(
             alignment: .leading,
             horizontalSpacing: PanelLayout.contentSpacing,
             verticalSpacing: PanelLayout.tightSpacing
         ) {
-            ForEach(summary.usageRows(in: scope)) { row in
+            ForEach(periodTotals) { total in
                 GridRow {
-                    Text(row.title)
+                    Text(total.period.title)
                         .foregroundStyle(.secondary)
                         .frame(width: 80, alignment: .leading)
-                    CodingUsageValueText(counts: row.counts, isLoading: isLoading)
+                    CodingUsageValueText(counts: total.counts)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
         }
         .font(.caption.monospacedDigit())
         .frame(maxWidth: .infinity)
+    }
+}
+
+extension CodingUsagePeriod {
+    fileprivate var title: LocalizedStringResource {
+        switch self {
+        case .today:
+            return "Today"
+        case .yesterday:
+            return "Yesterday"
+        case .last7Days:
+            return "Last 7 Days"
+        case .last30Days:
+            return "Last 30 Days"
+        }
     }
 }
 

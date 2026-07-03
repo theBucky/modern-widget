@@ -9,7 +9,7 @@ enum CodingUsageAgent: String, CaseIterable, Hashable, Sendable {
         allCases.filter { agents.contains($0) }
     }
 
-    var title: String {
+    var title: LocalizedStringResource {
         switch self {
         case .claude:
             return "Claude"
@@ -24,13 +24,6 @@ enum CodingUsageAgent: String, CaseIterable, Hashable, Sendable {
 struct CodingUsageDaySummary: Equatable, Sendable {
     let date: Date
     let counts: CodingTokenCounts
-}
-
-struct CodingUsagePeriodRow: Equatable, Identifiable, Sendable {
-    let title: String
-    let counts: CodingTokenCounts
-
-    var id: String { title }
 }
 
 struct CodingUsageCostTrend: Equatable, Sendable {
@@ -89,26 +82,6 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
             total.add(day.counts)
         }
     }
-
-    func usageRows(in scope: CodingUsageDateScope) -> [CodingUsagePeriodRow] {
-        [
-            ("Today", scope.today),
-            ("Yesterday", scope.yesterday),
-            ("Last 7 Days", scope.last7Days),
-            ("Last 30 Days", scope.last30Days),
-        ].map { title, interval in
-            CodingUsagePeriodRow(title: title, counts: counts(in: interval))
-        }
-    }
-
-    func counts(in interval: DateInterval) -> CodingTokenCounts {
-        dailyCounts.reduce(into: CodingTokenCounts()) { total, day in
-            guard day.date >= interval.start && day.date < interval.end else {
-                return
-            }
-            total.add(day.counts)
-        }
-    }
 }
 
 struct CodingUsageReport: Equatable, Sendable {
@@ -124,38 +97,6 @@ struct CodingUsageReport: Equatable, Sendable {
         agents.contains { summary in
             summary.dailyCounts.contains { $0.counts.hasUsage }
         }
-    }
-
-    func counts(in interval: DateInterval) -> CodingTokenCounts {
-        agents.reduce(into: CodingTokenCounts()) { total, summary in
-            total.add(summary.counts(in: interval))
-        }
-    }
-
-    func todaySummary(in scope: CodingUsageDateScope) -> CodingUsageTodaySummary {
-        let today = counts(in: scope.today)
-        let yesterday = counts(in: scope.yesterday)
-
-        return CodingUsageTodaySummary(
-            date: scope.today.start,
-            counts: today,
-            costTrend: CodingUsageCostTrend(
-                currentCostUSD: today.costUSD,
-                previousCostUSD: yesterday.costUSD
-            )
-        )
-    }
-
-    func showingAgents(_ enabledAgents: Set<CodingUsageAgent>) -> Self {
-        let summariesByAgent = Dictionary(uniqueKeysWithValues: agents.map { ($0.agent, $0) })
-        let dayAxis = agents.first?.dailyCounts.map(\.date) ?? []
-
-        return Self(
-            state: state,
-            agents: CodingUsageAgent.ordered(enabledAgents).map { agent in
-                summariesByAgent[agent] ?? .zeroed(agent: agent, days: dayAxis)
-            }
-        )
     }
 
     /// Loading placeholder with the same full-grid shape as a loaded report, so the

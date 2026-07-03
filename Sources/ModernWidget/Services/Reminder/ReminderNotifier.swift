@@ -22,8 +22,8 @@ final class ReminderNotifier: ReminderNotifying {
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Off-chair break"
-        content.body = "get off chair. short walk now."
+        content.title = String(localized: "Off-chair break")
+        content.body = String(localized: "get off chair. short walk now.")
         content.sound = .default
 
         let request = UNNotificationRequest(

@@ -45,7 +45,7 @@ private struct ReminderStatusSection: View {
         let status = statusDisplay
 
         VStack(spacing: PanelLayout.tightSpacing) {
-            Text(status.title)
+            status.title
                 .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(status.tint)
@@ -65,20 +65,39 @@ private struct ReminderStatusSection: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var statusDisplay: (title: String, message: String, tint: Color) {
+    private var statusDisplay: ReminderStatusDisplay {
         switch snapshot.phase {
         case .countingDown:
-            return (countdownLabel, "until next break", .primary)
+            return ReminderStatusDisplay(
+                title: Text(countdownLabel),
+                message: "until next break",
+                tint: .primary
+            )
         case .paused:
-            return (countdownLabel, "paused", .secondary)
+            return ReminderStatusDisplay(
+                title: Text(countdownLabel),
+                message: "paused",
+                tint: .secondary
+            )
         case .overdue:
-            return ("MOVE", "muscles atrophy, circulation stops, you know...", .red)
+            return ReminderStatusDisplay(
+                title: Text("MOVE"),
+                message: "muscles atrophy, circulation stops, you know...",
+                tint: .red
+            )
         }
     }
 
     private var countdownLabel: String {
-        String(format: "%02d:%02d", snapshot.secondsRemaining / 60, snapshot.secondsRemaining % 60)
+        Duration.seconds(snapshot.secondsRemaining)
+            .formatted(.time(pattern: .minuteSecond(padMinuteToLength: 2)))
     }
+}
+
+private struct ReminderStatusDisplay {
+    let title: Text
+    let message: LocalizedStringResource
+    let tint: Color
 }
 
 private struct ReminderActionsSection: View {
@@ -87,7 +106,7 @@ private struct ReminderActionsSection: View {
     let walkHistoryStore: WalkHistoryStore
 
     var body: some View {
-        let pauseTitle = phase == .paused ? "Resume timer" : "Pause timer"
+        let pauseTitle: LocalizedStringKey = phase == .paused ? "Resume timer" : "Pause timer"
         let pauseIcon = phase == .paused ? "play.fill" : "pause.fill"
 
         HStack(spacing: PanelLayout.contentSpacing) {
@@ -114,7 +133,7 @@ private struct ReminderActionsSection: View {
         }
     }
 
-    private func actionLabel(_ title: String, systemImage: String) -> some View {
+    private func actionLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .labelStyle(.iconOnly)
             .font(.system(size: 13, weight: .semibold))

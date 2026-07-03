@@ -7,7 +7,12 @@ struct CodingUsageDateScope: Equatable, Sendable {
 
     private let calendar: Calendar
 
-    init(now: Date = .now, calendar: Calendar = .current) {
+    init(now: Date = .now, calendar: Calendar = LocalDay.calendar) {
+        // Freeze an autoupdating time zone to its current value: the window is fixed
+        // at init, and later day math must not shift to a new system zone mid-scope.
+        var calendar = calendar
+        calendar.timeZone = TimeZone(identifier: calendar.timeZone.identifier) ?? calendar.timeZone
+
         let todayStart = calendar.startOfDay(for: now)
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
         let historyStart = calendar.date(

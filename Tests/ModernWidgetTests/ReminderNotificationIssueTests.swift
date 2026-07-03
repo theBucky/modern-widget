@@ -9,12 +9,13 @@ struct ReminderNotificationIssueTests {
     @Test("issues expose user-visible messages")
     func issuesExposeMessages() {
         #expect(
-            ReminderNotificationIssue.notificationsBlocked.message
+            message(ReminderNotificationIssue.notificationsBlocked)
                 == "notifications blocked in System Settings")
         #expect(
-            ReminderNotificationIssue.unknownPermissionState.message
+            message(ReminderNotificationIssue.unknownPermissionState)
                 == "unknown notification permission state")
-        #expect(ReminderNotificationIssue.deliveryFailure("network down").message == "network down")
+        #expect(message(.deliveryFailure("network down")) == "network down")
+        #expect(message(.deliveryFailure("disk 100% full")) == "disk 100% full")
     }
 
     @Test("denied authorization normalizes to blocked")
@@ -58,5 +59,9 @@ struct ReminderNotificationIssueTests {
             userInfo: [NSLocalizedDescriptionKey: "disk full"]
         )
         #expect(ReminderNotificationIssue(deliveryError: error) == .deliveryFailure("disk full"))
+    }
+
+    private func message(_ issue: ReminderNotificationIssue) -> String {
+        String(localized: issue.message)
     }
 }

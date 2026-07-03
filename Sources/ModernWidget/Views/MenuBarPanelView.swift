@@ -6,7 +6,7 @@ private enum Pane: Hashable {
     case usage
     case settings
 
-    var title: String {
+    var title: LocalizedStringResource {
         switch self {
         case .timer:
             return "Timer"
@@ -54,36 +54,38 @@ struct MenuBarPanelView: View {
 
     var body: some View {
         VStack(spacing: PanelLayout.paneSpacing) {
-            PanelTopBar(selection: animatedSelection)
+            // The switch must run in a real transaction (Binding.animation): a scoped
+            // `.animation(value:)` crossfades the panes but lets the MenuBarExtra
+            // window snap to the new width instead of tracking it.
+            PanelTopBar(selection: $selectedPane.animation(.smooth(duration: 0.2)))
             // The ZStack overlays the outgoing and incoming panes during the crossfade;
             // as direct VStack children they would stack vertically and jump the layout.
             ZStack(alignment: .top) {
-                paneBody
-                    .id(selectedPane)
-                    .transition(.opacity)
+                PaneBody(
+                    pane: selectedPane,
+                    engine: engine,
+                    walkHistoryStore: walkHistoryStore,
+                    dailySupplementStore: dailySupplementStore,
+                    usageStore: usageStore
+                )
+                .id(selectedPane)
+                .transition(.opacity)
             }
         }
         .frame(width: selectedPane.width)
         .padding(PanelLayout.outerPadding)
     }
+}
 
-    /// Pane switches must run in an explicit `withAnimation` transaction: a scoped
-    /// `.animation(value:)` animates the crossfade, but the MenuBarExtra window snaps
-    /// to the new content size instead of tracking the animated width.
-    private var animatedSelection: Binding<Pane> {
-        Binding(
-            get: { selectedPane },
-            set: { pane in
-                withAnimation(.smooth(duration: 0.2)) {
-                    selectedPane = pane
-                }
-            }
-        )
-    }
+private struct PaneBody: View {
+    let pane: Pane
+    let engine: ReminderEngine
+    let walkHistoryStore: WalkHistoryStore
+    let dailySupplementStore: DailySupplementStore
+    let usageStore: CodingUsageStore
 
-    @ViewBuilder
-    private var paneBody: some View {
-        switch selectedPane {
+    var body: some View {
+        switch pane {
         case .timer:
             ReminderPaneView(
                 engine: engine,
@@ -110,7 +112,12 @@ private struct PanelTopBar: View {
         HStack {
             Picker("Pane", selection: $selection) {
                 ForEach(Pane.pickerCases, id: \.self) { pane in
-                    Label(pane.title, systemImage: pane.systemImage).tag(pane)
+                    Label {
+                        Text(pane.title)
+                    } icon: {
+                        Image(systemName: pane.systemImage)
+                    }
+                    .tag(pane)
                 }
             }
             .pickerStyle(.segmented)
@@ -125,14 +132,14 @@ private struct PanelTopBar: View {
                 Image(systemName: Pane.settings.systemImage)
             }
             .buttonStyle(.borderless)
-            .help(Pane.settings.title)
+            .help(Text(Pane.settings.title))
         }
         .frame(maxWidth: .infinity)
     }
 }
 
 private struct UpdateAvailableButton: View {
-    private let updaterManager = UpdaterManager.shared
+    @Environment(UpdaterManager.self) private var updaterManager
 
     var body: some View {
         if updaterManager.updateBadgeVisible {

@@ -56,4 +56,15 @@ struct LocalDayTests {
         #expect(LocalDay(year: 2024, month: 2, day: 29) != nil)
         #expect(LocalDay(year: 2026, month: 5, day: 13) != nil)
     }
+
+    @Test("usage scope day buckets match local day buckets")
+    func usageScopeDayBucketsMatchLocalDayBuckets() {
+        let now = date(2026, 6, 18, 12)
+        let scope = CodingUsageDateScope(now: now)
+        let dayStart = LocalDay.calendar.startOfDay(for: now)
+
+        #expect(scope.today.start == dayStart)
+        #expect(scope.historyDay(containing: now) == dayStart)
+        #expect(LocalDay(date: scope.today.start) == LocalDay(date: now))
+    }
 }

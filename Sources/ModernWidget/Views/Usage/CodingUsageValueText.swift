@@ -2,25 +2,18 @@ import SwiftUI
 
 struct CodingUsageValueText: View {
     let counts: CodingTokenCounts
-    let isLoading: Bool
 
     var body: some View {
-        if isLoading {
-            Text("loading")
+        HStack(spacing: 3) {
+            Text(counts.totalTokens, format: .codingUsageTokens)
                 .fontWeight(.regular)
                 .foregroundStyle(.secondary)
-        } else {
-            HStack(spacing: 3) {
-                Text(formatCodingUsageTokens(counts.totalTokens))
-                    .fontWeight(.regular)
-                    .foregroundStyle(.secondary)
-                Text("/")
-                    .fontWeight(.regular)
-                    .foregroundStyle(Color.secondary)
-                Text(formatCodingUsageCost(counts.costUSD))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
-            }
+            Text("/")
+                .fontWeight(.regular)
+                .foregroundStyle(.secondary)
+            Text(counts.costUSD, format: .codingUsageCost)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
         }
     }
 }

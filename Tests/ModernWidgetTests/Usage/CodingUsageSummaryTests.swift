@@ -6,24 +6,34 @@ import Testing
 @Suite("Coding usage summary")
 struct CodingUsageSummaryTests {
     @Test("summarizes usage windows")
-    func summarizesUsageWindows() {
+    func summarizesUsageWindows() throws {
         let calendar = gregorianUTC()
         let now = date(2026, 6, 18, 12)
-        let summary = CodingUsageAgentSummary(
-            agent: .claude,
-            dailyCounts: [
-                day(2026, 6, 1, 1),
-                day(2026, 6, 17, 2),
-                day(2026, 6, 18, 3),
-            ]
+        let scope = CodingUsageDateScope(now: now, calendar: calendar)
+        let presentation = CodingUsagePresentation(
+            report: CodingUsageReport(
+                state: .loaded(generatedAt: now),
+                agents: [
+                    CodingUsageAgentSummary(
+                        agent: .claude,
+                        dailyCounts: [
+                            day(2026, 6, 1, 1),
+                            day(2026, 6, 17, 2),
+                            day(2026, 6, 18, 3),
+                        ]
+                    )
+                ]
+            ),
+            scope: scope,
+            enabledAgents: [.claude]
         )
 
-        let rows = summary.usageRows(in: CodingUsageDateScope(now: now, calendar: calendar))
+        let totals = try #require(presentation.sections.first?.periodTotals)
 
-        #expect(rows.map(\.title) == ["Today", "Yesterday", "Last 7 Days", "Last 30 Days"])
-        #expect(rows.map(\.counts.costUSD) == [3, 2, 5, 6])
+        #expect(totals.map(\.period) == [.today, .yesterday, .last7Days, .last30Days])
+        #expect(totals.map(\.counts.costUSD) == [3, 2, 5, 6])
         #expect(
-            rows.map(\.counts.totalTokens) == [
+            totals.map(\.counts.totalTokens) == [
                 3_000_000_000,
                 2_000_000_000,
                 5_000_000_000,
@@ -35,26 +45,29 @@ struct CodingUsageSummaryTests {
     func summarizesTodayReportTotalAcrossAgents() {
         let calendar = gregorianUTC()
         let now = date(2026, 6, 18, 12)
-        let report = CodingUsageReport(
-            state: .loaded(generatedAt: now),
-            agents: [
-                CodingUsageAgentSummary(
-                    agent: .claude,
-                    dailyCounts: [day(2026, 6, 18, 1), day(2026, 6, 17, 9)]
-                ),
-                CodingUsageAgentSummary(
-                    agent: .codex,
-                    dailyCounts: [day(2026, 6, 18, 2)]
-                ),
-                CodingUsageAgentSummary(
-                    agent: .pi,
-                    dailyCounts: [day(2026, 6, 18, 3)]
-                ),
-            ]
+        let presentation = CodingUsagePresentation(
+            report: CodingUsageReport(
+                state: .loaded(generatedAt: now),
+                agents: [
+                    CodingUsageAgentSummary(
+                        agent: .claude,
+                        dailyCounts: [day(2026, 6, 18, 1), day(2026, 6, 17, 9)]
+                    ),
+                    CodingUsageAgentSummary(
+                        agent: .codex,
+                        dailyCounts: [day(2026, 6, 18, 2)]
+                    ),
+                    CodingUsageAgentSummary(
+                        agent: .pi,
+                        dailyCounts: [day(2026, 6, 18, 3)]
+                    ),
+                ]
+            ),
+            scope: CodingUsageDateScope(now: now, calendar: calendar),
+            enabledAgents: Set(CodingUsageAgent.allCases)
         )
 
-        let counts = report.todaySummary(in: CodingUsageDateScope(now: now, calendar: calendar))
-            .counts
+        let counts = presentation.today.counts
 
         #expect(counts.costUSD == 6)
         #expect(counts.totalTokens == 6_000_000_000)
@@ -64,81 +77,103 @@ struct CodingUsageSummaryTests {
     func summarizesTodayCostTrendAcrossAgents() {
         let calendar = gregorianUTC()
         let now = date(2026, 6, 18, 12)
-        let report = CodingUsageReport(
-            state: .loaded(generatedAt: now),
-            agents: [
-                CodingUsageAgentSummary(
-                    agent: .claude,
-                    dailyCounts: [day(2026, 6, 17, 1), day(2026, 6, 18, 2)]
-                ),
-                CodingUsageAgentSummary(
-                    agent: .codex,
-                    dailyCounts: [day(2026, 6, 17, 3), day(2026, 6, 18, 4)]
-                ),
-                CodingUsageAgentSummary(agent: .pi, dailyCounts: []),
-            ]
+        let presentation = CodingUsagePresentation(
+            report: CodingUsageReport(
+                state: .loaded(generatedAt: now),
+                agents: [
+                    CodingUsageAgentSummary(
+                        agent: .claude,
+                        dailyCounts: [day(2026, 6, 17, 1), day(2026, 6, 18, 2)]
+                    ),
+                    CodingUsageAgentSummary(
+                        agent: .codex,
+                        dailyCounts: [day(2026, 6, 17, 3), day(2026, 6, 18, 4)]
+                    ),
+                    CodingUsageAgentSummary(agent: .pi, dailyCounts: []),
+                ]
+            ),
+            scope: CodingUsageDateScope(now: now, calendar: calendar),
+            enabledAgents: Set(CodingUsageAgent.allCases)
         )
 
-        let trend = report.todaySummary(in: CodingUsageDateScope(now: now, calendar: calendar))
-            .costTrend
+        let trend = presentation.today.costTrend
 
         #expect(trend.percent == 50)
         #expect(trend.direction == .up)
     }
 
     @Test("shows only enabled agents in stable order, filling a missing one with a zero grid")
-    func showsOnlyEnabledAgentsInStableOrder() {
+    func showsOnlyEnabledAgentsInStableOrder() throws {
         let now = date(2026, 6, 18, 12)
-        let report = CodingUsageReport(
-            state: .loaded(generatedAt: now),
-            agents: [
-                CodingUsageAgentSummary(agent: .claude, dailyCounts: [day(2026, 6, 18, 1)]),
-                CodingUsageAgentSummary(agent: .codex, dailyCounts: [day(2026, 6, 18, 2)]),
-            ]
-        ).showingAgents([.pi, .claude])
+        let presentation = CodingUsagePresentation(
+            report: CodingUsageReport(
+                state: .loaded(generatedAt: now),
+                agents: [
+                    CodingUsageAgentSummary(agent: .claude, dailyCounts: [day(2026, 6, 18, 1)]),
+                    CodingUsageAgentSummary(agent: .codex, dailyCounts: [day(2026, 6, 18, 2)]),
+                ]
+            ),
+            scope: CodingUsageDateScope(now: now, calendar: gregorianUTC()),
+            enabledAgents: [.pi, .claude]
+        )
 
-        #expect(report.state == .loaded(generatedAt: now))
-        #expect(report.agents.map(\.agent) == [.claude, .pi])
-        #expect(report.agents[0].totalCounts.costUSD == 1)
-        #expect(report.agents[1].dailyCounts.map(\.date) == [date(2026, 6, 18)])
-        #expect(!report.agents[1].totalCounts.hasUsage)
+        let claude = try #require(presentation.sections.first)
+        let pi = try #require(presentation.sections.last)
+
+        #expect(!presentation.isLoading)
+        #expect(presentation.sections.map(\.agent) == [.claude, .pi])
+        #expect(claude.periodTotals.last?.counts.costUSD == 1)
+        #expect(pi.chartDays.map(\.date) == [date(2026, 6, 18)])
+        #expect(pi.periodTotals.allSatisfy { !$0.counts.hasUsage })
     }
 
     @Test("formats small costs with four decimals")
     func formatsSmallCostsWithFourDecimals() {
-        #expect(formatCodingUsageCost(0.0042) == "$0.0042")
+        #expect(CodingUsageCostFormat().format(0.0042) == "$0.0042")
+    }
+
+    @Test("formats usage day in the supplied local time zone")
+    func formatsUsageDayInSuppliedLocalTimeZone() {
+        let timeZone = TimeZone(secondsFromGMT: 9 * 60 * 60)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let localMidnight = calendar.date(
+            from: DateComponents(timeZone: timeZone, year: 2026, month: 6, day: 18)
+        )!
+
+        #expect(CodingUsageDayFormat(timeZone: timeZone).format(localMidnight) == "2026-06-18")
     }
 
     @Test("formats token counts with compact units")
     func formatsTokenCountsWithCompactUnits() {
-        #expect(formatCodingUsageTokens(999) == "999.0 tokens")
-        #expect(formatCodingUsageTokens(1_200) == "1.2K tokens")
-        #expect(formatCodingUsageTokens(999_950) == "1.0M tokens")
-        #expect(formatCodingUsageTokens(12_300_000_000) == "12.3B tokens")
-        #expect(formatCodingUsageTokens(1_200_000_000_000) == "1.2T tokens")
+        #expect(CodingUsageTokenFormat().format(999) == "999.0 tokens")
+        #expect(CodingUsageTokenFormat().format(1_200) == "1.2K tokens")
+        #expect(CodingUsageTokenFormat().format(999_950) == "1.0M tokens")
+        #expect(CodingUsageTokenFormat().format(12_300_000_000) == "12.3B tokens")
+        #expect(CodingUsageTokenFormat().format(1_200_000_000_000) == "1.2T tokens")
     }
 
     @Test("token unit promotes to the next unit when rounding crosses a thousand")
     func tokenUnitPromotionBoundaries() {
-        #expect(formatCodingUsageTokens(999_949) == "999.9K tokens")
-        #expect(formatCodingUsageTokens(999_950) == "1.0M tokens")
-        #expect(formatCodingUsageTokens(999_949_999) == "999.9M tokens")
-        #expect(formatCodingUsageTokens(999_950_000) == "1.0B tokens")
+        #expect(CodingUsageTokenFormat().format(999_949) == "999.9K tokens")
+        #expect(CodingUsageTokenFormat().format(999_950) == "1.0M tokens")
+        #expect(CodingUsageTokenFormat().format(999_949_999) == "999.9M tokens")
+        #expect(CodingUsageTokenFormat().format(999_950_000) == "1.0B tokens")
     }
 
     @Test("formats cost trend percent")
     func formatsCostTrendPercent() {
         #expect(
-            formatCodingUsageCostTrendPercent(
+            CodingUsageCostTrendPercentFormat().format(
                 CodingUsageCostTrend(currentCostUSD: 120, previousCostUSD: 100)) == "+20.0%")
         #expect(
-            formatCodingUsageCostTrendPercent(
+            CodingUsageCostTrendPercentFormat().format(
                 CodingUsageCostTrend(currentCostUSD: 95, previousCostUSD: 100)) == "-5.0%")
         #expect(
-            formatCodingUsageCostTrendPercent(
+            CodingUsageCostTrendPercentFormat().format(
                 CodingUsageCostTrend(currentCostUSD: 0, previousCostUSD: 0)) == "0.0%")
         #expect(
-            formatCodingUsageCostTrendPercent(
+            CodingUsageCostTrendPercentFormat().format(
                 CodingUsageCostTrend(currentCostUSD: 100, previousCostUSD: 0)) == "+100.0%")
     }
 
@@ -160,7 +195,7 @@ struct CodingUsageSummaryTests {
         #expect(trend.percent == 0)
         #expect(trend.percent.sign == .plus)
         #expect(trend.direction == .flat)
-        #expect(formatCodingUsageCostTrendPercent(trend) == "0.0%")
+        #expect(CodingUsageCostTrendPercentFormat().format(trend) == "0.0%")
     }
 
     @Test("placeholder builds a full thirty day zero grid per agent")
