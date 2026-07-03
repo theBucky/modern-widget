@@ -1,5 +1,8 @@
 import Foundation
 
+/// `Record` must encode as a keyed object: its fields flatten into the same JSON object
+/// as the day fields to preserve the flat on-disk shape, so a single-value or unkeyed
+/// record would fail at encode or read back as malformed.
 struct LocalDayJournal<Record: Codable & Sendable>: Sendable {
     let storageKey: String
 
