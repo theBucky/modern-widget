@@ -3,15 +3,19 @@ import SwiftUI
 struct SettingsPaneView: View {
     @Bindable var store: CodingUsageStore
 
-    @Bindable private var launchAtLoginManager = LaunchAtLoginManager.shared
-    private let updaterManager = UpdaterManager.shared
+    @Environment(LaunchAtLoginManager.self) private var launchAtLoginManager
+    @Environment(UpdaterManager.self) private var updaterManager
 
     var body: some View {
+        @Bindable var loginManager = launchAtLoginManager
+
         Form {
             Section("Coding Usage") {
                 ForEach(CodingUsageAgent.allCases, id: \.self) { agent in
-                    Toggle(agent.title, isOn: $store[agentEnabled: agent])
-                        .toggleStyle(.switch)
+                    Toggle(isOn: $store[agentEnabled: agent]) {
+                        Text(agent.title)
+                    }
+                    .toggleStyle(.switch)
                 }
 
                 Picker("Refresh Interval", selection: $store.refreshInterval) {
@@ -23,9 +27,9 @@ struct SettingsPaneView: View {
             }
 
             Section("System") {
-                Toggle("Launch at Login", isOn: $launchAtLoginManager.launchAtLogin)
+                Toggle("Launch at Login", isOn: $loginManager.launchAtLogin)
                     .toggleStyle(.switch)
-                    .disabled(!launchAtLoginManager.canChange)
+                    .disabled(!loginManager.canChange)
 
                 LabeledContent("Build", value: Self.buildVersion)
 

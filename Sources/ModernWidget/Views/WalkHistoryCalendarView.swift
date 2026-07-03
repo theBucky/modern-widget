@@ -6,6 +6,8 @@ struct WalkHistoryCalendarView: View {
     @State private var visibleMonth = HistoryRetention.currentMonth()
 
     var body: some View {
+        // Rebuilt per evaluation on purpose: caching the grid desyncs it from the
+        // weekday header when the system locale or first weekday changes.
         let month = WalkHistoryMonth(containing: visibleMonth)
 
         VStack(spacing: PanelLayout.sectionSpacing) {

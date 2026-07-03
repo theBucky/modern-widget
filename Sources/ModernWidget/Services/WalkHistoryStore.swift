@@ -4,28 +4,31 @@ import Observation
 @MainActor
 @Observable
 final class WalkHistoryStore {
-    private static let storageKey = "walkHistory"
+    private static let journal = LocalDayJournal<LocalDayJournalCountRecord>(
+        storageKey: "walkHistory",
+        isPersistent: { $0.count > 0 },
+        merge: { existing, new in existing.count += new.count }
+    )
 
     private var countsByDay: [LocalDay: Int]
 
     @ObservationIgnored
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, now: Date = .now) {
         self.defaults = defaults
-        let loaded = Self.load(from: defaults)
-        var counts = loaded.counts
-        let pruned = Self.pruneOldEntries(in: &counts)
-        self.countsByDay = counts
+        let loaded = Self.journal.load(from: defaults, now: now)
+        self.countsByDay = loaded.records.mapValues(\.count)
 
-        if loaded.needsSave || pruned {
+        if loaded.needsSave {
             save()
         }
     }
 
-    func recordWalk(_ date: Date = .now) {
+    func recordWalk(_ date: Date = .now, now: Date = .now) {
         countsByDay[LocalDay(date: date), default: 0] += 1
-        Self.pruneOldEntries(in: &countsByDay)
+        let cutoff = HistoryRetention.earliestRetainedDay(now: now)
+        countsByDay = countsByDay.filter { $0.key >= cutoff }
         save()
     }
 
@@ -33,55 +36,8 @@ final class WalkHistoryStore {
         countsByDay[LocalDay(date: date)] ?? 0
     }
 
-    private static func load(from defaults: UserDefaults) -> (
-        counts: [LocalDay: Int], needsSave: Bool
-    ) {
-        guard let data = defaults.data(forKey: storageKey) else {
-            return (counts: [:], needsSave: false)
-        }
-
-        if let stored = try? JSONDecoder().decode([StoredWalkDay].self, from: data) {
-            var counts: [LocalDay: Int] = [:]
-            var droppedInvalid = false
-            for record in stored {
-                guard record.count > 0,
-                    let day = LocalDay(year: record.year, month: record.month, day: record.day)
-                else {
-                    droppedInvalid = true
-                    continue
-                }
-                counts[day, default: 0] += record.count
-            }
-            return (counts: counts, needsSave: droppedInvalid)
-        }
-
-        return (counts: [:], needsSave: false)
-    }
-
     private func save() {
-        let records =
-            countsByDay
-            .sorted { $0.key < $1.key }
-            .map {
-                StoredWalkDay(
-                    year: $0.key.year, month: $0.key.month, day: $0.key.day, count: $0.value)
-            }
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        defaults.set(data, forKey: Self.storageKey)
+        let records = countsByDay.mapValues { LocalDayJournalCountRecord(count: $0) }
+        Self.journal.save(records, to: defaults)
     }
-
-    @discardableResult
-    private static func pruneOldEntries(in counts: inout [LocalDay: Int]) -> Bool {
-        let previousCount = counts.count
-        let cutoff = HistoryRetention.earliestRetainedDay()
-        counts = counts.filter { $0.key >= cutoff }
-        return counts.count != previousCount
-    }
-}
-
-private struct StoredWalkDay: Codable {
-    let year: Int
-    let month: Int
-    let day: Int
-    let count: Int
 }

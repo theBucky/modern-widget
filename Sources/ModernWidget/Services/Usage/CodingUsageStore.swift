@@ -8,7 +8,7 @@ enum CodingUsageRefreshInterval: Int, CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    var title: String {
+    var title: LocalizedStringResource {
         switch self {
         case .tenMinutes:
             return "10 min"
@@ -39,15 +39,23 @@ final class CodingUsageStore {
     private var refreshTask: Task<Void, Never>?
     @ObservationIgnored
     private var lastFingerprint: CodingUsageFingerprint?
+    @ObservationIgnored
+    private var scope: CodingUsageDateScope
+    @ObservationIgnored
+    private var report: CodingUsageReport
 
-    private(set) var report: CodingUsageReport
+    private(set) var presentation: CodingUsagePresentation
 
     var enabledAgents: Set<CodingUsageAgent> {
         didSet {
             for agent in CodingUsageAgent.allCases {
                 defaults.set(enabledAgents.contains(agent), forKey: DefaultsKey.enabledAgent(agent))
             }
-            report = report.showingAgents(enabledAgents)
+            presentation = CodingUsagePresentation(
+                report: report,
+                scope: scope,
+                enabledAgents: enabledAgents
+            )
             restartRefresh()
         }
     }
@@ -83,9 +91,17 @@ final class CodingUsageStore {
             CodingUsageRefreshInterval(
                 rawValue: defaults.integer(forKey: DefaultsKey.refreshInterval))
             ?? .tenMinutes
-        self.report = CodingUsageReport.placeholder(
-            scope: CodingUsageDateScope(),
+        let scope = CodingUsageDateScope()
+        let report = CodingUsageReport.placeholder(
+            scope: scope,
             agents: CodingUsageAgent.ordered(storedEnabledAgents)
+        )
+        self.scope = scope
+        self.report = report
+        self.presentation = CodingUsagePresentation(
+            report: report,
+            scope: scope,
+            enabledAgents: storedEnabledAgents
         )
         startRefreshTask()
     }
@@ -128,14 +144,22 @@ final class CodingUsageStore {
             return
         }
 
-        let report = await Task.detached(priority: .utility) {
-            loader.loadReport(scan: scan)
+        let result = await Task.detached(priority: .utility) {
+            let report = loader.loadReport(scan: scan)
+            let presentation = CodingUsagePresentation(
+                report: report,
+                scope: scan.scope,
+                enabledAgents: enabledAgents
+            )
+            return (report: report, presentation: presentation)
         }.value
 
         if Task.isCancelled {
             return
         }
         lastFingerprint = scan.fingerprint
-        self.report = report
+        self.scope = scan.scope
+        self.report = result.report
+        self.presentation = result.presentation
     }
 }

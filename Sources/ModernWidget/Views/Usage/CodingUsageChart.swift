@@ -3,9 +3,9 @@ import SwiftUI
 
 struct CodingUsageChart: View {
     let days: [CodingUsageDaySummary]
-    let isLoading: Bool
     let barColor: Color
 
+    @Environment(\.redactionReasons) private var redactionReasons
     @State private var selectedDate: Date?
 
     var body: some View {
@@ -16,7 +16,7 @@ struct CodingUsageChart: View {
                     y: .value("Cost", barHeightValue(for: day)),
                     width: .ratio(0.7)
                 )
-                .foregroundStyle(isLoading ? Color.secondary.opacity(0.18) : barColor)
+                .foregroundStyle(isRedacted ? Color.secondary.opacity(0.18) : barColor)
             }
 
             if let selectedDay {
@@ -35,10 +35,14 @@ struct CodingUsageChart: View {
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .chartLegend(.hidden)
-        .chartXSelection(value: $selectedDate)
+        .chartXSelection(value: isRedacted ? .constant(nil) : $selectedDate)
         .chartYScale(domain: 0...chartUpperBound)
         .frame(height: 58)
         .frame(maxWidth: .infinity)
+    }
+
+    private var isRedacted: Bool {
+        redactionReasons.contains(.placeholder)
     }
 
     private var maxCost: Double {
@@ -50,14 +54,14 @@ struct CodingUsageChart: View {
     }
 
     private var chartUpperBound: Double {
-        if isLoading {
+        if isRedacted {
             return 1
         }
         return max(maxCost, minimumVisibleCost)
     }
 
     private func barHeightValue(for day: CodingUsageDaySummary) -> Double {
-        if isLoading {
+        if isRedacted {
             return 1
         }
         guard day.counts.hasCost else {
@@ -67,20 +71,17 @@ struct CodingUsageChart: View {
     }
 
     private var selectedDay: CodingUsageDaySummary? {
-        guard let selectedDate else {
+        guard !isRedacted, let selectedDate else {
             return nil
         }
-        return days.first { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
+        return days.first { LocalDay.calendar.isDate($0.date, inSameDayAs: selectedDate) }
     }
 
     private func chartHoverAnnotation(_ day: CodingUsageDaySummary) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
                 .foregroundStyle(.primary)
-            CodingUsageValueText(
-                counts: day.counts,
-                isLoading: isLoading
-            )
+            CodingUsageValueText(counts: day.counts)
         }
         .font(.caption2.monospacedDigit())
         .padding(.horizontal, 5)

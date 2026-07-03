@@ -2,11 +2,10 @@ import SwiftUI
 
 struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
-    let isLoading: Bool
 
     var body: some View {
         HStack(alignment: .bottom) {
-            CodingUsageCostTrendGroup(summary: summary, isLoading: isLoading)
+            CodingUsageCostTrendGroup(summary: summary)
 
             Spacer(minLength: 16)
 
@@ -18,27 +17,16 @@ struct CodingUsageTodayTotalSection: View {
 
     private var dateTokenGroup: some View {
         VStack(alignment: .trailing, spacing: 2) {
-            Text(dateText)
-            Text(formatCodingUsageTokens(summary.counts.totalTokens))
+            Text(summary.date, format: .codingUsageDay)
+            Text(summary.counts.totalTokens, format: .codingUsageTokens)
         }
         .font(.caption.monospacedDigit().weight(.semibold))
         .foregroundStyle(.secondary)
-    }
-
-    private var dateText: String {
-        let calendar = Calendar.current
-        return String(
-            format: "%04d-%02d-%02d",
-            calendar.component(.year, from: summary.date),
-            calendar.component(.month, from: summary.date),
-            calendar.component(.day, from: summary.date)
-        )
     }
 }
 
 private struct CodingUsageCostTrendGroup: View {
     let summary: CodingUsageTodaySummary
-    let isLoading: Bool
 
     var body: some View {
         HStack(alignment: .trendBadgeTop, spacing: PanelLayout.contentSpacing) {
@@ -49,7 +37,7 @@ private struct CodingUsageCostTrendGroup: View {
     }
 
     private var totalCostText: some View {
-        Text(isLoading ? "loading" : formatCodingUsageCost(summary.counts.costUSD))
+        Text(summary.counts.costUSD, format: .codingUsageCost)
             .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
@@ -60,9 +48,6 @@ private struct CodingUsageCostTrendGroup: View {
     }
 
     private var totalCostStyle: AnyShapeStyle {
-        if isLoading {
-            return AnyShapeStyle(.secondary)
-        }
         if !summary.counts.hasUsage {
             return AnyShapeStyle(.tertiary)
         }
@@ -71,7 +56,7 @@ private struct CodingUsageCostTrendGroup: View {
     }
 
     private var trendBadge: some View {
-        Text(isLoading ? "loading" : formatCodingUsageCostTrendPercent(summary.costTrend))
+        Text(summary.costTrend, format: .codingUsageCostTrendPercent)
             .font(.caption.monospacedDigit().weight(.regular))
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
@@ -82,10 +67,6 @@ private struct CodingUsageCostTrendGroup: View {
     }
 
     private var trendColor: Color {
-        if isLoading {
-            return .secondary
-        }
-
         switch summary.costTrend.direction {
         case .up:
             return PanelColor.statusGreen

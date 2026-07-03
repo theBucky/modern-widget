@@ -18,6 +18,8 @@ struct ModernWidgetApp: App {
                 dailySupplementStore: dailySupplementStore,
                 usageStore: usageStore
             )
+            .environment(UpdaterManager.shared)
+            .environment(LaunchAtLoginManager.shared)
         } label: {
             MenuBarIconView(engine: engine)
                 .accessibilityLabel("ModernWidget")
