@@ -132,6 +132,17 @@ struct CodingUsageSummaryTests {
         #expect(CodingUsageCostFormat().format(0.0042) == "$0.0042")
     }
 
+    @Test("caps cost precision so the amount stays within six characters")
+    func capsCostPrecisionAtSixCharacters() {
+        #expect(CodingUsageCostFormat().format(12.5) == "$12.50")
+        #expect(CodingUsageCostFormat().format(99.994) == "$99.99")
+        #expect(CodingUsageCostFormat().format(99.996) == "$100.0")
+        #expect(CodingUsageCostFormat().format(128.53) == "$128.5")
+        #expect(CodingUsageCostFormat().format(999.94) == "$999.9")
+        #expect(CodingUsageCostFormat().format(999.96) == "$1000")
+        #expect(CodingUsageCostFormat().format(1024.53) == "$1025")
+    }
+
     @Test("formats usage day in the supplied local time zone")
     func formatsUsageDayInSuppliedLocalTimeZone() {
         let timeZone = TimeZone(secondsFromGMT: 9 * 60 * 60)!

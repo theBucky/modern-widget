@@ -24,7 +24,18 @@ struct CodingUsageCostFormat: FormatStyle, Codable, Hashable, Sendable {
         if value < 0.01 {
             return codingUsageFormat("$%.4f", value)
         }
-        return codingUsageFormat("$%.2f", value)
+
+        // Narrowest precision that keeps the amount within six characters, so the 32pt
+        // cost text fits the detail pane without scaling or truncation.
+        let cents = codingUsageFormat("$%.2f", value)
+        if cents.count <= 6 {
+            return cents
+        }
+        let tenths = codingUsageFormat("$%.1f", value)
+        if tenths.count <= 6 {
+            return tenths
+        }
+        return codingUsageFormat("$%.0f", value)
     }
 }
 
