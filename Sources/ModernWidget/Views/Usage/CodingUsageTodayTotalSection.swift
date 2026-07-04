@@ -97,36 +97,44 @@ private struct CodingUsageCostTrendGroup: View {
     let summary: CodingUsageTodaySummary
 
     var body: some View {
-        HStack(alignment: .trendBadgeTop, spacing: PanelLayout.contentSpacing) {
+        HStack(alignment: .top, spacing: PanelLayout.contentSpacing) {
             totalCostText
-                .alignmentGuide(.trendBadgeTop) { $0.height * trendBadgeTopInsetRatio }
             trendBadge
+                .padding(.top, 7)  // optical inset against the 32pt cost line
         }
     }
 
     /// A gradient `foregroundStyle` composites the text within its tight layout bounds, which
-    /// hard-clips the numeric roll blur. A hidden copy keeps the layout while the visible copy
-    /// masks an oversized fill, giving the transition overdraw room on every side.
+    /// hard-clips the numeric roll blur, so the visible copy masks a fill oversized by
+    /// `costTextOverdraw` while a hidden copy keeps the layout. `minimumScaleFactor` engages
+    /// transiently while the roll interpolates width, so a hidden zero pins the composite to
+    /// the full line height and the mask copy is proposed the composite width to scale in
+    /// lockstep with the layout copy.
     private var totalCostText: some View {
-        animatedCostText
-            .opacity(0)
-            .overlay {
-                Rectangle()
-                    .fill(totalCostStyle)
-                    .padding(-costTextOverdraw)
-                    .mask {
-                        animatedCostText
-                            .fixedSize()
-                    }
-            }
-            .accessibilityRepresentation {
-                Text(summary.counts.costUSD, format: .codingUsageCost)
-            }
+        ZStack {
+            Text(verbatim: "0")
+                .font(costFont)
+                .hidden()
+            animatedCostText
+                .opacity(0)
+        }
+        .overlay {
+            Rectangle()
+                .fill(totalCostStyle)
+                .mask {
+                    animatedCostText
+                        .padding(costTextOverdraw)
+                }
+                .padding(-costTextOverdraw)
+        }
+        .accessibilityRepresentation {
+            Text(summary.counts.costUSD, format: .codingUsageCost)
+        }
     }
 
     private var animatedCostText: some View {
         Text(summary.counts.costUSD, format: .codingUsageCost)
-            .font(.system(size: 32, weight: .semibold, design: .rounded))
+            .font(costFont)
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.9)
@@ -165,21 +173,7 @@ private struct CodingUsageCostTrendGroup: View {
     }
 }
 
-/// Optical top inset tuned against the 32pt cost text, expressed as a fraction of the rendered
-/// line height so it tracks `minimumScaleFactor` shrinkage.
-private let trendBadgeTopInsetRatio: CGFloat = 7.0 / 38.0
+private let costFont: Font = .system(size: 32, weight: .semibold, design: .rounded)
 
 /// Extra render room around the cost text so the numeric roll blur never touches the fill edge.
 private let costTextOverdraw: CGFloat = 12
-
-extension VerticalAlignment {
-    private enum TrendBadgeTop: AlignmentID {
-        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat {
-            dimensions[.top]
-        }
-    }
-
-    /// Anchors the trend badge top partway down the cost text so the two stay optically
-    /// coupled as the cost scales.
-    fileprivate static let trendBadgeTop = VerticalAlignment(TrendBadgeTop.self)
-}
