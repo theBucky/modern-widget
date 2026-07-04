@@ -104,13 +104,32 @@ private struct CodingUsageCostTrendGroup: View {
         }
     }
 
+    /// A gradient `foregroundStyle` composites the text within its tight layout bounds, which
+    /// hard-clips the numeric roll blur. A hidden copy keeps the layout while the visible copy
+    /// masks an oversized fill, giving the transition overdraw room on every side.
     private var totalCostText: some View {
+        animatedCostText
+            .opacity(0)
+            .overlay {
+                Rectangle()
+                    .fill(totalCostStyle)
+                    .padding(-costTextOverdraw)
+                    .mask {
+                        animatedCostText
+                            .fixedSize()
+                    }
+            }
+            .accessibilityRepresentation {
+                Text(summary.counts.costUSD, format: .codingUsageCost)
+            }
+    }
+
+    private var animatedCostText: some View {
         Text(summary.counts.costUSD, format: .codingUsageCost)
             .font(.system(size: 32, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.9)
-            .foregroundStyle(totalCostStyle)
             .contentTransition(.numericText(value: summary.counts.costUSD))
             .animation(.easeOut(duration: 0.5), value: summary.counts.costUSD)
     }
@@ -149,6 +168,9 @@ private struct CodingUsageCostTrendGroup: View {
 /// Optical top inset tuned against the 32pt cost text, expressed as a fraction of the rendered
 /// line height so it tracks `minimumScaleFactor` shrinkage.
 private let trendBadgeTopInsetRatio: CGFloat = 7.0 / 38.0
+
+/// Extra render room around the cost text so the numeric roll blur never touches the fill edge.
+private let costTextOverdraw: CGFloat = 12
 
 extension VerticalAlignment {
     private enum TrendBadgeTop: AlignmentID {
