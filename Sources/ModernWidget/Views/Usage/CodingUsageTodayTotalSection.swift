@@ -3,19 +3,40 @@ import SwiftUI
 struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
 
+    #if DEBUG
+        @State private var replayToken = 0
+        @State private var replaySummary: CodingUsageTodaySummary?
+    #endif
+
     var body: some View {
+        #if DEBUG
+            let visibleSummary = replaySummary ?? summary
+        #else
+            let visibleSummary = summary
+        #endif
+
         HStack(alignment: .bottom) {
-            CodingUsageCostTrendGroup(summary: summary)
+            CodingUsageCostTrendGroup(summary: visibleSummary)
 
             Spacer(minLength: 16)
 
-            dateTokenGroup
+            trailingGroup(summary: visibleSummary)
                 .layoutPriority(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var dateTokenGroup: some View {
+    private func trailingGroup(summary: CodingUsageTodaySummary) -> some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            #if DEBUG
+                replayButton
+            #endif
+
+            dateTokenGroup(summary: summary)
+        }
+    }
+
+    private func dateTokenGroup(summary: CodingUsageTodaySummary) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
             Text(summary.date, format: .codingUsageDay)
             Text(summary.counts.totalTokens, format: .codingUsageTokens)
@@ -23,6 +44,53 @@ struct CodingUsageTodayTotalSection: View {
         .font(.caption.monospacedDigit().weight(.semibold))
         .foregroundStyle(.secondary)
     }
+
+    #if DEBUG
+        private var replayButton: some View {
+            Button {
+                replaySummaryAnimation()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Replay summary animation")
+            .accessibilityLabel("Replay summary animation")
+        }
+
+        private func replaySummaryAnimation() {
+            replayToken += 1
+            let token = replayToken
+            replaySummary = Self.replayStartSummary(for: summary)
+
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard token == replayToken else {
+                    return
+                }
+
+                replaySummary = nil
+            }
+        }
+
+        private static func replayStartSummary(for summary: CodingUsageTodaySummary)
+            -> CodingUsageTodaySummary
+        {
+            var counts = summary.counts
+            let targetCostUSD = max(summary.counts.costUSD, 0.15)
+            counts.costUSD = max(targetCostUSD * 0.35, 0.01)
+            counts.totalTokens = max(summary.counts.totalTokens / 3, 1)
+
+            return CodingUsageTodaySummary(
+                date: summary.date,
+                counts: counts,
+                costTrend: CodingUsageCostTrend(
+                    currentCostUSD: counts.costUSD,
+                    previousCostUSD: counts.costUSD * 2
+                )
+            )
+        }
+    #endif
 }
 
 private struct CodingUsageCostTrendGroup: View {
