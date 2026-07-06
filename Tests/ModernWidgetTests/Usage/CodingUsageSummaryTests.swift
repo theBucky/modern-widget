@@ -25,7 +25,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: scope,
-            enabledAgents: [.claude]
+            activeAgents: [.claude]
         )
 
         let totals = try #require(presentation.sections.first?.periodTotals)
@@ -64,7 +64,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: CodingUsageDateScope(now: now, calendar: calendar),
-            enabledAgents: Set(CodingUsageAgent.allCases)
+            activeAgents: Set(CodingUsageAgent.allCases)
         )
 
         let counts = presentation.today.counts
@@ -93,7 +93,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: CodingUsageDateScope(now: now, calendar: calendar),
-            enabledAgents: Set(CodingUsageAgent.allCases)
+            activeAgents: Set(CodingUsageAgent.allCases)
         )
 
         let trend = presentation.today.costTrend
@@ -115,7 +115,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: scope,
-            enabledAgents: [.pi, .claude]
+            activeAgents: [.pi, .claude]
         )
 
         let claude = try #require(presentation.sections.first)

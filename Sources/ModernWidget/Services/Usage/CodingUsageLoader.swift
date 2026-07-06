@@ -29,14 +29,26 @@ struct CodingUsageLoader: Sendable {
     }
 
     func installedAgents() -> Set<CodingUsageAgent> {
+        installedAgents(
+            claudeDirectories: claudeConfigDirectories(),
+            codexHomes: codexHomeDirectories(),
+            piDirectories: piUsageDirectories()
+        )
+    }
+
+    private func installedAgents(
+        claudeDirectories: [URL],
+        codexHomes: [URL],
+        piDirectories: [URL]
+    ) -> Set<CodingUsageAgent> {
         var installed: Set<CodingUsageAgent> = []
-        if !claudeConfigDirectories().isEmpty {
+        if !claudeDirectories.isEmpty {
             installed.insert(.claude)
         }
-        if !codexHomeDirectories().isEmpty {
+        if !codexHomes.isEmpty {
             installed.insert(.codex)
         }
-        if !piUsageDirectories().isEmpty {
+        if !piDirectories.isEmpty {
             installed.insert(.pi)
         }
         return installed
@@ -46,12 +58,24 @@ struct CodingUsageLoader: Sendable {
         scope: CodingUsageDateScope,
         enabledAgents: Set<CodingUsageAgent> = Set(CodingUsageAgent.allCases)
     ) -> CodingUsageScan {
-        let installedAgents = installedAgents()
+        let claudeDirectories = claudeConfigDirectories()
+        let codexHomes = codexHomeDirectories()
+        let piDirectories = piUsageDirectories()
+        let installedAgents = installedAgents(
+            claudeDirectories: claudeDirectories,
+            codexHomes: codexHomes,
+            piDirectories: piDirectories
+        )
         let activeAgents = enabledAgents.intersection(installedAgents)
-        let claudeFiles = activeAgents.contains(.claude) ? claudeUsageFiles(scope: scope) : []
-        let codexSources = activeAgents.contains(.codex) ? codexUsageSources(scope: scope) : []
-        let piFiles = activeAgents.contains(.pi) ? piUsageFiles(scope: scope) : []
-        let extraCodexFiles = activeAgents.contains(.codex) ? codexFingerprintFiles() : []
+        let claudeFiles =
+            activeAgents.contains(.claude)
+            ? claudeUsageFiles(in: claudeDirectories, scope: scope) : []
+        let codexSources =
+            activeAgents.contains(.codex) ? codexUsageSources(homes: codexHomes, scope: scope) : []
+        let piFiles =
+            activeAgents.contains(.pi) ? piUsageFiles(in: piDirectories, scope: scope) : []
+        let extraCodexFiles =
+            activeAgents.contains(.codex) ? codexFingerprintFiles(homes: codexHomes) : []
         let files =
             ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
             + extraCodexFiles.compactMap(usageFileFingerprint))

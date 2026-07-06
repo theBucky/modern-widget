@@ -59,8 +59,8 @@ extension CodingUsageLoader {
         }
     }
 
-    func claudeUsageFiles(scope: CodingUsageDateScope) -> [CodingUsageFile] {
-        claudeConfigDirectories().flatMap {
+    func claudeUsageFiles(in directories: [URL], scope: CodingUsageDateScope) -> [CodingUsageFile] {
+        directories.flatMap {
             usageFiles(
                 in: $0.appendingPathComponent("projects"), modifiedSince: scope.history.start)
         }

@@ -55,7 +55,7 @@ final class CodingUsageStore {
             presentation = CodingUsagePresentation(
                 report: report,
                 scope: scope,
-                enabledAgents: activeAgents
+                activeAgents: activeAgents
             )
             restartRefresh()
         }
@@ -113,7 +113,7 @@ final class CodingUsageStore {
         self.presentation = CodingUsagePresentation(
             report: report,
             scope: scope,
-            enabledAgents: activeAgents
+            activeAgents: activeAgents
         )
         startRefreshTask()
     }
@@ -167,7 +167,7 @@ final class CodingUsageStore {
             let presentation = CodingUsagePresentation(
                 report: report,
                 scope: scan.scope,
-                enabledAgents: activeAgents
+                activeAgents: activeAgents
             )
             return (report: report, presentation: presentation)
         }.value

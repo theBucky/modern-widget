@@ -17,8 +17,8 @@ extension CodingUsageLoader {
         }
     }
 
-    func piUsageFiles(scope: CodingUsageDateScope) -> [CodingUsageFile] {
-        piUsageDirectories().flatMap {
+    func piUsageFiles(in directories: [URL], scope: CodingUsageDateScope) -> [CodingUsageFile] {
+        directories.flatMap {
             usageFiles(in: $0, modifiedSince: scope.history.start)
         }
     }
