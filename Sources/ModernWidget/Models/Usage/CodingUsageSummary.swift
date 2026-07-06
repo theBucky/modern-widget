@@ -76,12 +76,6 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
             dailyCounts: days.map { CodingUsageDaySummary(date: $0, counts: CodingTokenCounts()) }
         )
     }
-
-    var totalCounts: CodingTokenCounts {
-        dailyCounts.reduce(into: CodingTokenCounts()) { total, day in
-            total.add(day.counts)
-        }
-    }
 }
 
 struct CodingUsageReport: Equatable, Sendable {
@@ -92,12 +86,6 @@ struct CodingUsageReport: Equatable, Sendable {
 
     let state: State
     let agents: [CodingUsageAgentSummary]
-
-    var hasUsage: Bool {
-        agents.contains { summary in
-            summary.dailyCounts.contains { $0.counts.hasUsage }
-        }
-    }
 
     /// Loading placeholder with the same full-grid shape as a loaded report, so the
     /// chart skeleton renders every day and no leaf method has to repair an empty axis.

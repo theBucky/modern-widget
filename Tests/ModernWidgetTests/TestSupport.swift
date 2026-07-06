@@ -29,6 +29,15 @@ func date(
     )!
 }
 
+func makeFixtureRoot(_ name: String) throws -> URL {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "\(name).\(UUID().uuidString)",
+        isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}
+
 func makeDefaults(_ prefix: String = "ModernWidgetTests") -> UserDefaults {
     let suiteName = "\(prefix).\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suiteName)!

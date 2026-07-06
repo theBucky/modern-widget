@@ -2,6 +2,7 @@ import Foundation
 
 struct CodingUsageScan: Sendable {
     let scope: CodingUsageDateScope
+    let installedAgents: Set<CodingUsageAgent>
     let fingerprint: CodingUsageFingerprint
     let claudeFiles: [CodingUsageFile]
     let codexSources: [CodexUsageSource]
@@ -27,21 +28,37 @@ struct CodingUsageLoader: Sendable {
         self.homeDirectory = homeDirectory
     }
 
+    func installedAgents() -> Set<CodingUsageAgent> {
+        var installed: Set<CodingUsageAgent> = []
+        if !claudeConfigDirectories().isEmpty {
+            installed.insert(.claude)
+        }
+        if !codexHomeDirectories().isEmpty {
+            installed.insert(.codex)
+        }
+        if !piUsageDirectories().isEmpty {
+            installed.insert(.pi)
+        }
+        return installed
+    }
+
     func usageScan(
         scope: CodingUsageDateScope,
         enabledAgents: Set<CodingUsageAgent> = Set(CodingUsageAgent.allCases)
     ) -> CodingUsageScan {
-        let claudeFiles = enabledAgents.contains(.claude) ? claudeUsageFiles(scope: scope) : []
-        let codexSources = enabledAgents.contains(.codex) ? codexUsageSources(scope: scope) : []
-        let piFiles = enabledAgents.contains(.pi) ? piUsageFiles(scope: scope) : []
-        let extraCodexFiles = enabledAgents.contains(.codex) ? codexFingerprintFiles() : []
+        let installedAgents = installedAgents()
+        let activeAgents = enabledAgents.intersection(installedAgents)
+        let claudeFiles = activeAgents.contains(.claude) ? claudeUsageFiles(scope: scope) : []
+        let codexSources = activeAgents.contains(.codex) ? codexUsageSources(scope: scope) : []
+        let piFiles = activeAgents.contains(.pi) ? piUsageFiles(scope: scope) : []
+        let extraCodexFiles = activeAgents.contains(.codex) ? codexFingerprintFiles() : []
         let files =
             ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
             + extraCodexFiles.compactMap(usageFileFingerprint))
             .uniqued(by: \.path)
             .sorted { $0.path < $1.path }
         let fingerprint = CodingUsageFingerprint(
-            agents: CodingUsageAgent.ordered(enabledAgents),
+            agents: CodingUsageAgent.ordered(activeAgents),
             historyStart: scope.history.start,
             historyEnd: scope.history.end,
             files: files
@@ -49,15 +66,12 @@ struct CodingUsageLoader: Sendable {
 
         return CodingUsageScan(
             scope: scope,
+            installedAgents: installedAgents,
             fingerprint: fingerprint,
             claudeFiles: claudeFiles,
             codexSources: codexSources,
             piFiles: piFiles
         )
-    }
-
-    func loadReport(scope: CodingUsageDateScope) -> CodingUsageReport {
-        loadReport(scan: usageScan(scope: scope))
     }
 
     func loadReport(scan: CodingUsageScan) -> CodingUsageReport {

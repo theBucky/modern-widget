@@ -80,7 +80,7 @@ struct CodingUsagePresentation: Equatable, Sendable {
     ) -> [AgentSection] {
         let summariesByAgent = Dictionary(
             uniqueKeysWithValues: report.agents.map { ($0.agent, $0) })
-        let dayAxis = report.agents.first?.dailyCounts.map(\.date) ?? scope.historyDays
+        let dayAxis = scope.historyDays
 
         return CodingUsageAgent.ordered(enabledAgents).map { agent in
             let summary = summariesByAgent[agent] ?? .zeroed(agent: agent, days: dayAxis)

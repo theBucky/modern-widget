@@ -7,14 +7,13 @@ import Testing
 
 @Suite("Coding usage benchmark")
 struct CodingUsageBenchmarkTests {
-    @Test("measures coding usage startup and refresh paths")
+    @Test(
+        "measures coding usage startup and refresh paths",
+        .enabled(if: ProcessInfo.processInfo.environment["CODING_USAGE_BENCHMARK"] == "1")
+    )
     func measuresCodingUsageStartupAndRefreshPaths() async throws {
         let options = CodingUsageBenchmarkOptions(
             environment: ProcessInfo.processInfo.environment)
-        guard options.isEnabled else {
-            return
-        }
-
         let context = try CodingUsageBenchmarkContext(options: options)
         defer { context.cleanUp() }
 
@@ -74,7 +73,6 @@ struct CodingUsageBenchmarkTests {
 }
 
 private struct CodingUsageBenchmarkOptions {
-    let isEnabled: Bool
     let mode: String
     let iterations: Int
     let warmups: Int
@@ -86,7 +84,6 @@ private struct CodingUsageBenchmarkOptions {
     let maxRefreshP95Milliseconds: Double?
 
     init(environment: [String: String]) {
-        isEnabled = environment["CODING_USAGE_BENCHMARK"] == "1"
         let rawMode = environment["CODING_USAGE_BENCHMARK_MODE"] ?? "real"
         mode = rawMode == "fixture" ? "fixture" : "real"
         iterations = Self.integer(
@@ -158,8 +155,8 @@ private struct CodingUsageBenchmarkContext {
                 isDirectory: true
             )
             let benchmarkScope = CodingUsageDateScope(
-                now: Self.date(2026, 6, 18, 12),
-                calendar: Self.calendar
+                now: date(2026, 6, 18, 12),
+                calendar: gregorianUTC(firstWeekday: 2)
             )
             try CodingUsageBenchmarkFixture.write(
                 root: root,
@@ -182,32 +179,6 @@ private struct CodingUsageBenchmarkContext {
         try? FileManager.default.removeItem(at: temporaryRoot)
     }
 
-    private static let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        calendar.firstWeekday = 2
-        return calendar
-    }()
-
-    fileprivate static func date(
-        _ year: Int,
-        _ month: Int,
-        _ day: Int,
-        _ hour: Int = 0,
-        _ minute: Int = 0,
-        _ second: Int = 0
-    ) -> Date {
-        DateComponents(
-            calendar: calendar,
-            timeZone: calendar.timeZone,
-            year: year,
-            month: month,
-            day: day,
-            hour: hour,
-            minute: minute,
-            second: second
-        ).date!
-    }
 }
 
 private enum CodingUsageBenchmarkFixture {

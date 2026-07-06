@@ -12,10 +12,11 @@ struct SettingsPaneView: View {
         Form {
             Section("Coding Usage") {
                 ForEach(CodingUsageAgent.allCases, id: \.self) { agent in
-                    Toggle(isOn: $store[agentEnabled: agent]) {
+                    Toggle(isOn: $store[agentActive: agent]) {
                         Text(agent.title)
                     }
                     .toggleStyle(.switch)
+                    .disabled(!store.installedAgents.contains(agent))
                 }
 
                 Picker("Refresh Interval", selection: $store.refreshInterval) {

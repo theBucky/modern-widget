@@ -4,12 +4,19 @@ import Testing
 @testable import ModernWidget
 
 @Suite("Coding usage loader")
-struct CodingUsageLoaderTests {
+final class CodingUsageLoaderTests {
+    private let home: URL
+
+    init() throws {
+        home = try makeFixtureRoot("CodingUsageLoaderTests")
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: home)
+    }
+
     @Test("loads claude usage for thirty day history")
     func loadsClaudeUsageForThirtyDayHistory() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-Claude")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-parent","message":{"id":"msg-parent","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":10,"cache_creation_input_tokens":5,"cache_read_input_tokens":20}}}"#,
@@ -22,7 +29,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.totalTokens == 152)
         #expect(abs(claude.totalCounts.costUSD - 0.00062055) < 0.00000001)
@@ -37,9 +44,6 @@ struct CodingUsageLoaderTests {
 
     @Test("filters claude usage before deduping duplicate messages")
     func filtersClaudeUsageBeforeDedupingDuplicateMessages() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeDedupeWindow")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-05-19T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":999,"output_tokens":1}}}"#,
@@ -51,7 +55,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(dayCounts(claude, 2026, 6, 18).inputTokens == 10)
         #expect(dayCounts(claude, 2026, 6, 18).outputTokens == 5)
@@ -60,9 +64,6 @@ struct CodingUsageLoaderTests {
 
     @Test("counts only claude records with timestamp, message, and usage")
     func countsOnlyClaudeRecordsWithTimestampMessageAndUsage() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeRequiredFields")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"message":{"id":"msg-no-timestamp","model":"claude-sonnet-4-20250514","usage":{"input_tokens":50,"output_tokens":5}}}"#,
@@ -76,7 +77,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.inputTokens == 10)
         #expect(claude.totalCounts.outputTokens == 2)
@@ -85,9 +86,6 @@ struct CodingUsageLoaderTests {
 
     @Test("prefers claude cache creation object over flat fallback")
     func prefersClaudeCacheCreationObjectOverFlatFallback() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeCacheObject")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":999,"cache_creation":{"ephemeral_5m_input_tokens":10,"ephemeral_1h_input_tokens":6},"cache_read_input_tokens":5}}}"#,
             to: ".claude/projects/project-a/session-a/chat.jsonl",
@@ -96,7 +94,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.cacheCreationTokens == 16)
         #expect(claude.totalCounts.totalTokens == 141)
@@ -105,9 +103,6 @@ struct CodingUsageLoaderTests {
 
     @Test("prices flat claude cache creation as five minute only")
     func pricesFlatClaudeCacheCreationAsFiveMinuteOnly() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeFlatCache")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":0,"output_tokens":0,"cache_creation_input_tokens":40,"cache_read_input_tokens":0}}}"#,
             to: ".claude/projects/project-a/session-a/chat.jsonl",
@@ -116,7 +111,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.cacheCreationTokens == 40)
         #expect(abs(claude.totalCounts.costUSD - 0.00015) < 0.00000001)
@@ -124,9 +119,6 @@ struct CodingUsageLoaderTests {
 
     @Test("keeps non-sidechain claude record over sidechain duplicate")
     func keepsNonSidechainClaudeRecordOverSidechainDuplicate() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeNonSidechainWins")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-main","message":{"id":"msg-z","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
@@ -138,16 +130,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.totalTokens == 11)
     }
 
     @Test("counts non-sidechain claude duplicates with different request ids")
     func countsNonSidechainClaudeDuplicatesWithDifferentRequestIds() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeNonSidechainDuplicates")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-1","message":{"id":"msg-x","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
@@ -159,7 +148,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.inputTokens == 30)
         #expect(claude.totalCounts.outputTokens == 3)
@@ -168,9 +157,6 @@ struct CodingUsageLoaderTests {
 
     @Test("collapses equal-sidechain claude duplicates to the richer record")
     func collapsesEqualSidechainClaudeDuplicatesToTheRicherRecord() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeSidechainCollapse")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","isSidechain":true,"requestId":"req-1","message":{"id":"msg-y","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
@@ -182,16 +168,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.totalTokens == 105)
     }
 
     @Test("uses claude speed not service tier for fast pricing")
     func usesClaudeSpeedNotServiceTierForFastPricing() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ClaudeFastDisposition")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-tier","message":{"id":"msg-tier","model":"claude-opus-4-8","usage":{"input_tokens":10,"output_tokens":2,"service_tier":"priority"}}}"#,
@@ -203,7 +186,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(abs(dayCounts(claude, 2026, 6, 18).costUSD - 0.0001) < 0.00000001)
         #expect(abs(dayCounts(claude, 2026, 6, 17).costUSD - 0.0002) < 0.00000001)
@@ -211,9 +194,6 @@ struct CodingUsageLoaderTests {
 
     @Test("loads codex usage from active sessions before archived duplicates")
     func loadsCodexUsageFromActiveSessionsBeforeArchivedDuplicates() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-Codex")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let activeLog = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
             #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
@@ -229,7 +209,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 130)
         #expect(codex.totalCounts.cacheReadTokens == 31)
@@ -246,9 +226,6 @@ struct CodingUsageLoaderTests {
 
     @Test("dedupes identical codex events across differing active and archived paths")
     func dedupesCodexEventsAcrossDifferingPaths() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexCrossPathDedupe")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let event =
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5},"model":"gpt-5.2"}}}"#
 
@@ -257,7 +234,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 90)
         #expect(codex.totalCounts.cacheReadTokens == 10)
@@ -268,9 +245,6 @@ struct CodingUsageLoaderTests {
 
     @Test("skips codex subagent replayed parent token history")
     func skipsCodexSubagentReplayedParentTokenHistory() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSubagent")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":0,"total_tokens":1200}}}}"#,
@@ -281,7 +255,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 90)
         #expect(codex.totalCounts.cacheReadTokens == 10)
@@ -291,9 +265,6 @@ struct CodingUsageLoaderTests {
 
     @Test("ignores codex thread spawn text outside subagent source")
     func ignoresCodexThreadSpawnTextOutsideSubagentSource() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexThreadSpawnText")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"note":"thread_spawn copied from a transcript"}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
@@ -303,7 +274,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 150)
         #expect(codex.totalCounts.totalTokens == 150)
@@ -311,9 +282,6 @@ struct CodingUsageLoaderTests {
 
     @Test("keeps pending codex replay when another spawn appears")
     func keepsPendingCodexReplayWhenAnotherSpawnAppears() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexPendingSpawn")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-a"}}}}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
@@ -326,7 +294,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 200)
         #expect(codex.totalCounts.totalTokens == 200)
@@ -334,9 +302,6 @@ struct CodingUsageLoaderTests {
 
     @Test("keeps suppressing codex replay when another spawn appears")
     func keepsSuppressingCodexReplayWhenAnotherSpawnAppears() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSuppressingSpawn")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-a"}}}}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1000},"model":"gpt-5.2"}}}"#,
@@ -349,7 +314,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 100)
         #expect(codex.totalCounts.totalTokens == 100)
@@ -357,9 +322,6 @@ struct CodingUsageLoaderTests {
 
     @Test("loads pi usage from assistant messages")
     func loadsPiUsageFromAssistantMessages() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-Pi")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"user","usage":{"input":999,"output":999}}}"#,
@@ -373,7 +335,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let pi = report.agents.first { $0.agent == .pi }!
+        let pi = try #require(report.agents.first { $0.agent == .pi })
 
         #expect(pi.totalCounts.inputTokens == 200)
         #expect(pi.totalCounts.outputTokens == 433)
@@ -387,9 +349,6 @@ struct CodingUsageLoaderTests {
 
     @Test("reads pi camelCase usage fields and ignores snake_case fields")
     func readsPiCamelCaseUsageFieldsIgnoringSnakeCase() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-PiCamelCase")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input_tokens":999,"output_tokens":999,"cache_read_input_tokens":999,"cache_creation_input_tokens":999,"input":100,"output":50,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
             to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
@@ -398,7 +357,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let pi = report.agents.first { $0.agent == .pi }!
+        let pi = try #require(report.agents.first { $0.agent == .pi })
 
         #expect(pi.totalCounts.inputTokens == 100)
         #expect(pi.totalCounts.outputTokens == 50)
@@ -409,9 +368,6 @@ struct CodingUsageLoaderTests {
 
     @Test("infers pi missing output but keeps explicit zero output")
     func infersPiMissingOutputButKeepsExplicitZeroOutput() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-PiOutput")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":100,"cacheRead":10,"cacheWrite":20,"totalTokens":180}}}"#,
@@ -423,7 +379,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let pi = report.agents.first { $0.agent == .pi }!
+        let pi = try #require(report.agents.first { $0.agent == .pi })
 
         #expect(dayCounts(pi, 2026, 6, 18).outputTokens == 50)
         #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 180)
@@ -434,9 +390,6 @@ struct CodingUsageLoaderTests {
 
     @Test("clamps pi cacheWrite1h to cacheWrite without underflow")
     func clampsPiCacheWrite1hToCacheWrite() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-PiCacheWrite1h")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.4","usage":{"input":10,"output":20,"cacheWrite":20,"cacheWrite1h":50,"totalTokens":50}}}"#,
             to: ".pi/agent/sessions/project-a/prefix_session-a.jsonl",
@@ -445,7 +398,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let pi = report.agents.first { $0.agent == .pi }!
+        let pi = try #require(report.agents.first { $0.agent == .pi })
 
         #expect(pi.totalCounts.cacheCreationTokens == 20)
         #expect(pi.totalCounts.totalTokens == 50)
@@ -454,9 +407,6 @@ struct CodingUsageLoaderTests {
 
     @Test("saturates malformed token totals")
     func saturatesMalformedTokenTotals() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-TokenOverflow")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let max = UInt64.max
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","message":{"id":"msg-overflow","model":"claude-sonnet-4-20250514","usage":{"input_tokens":\#(max),"output_tokens":1}}}"#,
@@ -484,9 +434,6 @@ struct CodingUsageLoaderTests {
 
     @Test("skips escaped strings and nested content while extracting usage")
     func skipsEscapedContentWhileExtractingUsage() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-Escaped")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         // The content array carries escaped quotes, braces, and a backslash run that the
         // scanner must step over before reaching the trailing usage object.
         try writeFixture(
@@ -497,7 +444,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(dayCounts(claude, 2026, 6, 18).inputTokens == 100)
         #expect(dayCounts(claude, 2026, 6, 18).outputTokens == 10)
@@ -507,9 +454,6 @@ struct CodingUsageLoaderTests {
 
     @Test("skips records outside the thirty day scan window")
     func skipsRecordsOutsideThirtyDayScanWindow() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ScanWindow")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-05-19T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":5,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
@@ -518,7 +462,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.totalTokens == 0)
         #expect(dayCounts(codex, 2026, 6, 18).totalTokens == 0)
@@ -526,9 +470,6 @@ struct CodingUsageLoaderTests {
 
     @Test("normalizes codex cache tokens before pricing")
     func normalizesCodexCacheTokensBeforePricing() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexCacheClamp")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":20,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15},"model":"gpt-5.2"}}}"#,
             to: ".codex/sessions/session.jsonl",
@@ -537,7 +478,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 0)
         #expect(codex.totalCounts.cacheReadTokens == 10)
@@ -548,9 +489,6 @@ struct CodingUsageLoaderTests {
 
     @Test("ignores malformed token counts without failing the load")
     func ignoresMalformedTokenCountsWithoutFailingLoad() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-MalformedTokenCount")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":18446744073709551616,"output_tokens":7,"cache_creation_input_tokens":-1,"cache_read_input_tokens":1.5}}}"#,
             to: ".claude/projects/project-a/session-a/chat.jsonl",
@@ -559,7 +497,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.inputTokens == 0)
         #expect(claude.totalCounts.outputTokens == 7)
@@ -570,9 +508,6 @@ struct CodingUsageLoaderTests {
 
     @Test("skips malformed numeric fields of every json type without dropping later fields")
     func skipsMalformedNumericFieldsOfEveryJSONType() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-MalformedFieldTypes")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-string","message":{"id":"msg-string","model":"claude-sonnet-4-20250514","usage":{"input_tokens":"oops","output_tokens":1}}}"#,
@@ -587,7 +522,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.inputTokens == 0)
         #expect(claude.totalCounts.outputTokens == 31)
@@ -596,9 +531,6 @@ struct CodingUsageLoaderTests {
 
     @Test("calculates newer claude model pricing and fast multiplier")
     func calculatesNewerClaudeModelPricingAndFastMultiplier() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-NewClaudePricing")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-fable","message":{"id":"msg-fable","model":"claude-fable-5","usage":{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":20,"cache_read_input_tokens":30}}}"#,
@@ -610,16 +542,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(abs(claude.totalCounts.costUSD - 0.00096) < 0.00000001)
     }
 
     @Test("does not price an unknown numeric model version as its base model")
     func doesNotPriceUnknownNumericModelVersionAsBaseModel() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-VersionBump")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-a","message":{"id":"msg-a","model":"claude-opus-4-1-20990101","usage":{"input_tokens":100,"output_tokens":10}}}"#,
             to: ".claude/projects/project-a/session-a/chat.jsonl",
@@ -628,7 +557,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.totalTokens == 110)
         #expect(claude.totalCounts.costUSD == 0)
@@ -647,9 +576,6 @@ struct CodingUsageLoaderTests {
 
     @Test("keeps codex events with different fractional timestamps")
     func keepsCodexEventsWithDifferentFractionalTimestamps() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexFractionalTimestamps")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-18T01:00:00.001Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model":"gpt-5.2"}}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.002Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model":"gpt-5.2"}}}"#,
@@ -658,16 +584,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.totalTokens == 240)
     }
 
     @Test("loads repeated codex token count snapshots")
     func loadsRepeatedCodexTokenCountSnapshots() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexSnapshots")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
             #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
@@ -677,16 +600,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.totalTokens == 240)
     }
 
     @Test("resolves codex model context from payload, info, turn context, and fallback")
     func resolvesCodexModelContextFromAllSources() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-CodexModelContext")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let log = [
             #"{"timestamp":"2026-06-17T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":400,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":400}}}}"#,
             #"{"timestamp":"2026-06-14T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.4"}}"#,
@@ -698,7 +618,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.totalTokens == 1000)
         #expect(abs(dayCounts(codex, 2026, 6, 17).costUSD - 0.0005) < 0.00000001)
@@ -709,9 +629,6 @@ struct CodingUsageLoaderTests {
 
     @Test("uses fast codex pricing from config")
     func usesFastCodexPricingFromConfig() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-FastCodex")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(#"service_tier = "fast""#, to: ".codex/config.toml", in: home)
         try writeFixture(
             #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
@@ -721,16 +638,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(abs(codex.totalCounts.costUSD - 0.001175) < 0.00000001)
     }
 
     @Test("ignores scoped codex service tier overrides")
     func ignoresScopedCodexServiceTierOverrides() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ScopedCodexTier")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             """
             [profiles.work]
@@ -744,19 +658,15 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(abs(codex.totalCounts.costUSD - 0.00047) < 0.00000001)
     }
 
     @Test("prices codex roots with their own service tier")
     func pricesCodexRootsWithTheirOwnServiceTier() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-MixedCodexHome")
         let standardRoot = try makeFixtureRoot("CodingUsageLoaderTests-MixedCodexStandard")
-        defer {
-            try? FileManager.default.removeItem(at: home)
-            try? FileManager.default.removeItem(at: standardRoot)
-        }
+        defer { try? FileManager.default.removeItem(at: standardRoot) }
 
         try writeFixture(#"service_tier = "fast""#, to: ".codex/config.toml", in: home)
         try writeFixture(
@@ -779,16 +689,13 @@ struct CodingUsageLoaderTests {
             homeDirectory: home
         )
         .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(abs(codex.totalCounts.costUSD - 0.001645) < 0.00000001)
     }
 
     @Test("counts unknown codex model variant tokens at zero cost")
     func countsUnknownCodexModelVariantTokensAtZeroCost() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-UnknownCodexModel")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":3,"total_tokens":105},"model":"gpt-5.9-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
@@ -797,7 +704,7 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.inputTokens == 60)
         #expect(codex.totalCounts.cacheReadTokens == 40)
@@ -811,12 +718,11 @@ struct CodingUsageLoaderTests {
 
     @Test("empty directory overrides fall back to defaults")
     func emptyDirectoryOverridesFallBackToDefaults() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-EmptyDirectoryOverride")
         let customHome = try makeFixtureRoot("CodingUsageLoaderTests-CustomDirectoryOverride")
-        defer {
-            try? FileManager.default.removeItem(at: home)
-            try? FileManager.default.removeItem(at: customHome)
-        }
+        defer { try? FileManager.default.removeItem(at: customHome) }
+
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".codex"), withIntermediateDirectories: true)
 
         let defaultLoader = CodingUsageLoader(
             environment: ["CODEX_HOME": " ,\n, \t"],
@@ -835,9 +741,6 @@ struct CodingUsageLoaderTests {
 
     @Test("limits the scan window to the trailing thirty days")
     func limitsScanWindowToTrailingThirtyDays() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-RollingWindow")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             [
                 #"{"timestamp":"2026-01-01T03:04:05.000Z","version":"1.2.3","sessionId":"session-a","requestId":"req-old","message":{"id":"msg-old","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":1}}}"#,
@@ -855,7 +758,7 @@ struct CodingUsageLoaderTests {
                     calendar: gregorianUTC(firstWeekday: 2)
                 )
             )
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.dailyCounts.first?.date == date(2026, 1, 2))
         #expect(claude.dailyCounts.count == 30)
@@ -865,9 +768,6 @@ struct CodingUsageLoaderTests {
 
     @Test("home scan only reads app data directories")
     func homeScanOnlyReadsAppDataDirectories() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-GrantHome")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"bad","message":{"id":"bad","model":"claude-sonnet-4-20250514","usage":{"input_tokens":999,"output_tokens":999}}}"#,
             to: "projects/unrelated/chat.jsonl",
@@ -891,8 +791,8 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
-        let codex = report.agents.first { $0.agent == .codex }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(claude.totalCounts.totalTokens == 11)
         #expect(codex.totalCounts.totalTokens == 48)
@@ -900,9 +800,6 @@ struct CodingUsageLoaderTests {
 
     @Test("skips stale files before parsing")
     func skipsStaleFilesBeforeParsing() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-StaleFiles")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","version":"1.2.3","sessionId":"session-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":999,"output_tokens":999}}}"#,
             to: ".claude/projects/project-a/session-a/chat.jsonl",
@@ -912,16 +809,13 @@ struct CodingUsageLoaderTests {
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
-        let claude = report.agents.first { $0.agent == .claude }!
+        let claude = try #require(report.agents.first { $0.agent == .claude })
 
         #expect(claude.totalCounts.totalTokens == 0)
     }
 
     @Test("fingerprint changes when usage files change")
     func fingerprintChangesWhenUsageFilesChange() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-Fingerprint")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
@@ -942,9 +836,6 @@ struct CodingUsageLoaderTests {
 
     @Test("fingerprint changes when codex config pricing changes")
     func fingerprintChangesWhenCodexConfigChanges() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-ConfigFingerprint")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
             to: ".codex/sessions/session.jsonl",
@@ -966,9 +857,6 @@ struct CodingUsageLoaderTests {
 
     @Test("reports no usage when no usage data is found")
     func reportsNoUsageWhenNoUsageDataIsFound() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-Empty")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
 
@@ -977,9 +865,6 @@ struct CodingUsageLoaderTests {
 
     @Test("skips disabled usage agents before scanning")
     func skipsDisabledUsageAgentsBeforeScanning() throws {
-        let home = try makeFixtureRoot("CodingUsageLoaderTests-DisabledAgents")
-        defer { try? FileManager.default.removeItem(at: home) }
-
         try writeFixture(
             #"{"timestamp":"2026-06-18T01:00:00.000Z","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}}"#,
             to: ".claude/projects/project-a/session-a/chat.jsonl",
@@ -994,12 +879,31 @@ struct CodingUsageLoaderTests {
         let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
         let scan = loader.usageScan(scope: scope(), enabledAgents: [.codex])
         let report = loader.loadReport(scan: scan)
-        let codex = report.agents.first { $0.agent == .codex }!
+        let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(scan.claudeFiles.isEmpty)
         #expect(scan.codexSources.flatMap(\.files).count == 1)
         #expect(report.agents.map(\.agent) == [.codex])
         #expect(codex.totalCounts.totalTokens == 48)
+    }
+
+    @Test("detects installed agents from their home directories")
+    func detectsInstalledAgentsFromHomeDirectories() throws {
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+
+        #expect(loader.installedAgents().isEmpty)
+
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".claude/projects"),
+            withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".codex"), withIntermediateDirectories: true)
+        #expect(loader.installedAgents() == [.claude, .codex])
+
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".pi/agent/sessions"),
+            withIntermediateDirectories: true)
+        #expect(loader.installedAgents() == Set(CodingUsageAgent.allCases))
     }
 
     private func scope() -> CodingUsageDateScope {
@@ -1008,15 +912,6 @@ struct CodingUsageLoaderTests {
             calendar: gregorianUTC(firstWeekday: 2)
         )
     }
-}
-
-private func makeFixtureRoot(_ name: String) throws -> URL {
-    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
-        "\(name).\(UUID().uuidString)",
-        isDirectory: true
-    )
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    return root
 }
 
 private func writeFixture(_ text: String, to relativePath: String, in root: URL) throws {

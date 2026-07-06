@@ -45,6 +45,7 @@ final class CodingUsageStore {
     private var report: CodingUsageReport
 
     private(set) var presentation: CodingUsagePresentation
+    private(set) var installedAgents: Set<CodingUsageAgent>
 
     var enabledAgents: Set<CodingUsageAgent> {
         didSet {
@@ -54,7 +55,7 @@ final class CodingUsageStore {
             presentation = CodingUsagePresentation(
                 report: report,
                 scope: scope,
-                enabledAgents: enabledAgents
+                enabledAgents: activeAgents
             )
             restartRefresh()
         }
@@ -67,8 +68,16 @@ final class CodingUsageStore {
         }
     }
 
-    subscript(agentEnabled agent: CodingUsageAgent) -> Bool {
-        get { enabledAgents.contains(agent) }
+    /// Agents that are both enabled by the user and installed on disk; the only
+    /// set reports, presentation, and the settings switches may present as on.
+    var activeAgents: Set<CodingUsageAgent> {
+        enabledAgents.intersection(installedAgents)
+    }
+
+    /// Reads effective state, writes preference: an uninstalled agent always reads
+    /// off, but its stored choice survives so reinstalling restores it.
+    subscript(agentActive agent: CodingUsageAgent) -> Bool {
+        get { activeAgents.contains(agent) }
         set {
             if newValue {
                 enabledAgents.insert(agent)
@@ -78,15 +87,18 @@ final class CodingUsageStore {
         }
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, loader: CodingUsageLoader = CodingUsageLoader()) {
         self.defaults = defaults
-        self.loader = CodingUsageLoader()
+        self.loader = loader
         let storedEnabledAgents = Set(
             CodingUsageAgent.allCases.filter { agent in
                 defaults.object(forKey: DefaultsKey.enabledAgent(agent)) as? Bool ?? true
             }
         )
+        let installedAgents = loader.installedAgents()
+        let activeAgents = storedEnabledAgents.intersection(installedAgents)
         self.enabledAgents = storedEnabledAgents
+        self.installedAgents = installedAgents
         self.refreshInterval =
             CodingUsageRefreshInterval(
                 rawValue: defaults.integer(forKey: DefaultsKey.refreshInterval))
@@ -94,14 +106,14 @@ final class CodingUsageStore {
         let scope = CodingUsageDateScope()
         let report = CodingUsageReport.placeholder(
             scope: scope,
-            agents: CodingUsageAgent.ordered(storedEnabledAgents)
+            agents: CodingUsageAgent.ordered(activeAgents)
         )
         self.scope = scope
         self.report = report
         self.presentation = CodingUsagePresentation(
             report: report,
             scope: scope,
-            enabledAgents: storedEnabledAgents
+            enabledAgents: activeAgents
         )
         startRefreshTask()
     }
@@ -111,7 +123,6 @@ final class CodingUsageStore {
     }
 
     private func restartRefresh() {
-        lastFingerprint = nil
         refreshTask?.cancel()
         startRefreshTask()
     }
@@ -140,16 +151,23 @@ final class CodingUsageStore {
             loader.usageScan(scope: scope, enabledAgents: enabledAgents)
         }.value
 
-        if Task.isCancelled || scan.fingerprint == lastFingerprint {
+        if Task.isCancelled {
+            return
+        }
+        if installedAgents != scan.installedAgents {
+            installedAgents = scan.installedAgents
+        }
+        if scan.fingerprint == lastFingerprint {
             return
         }
 
+        let activeAgents = enabledAgents.intersection(scan.installedAgents)
         let result = await Task.detached(priority: .utility) {
             let report = loader.loadReport(scan: scan)
             let presentation = CodingUsagePresentation(
                 report: report,
                 scope: scan.scope,
-                enabledAgents: enabledAgents
+                enabledAgents: activeAgents
             )
             return (report: report, presentation: presentation)
         }.value

@@ -155,6 +155,7 @@ extension CodingUsageLoader {
         configuredDirectories(environmentKey: "CODEX_HOME") {
             [homeDirectory.appendingPathComponent(".codex")]
         }
+        .filter(isDirectory)
     }
 
     func codexFingerprintFiles() -> [URL] {
