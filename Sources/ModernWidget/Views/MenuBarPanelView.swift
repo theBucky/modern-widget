@@ -134,7 +134,6 @@ private struct PanelTopBar: View {
             .buttonStyle(.borderless)
             .help(Text(Pane.settings.title))
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
