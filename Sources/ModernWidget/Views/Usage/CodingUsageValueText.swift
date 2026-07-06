@@ -8,7 +8,7 @@ struct CodingUsageValueText: View {
             Text(counts.totalTokens, format: .codingUsageTokens)
                 .fontWeight(.regular)
                 .foregroundStyle(.secondary)
-            Text("/")
+            Text(verbatim: "/")
                 .fontWeight(.regular)
                 .foregroundStyle(.secondary)
             Text(counts.costUSD, format: .codingUsageCost)

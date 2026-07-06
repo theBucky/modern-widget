@@ -53,7 +53,7 @@ private struct MonthNavigationHeader: View {
     }
 
     private func stepButton(
-        _ label: String, systemImage: String, delta: Int, enabled: Bool
+        _ label: LocalizedStringKey, systemImage: String, delta: Int, enabled: Bool
     ) -> some View {
         Button {
             visibleMonth = LocalDay.calendar.date(byAdding: .month, value: delta, to: visibleMonth)!
@@ -99,14 +99,18 @@ private struct WalkDaysGrid: View {
     var body: some View {
         LazyVGrid(columns: CalendarLayout.columns, spacing: CalendarLayout.cellSpacing) {
             ForEach(cells) { cell in
-                if let date = cell.date {
-                    WalkDayCell(
-                        date: date,
-                        count: historyStore.walkCount(on: date),
-                        isSupplementTaken: supplementStore.isTaken(on: date)
-                    )
-                } else {
-                    Color.clear.frame(height: CalendarLayout.cellHeight)
+                // Single-root row: a top-level if/else would make the ForEach row shape
+                // vary per element, forcing id computation to evaluate every row body.
+                ZStack {
+                    if let date = cell.date {
+                        WalkDayCell(
+                            date: date,
+                            count: historyStore.walkCount(on: date),
+                            isSupplementTaken: supplementStore.isTaken(on: date)
+                        )
+                    } else {
+                        Color.clear.frame(height: CalendarLayout.cellHeight)
+                    }
                 }
             }
         }

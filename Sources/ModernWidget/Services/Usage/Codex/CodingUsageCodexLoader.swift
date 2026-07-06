@@ -124,8 +124,8 @@ extension CodingUsageLoader {
         }
     }
 
-    func codexUsageSources(scope: CodingUsageDateScope) -> [CodexUsageSource] {
-        codexHomeDirectories().flatMap {
+    func codexUsageSources(homes: [URL], scope: CodingUsageDateScope) -> [CodexUsageSource] {
+        homes.flatMap {
             home -> [CodexUsageSource] in
             let sessions = home.appendingPathComponent("sessions")
             let archivedSessions = home.appendingPathComponent("archived_sessions")
@@ -155,10 +155,11 @@ extension CodingUsageLoader {
         configuredDirectories(environmentKey: "CODEX_HOME") {
             [homeDirectory.appendingPathComponent(".codex")]
         }
+        .filter(isDirectory)
     }
 
-    func codexFingerprintFiles() -> [URL] {
-        codexHomeDirectories().map {
+    func codexFingerprintFiles(homes: [URL]) -> [URL] {
+        homes.map {
             $0.appendingPathComponent("config.toml")
         }
     }

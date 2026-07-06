@@ -28,30 +28,13 @@ extension CodingUsageLoader {
 
         var files: [CodingUsageFile] = []
         for case let file as URL in enumerator {
-            guard file.pathExtension == "jsonl" else {
+            guard file.pathExtension == "jsonl", let fingerprint = usageFileFingerprint(file) else {
                 continue
             }
-
-            let values = try? file.resourceValues(forKeys: [
-                .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
-            ])
-            guard values?.isRegularFile == true else {
+            if let modifiedAt = fingerprint.modifiedAt, modifiedAt < modifiedSince {
                 continue
             }
-            let modifiedAt = values?.contentModificationDate
-            if let modifiedAt, modifiedAt < modifiedSince {
-                continue
-            }
-            files.append(
-                CodingUsageFile(
-                    url: file,
-                    fingerprint: CodingUsageFileFingerprint(
-                        path: file.standardizedFileURL.path,
-                        modifiedAt: modifiedAt,
-                        byteCount: values?.fileSize
-                    )
-                )
-            )
+            files.append(CodingUsageFile(url: file, fingerprint: fingerprint))
         }
         return files.sorted { $0.fingerprint.path < $1.fingerprint.path }
     }

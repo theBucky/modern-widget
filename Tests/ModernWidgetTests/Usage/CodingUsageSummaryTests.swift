@@ -25,7 +25,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: scope,
-            enabledAgents: [.claude]
+            activeAgents: [.claude]
         )
 
         let totals = try #require(presentation.sections.first?.periodTotals)
@@ -64,7 +64,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: CodingUsageDateScope(now: now, calendar: calendar),
-            enabledAgents: Set(CodingUsageAgent.allCases)
+            activeAgents: Set(CodingUsageAgent.allCases)
         )
 
         let counts = presentation.today.counts
@@ -93,7 +93,7 @@ struct CodingUsageSummaryTests {
                 ]
             ),
             scope: CodingUsageDateScope(now: now, calendar: calendar),
-            enabledAgents: Set(CodingUsageAgent.allCases)
+            activeAgents: Set(CodingUsageAgent.allCases)
         )
 
         let trend = presentation.today.costTrend
@@ -105,6 +105,7 @@ struct CodingUsageSummaryTests {
     @Test("shows only enabled agents in stable order, filling a missing one with a zero grid")
     func showsOnlyEnabledAgentsInStableOrder() throws {
         let now = date(2026, 6, 18, 12)
+        let scope = CodingUsageDateScope(now: now, calendar: gregorianUTC())
         let presentation = CodingUsagePresentation(
             report: CodingUsageReport(
                 state: .loaded(generatedAt: now),
@@ -113,8 +114,8 @@ struct CodingUsageSummaryTests {
                     CodingUsageAgentSummary(agent: .codex, dailyCounts: [day(2026, 6, 18, 2)]),
                 ]
             ),
-            scope: CodingUsageDateScope(now: now, calendar: gregorianUTC()),
-            enabledAgents: [.pi, .claude]
+            scope: scope,
+            activeAgents: [.pi, .claude]
         )
 
         let claude = try #require(presentation.sections.first)
@@ -123,7 +124,7 @@ struct CodingUsageSummaryTests {
         #expect(!presentation.isLoading)
         #expect(presentation.sections.map(\.agent) == [.claude, .pi])
         #expect(claude.periodTotals.last?.counts.costUSD == 1)
-        #expect(pi.chartDays.map(\.date) == [date(2026, 6, 18)])
+        #expect(pi.chartDays.map(\.date) == scope.historyDays)
         #expect(pi.periodTotals.allSatisfy { !$0.counts.hasUsage })
     }
 

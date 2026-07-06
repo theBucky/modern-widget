@@ -45,12 +45,12 @@ struct CodingUsagePresentation: Equatable, Sendable {
     init(
         report: CodingUsageReport,
         scope: CodingUsageDateScope,
-        enabledAgents: Set<CodingUsageAgent>
+        activeAgents: Set<CodingUsageAgent>
     ) {
         let sections = Self.sections(
             report: report,
             scope: scope,
-            enabledAgents: enabledAgents
+            activeAgents: activeAgents
         )
         let todayCounts = Self.counts(
             in: CodingUsagePeriod.today.interval(in: scope),
@@ -76,13 +76,13 @@ struct CodingUsagePresentation: Equatable, Sendable {
     private static func sections(
         report: CodingUsageReport,
         scope: CodingUsageDateScope,
-        enabledAgents: Set<CodingUsageAgent>
+        activeAgents: Set<CodingUsageAgent>
     ) -> [AgentSection] {
         let summariesByAgent = Dictionary(
             uniqueKeysWithValues: report.agents.map { ($0.agent, $0) })
-        let dayAxis = report.agents.first?.dailyCounts.map(\.date) ?? scope.historyDays
+        let dayAxis = scope.historyDays
 
-        return CodingUsageAgent.ordered(enabledAgents).map { agent in
+        return CodingUsageAgent.ordered(activeAgents).map { agent in
             let summary = summariesByAgent[agent] ?? .zeroed(agent: agent, days: dayAxis)
             return AgentSection(
                 agent: agent,

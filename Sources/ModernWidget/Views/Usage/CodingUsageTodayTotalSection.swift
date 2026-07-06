@@ -23,7 +23,6 @@ struct CodingUsageTodayTotalSection: View {
             trailingGroup(summary: visibleSummary)
                 .layoutPriority(1)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func trailingGroup(summary: CodingUsageTodaySummary) -> some View {
