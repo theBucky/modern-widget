@@ -11,7 +11,14 @@ struct MenuBarIconView: View {
             case .paused:
                 Image(systemName: "pause.circle.fill")
             case .countingDown:
-                Image(systemName: "clock.circle", variableValue: snapshot.progress)
+                // CoreGraphics' process-wide font cache never evicts, and each distinct
+                // variableValue pins fresh glyph bitmaps in it (~40 MB/h at one value per
+                // second), so the symbol sees only 64 levels: indistinguishable at menu
+                // bar size.
+                Image(
+                    systemName: "clock.circle",
+                    variableValue: (snapshot.progress * 64).rounded() / 64
+                )
             case .overdue:
                 Image(systemName: "exclamationmark.circle.fill")
             }
