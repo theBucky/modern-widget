@@ -23,6 +23,10 @@ struct CodingUsageTodayTotalSection: View {
             trailingGroup(summary: visibleSummary)
                 .layoutPriority(1)
         }
+        // The numeric rolls and the layout share one transaction; per-text animations
+        // leave the layout un-animated, snapping the fill and badge to the new width
+        // mid-roll and hard-clipping the old string at the fill edge.
+        .animation(.easeOut(duration: 0.5), value: visibleSummary)
     }
 
     private func trailingGroup(summary: CodingUsageTodaySummary) -> some View {
@@ -138,7 +142,6 @@ private struct CodingUsageCostTrendGroup: View {
             .lineLimit(1)
             .minimumScaleFactor(0.9)
             .contentTransition(.numericText(value: summary.counts.costUSD))
-            .animation(.easeOut(duration: 0.5), value: summary.counts.costUSD)
     }
 
     private var totalCostStyle: AnyShapeStyle {
@@ -157,7 +160,6 @@ private struct CodingUsageCostTrendGroup: View {
             .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
             .contentTransition(.numericText(value: summary.costTrend.percent))
-            .animation(.easeOut(duration: 0.5), value: summary.costTrend.percent)
     }
 
     private var trendColor: Color {
