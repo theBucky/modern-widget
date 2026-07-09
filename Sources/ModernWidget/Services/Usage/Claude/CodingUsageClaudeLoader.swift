@@ -191,7 +191,7 @@ private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEn
                 tokens: CodingUsageBillableTokens(
                     input: message.input,
                     output: message.output,
-                    cacheCreation5m: cacheCreation5m,
+                    cacheCreation: cacheCreation5m,
                     cacheCreation1h: cacheCreation1h,
                     cacheRead: message.cacheRead,
                     usesFastPricing: message.usesFastPricing
