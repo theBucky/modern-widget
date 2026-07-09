@@ -342,9 +342,32 @@ final class CodingUsageLoaderTests {
         #expect(pi.totalCounts.cacheCreationTokens == 40)
         #expect(pi.totalCounts.cacheReadTokens == 20)
         #expect(pi.totalCounts.totalTokens == 693)
-        #expect(abs(pi.totalCounts.costUSD - 0.00712) < 0.00000001)
+        #expect(abs(pi.totalCounts.costUSD - 0.0071) < 0.00000001)
         #expect(dayCounts(pi, 2026, 6, 18).totalTokens == 360)
         #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
+    }
+
+    @Test
+    func `prices gpt 5.6 from pi cache fields`() throws {
+        let log = [
+            #"{"type":"message","timestamp":"2026-06-16T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.6-sol","usage":{"input":30,"output":5,"cacheRead":40,"cacheWrite":30,"totalTokens":105}}}"#,
+            #"{"type":"message","timestamp":"2026-06-17T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.6-terra","usage":{"input":30,"output":5,"cacheRead":40,"cacheWrite":30,"totalTokens":105}}}"#,
+            #"{"type":"message","timestamp":"2026-06-18T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.6-luna","usage":{"input":30,"output":5,"cacheRead":40,"cacheWrite":30,"totalTokens":105}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".pi/agent/sessions/project-a/session.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let pi = try #require(report.agents.first { $0.agent == .pi })
+
+        #expect(pi.totalCounts.inputTokens == 90)
+        #expect(pi.totalCounts.cacheCreationTokens == 90)
+        #expect(pi.totalCounts.cacheReadTokens == 120)
+        #expect(pi.totalCounts.outputTokens == 15)
+        #expect(pi.totalCounts.totalTokens == 315)
+        #expect(abs(dayCounts(pi, 2026, 6, 16).costUSD - 0.0005075) < 0.00000001)
+        #expect(abs(dayCounts(pi, 2026, 6, 17).costUSD - 0.00025375) < 0.00000001)
+        #expect(abs(dayCounts(pi, 2026, 6, 18).costUSD - 0.0001015) < 0.00000001)
     }
 
     @Test("reads pi camelCase usage fields and ignores snake_case fields")
@@ -402,7 +425,7 @@ final class CodingUsageLoaderTests {
 
         #expect(pi.totalCounts.cacheCreationTokens == 20)
         #expect(pi.totalCounts.totalTokens == 50)
-        #expect(abs(pi.totalCounts.costUSD - 0.000425) < 0.00000001)
+        #expect(abs(pi.totalCounts.costUSD - 0.000375) < 0.00000001)
     }
 
     @Test("saturates malformed token totals")
@@ -627,11 +650,14 @@ final class CodingUsageLoaderTests {
         #expect(abs(dayCounts(codex, 2026, 6, 16).costUSD - 0.0015) < 0.00000001)
     }
 
-    @Test("uses fast codex pricing from config")
-    func usesFastCodexPricingFromConfig() throws {
+    @Test("uses model fast multipliers from codex config")
+    func usesModelFastMultipliersFromCodexConfig() throws {
         try writeFixture(#"service_tier = "fast""#, to: ".codex/config.toml", in: home)
         try writeFixture(
-            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
+            [
+                #"{"timestamp":"2026-06-17T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.5"}}}"#,
+                #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":105},"model":"gpt-5.6-sol"}}}"#,
+            ].joined(separator: "\n"),
             to: ".codex/sessions/session.jsonl",
             in: home
         )
@@ -640,7 +666,8 @@ final class CodingUsageLoaderTests {
             .loadReport(scope: scope())
         let codex = try #require(report.agents.first { $0.agent == .codex })
 
-        #expect(abs(codex.totalCounts.costUSD - 0.001175) < 0.00000001)
+        #expect(abs(dayCounts(codex, 2026, 6, 17).costUSD - 0.001175) < 0.00000001)
+        #expect(abs(dayCounts(codex, 2026, 6, 18).costUSD - 0.00094) < 0.00000001)
     }
 
     @Test("ignores scoped codex service tier overrides")

@@ -330,6 +330,8 @@ private func codexInfo(_ scanner: inout JSONScanner, into fields: inout CodexLin
 
 /// Reads a usage object, returning `nil` when the value is not an object so a
 /// missing usage key stays distinguishable from an all-zero one.
+/// Codex rollouts currently omit the API's `cache_write_tokens`. Do not infer writes
+/// from uncached input because cache misses do not imply cache writes.
 private func codexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
     guard scanner.beginObject() else { return nil }
     var inputTokens: UInt64 = 0

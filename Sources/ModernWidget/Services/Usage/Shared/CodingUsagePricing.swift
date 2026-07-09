@@ -3,7 +3,7 @@ import Foundation
 struct CodingUsageBillableTokens {
     let input: UInt64
     let output: UInt64
-    let cacheCreation5m: UInt64
+    let cacheCreation: UInt64
     let cacheCreation1h: UInt64
     let cacheRead: UInt64
     let usesFastPricing: Bool
@@ -11,14 +11,14 @@ struct CodingUsageBillableTokens {
     init(
         input: UInt64,
         output: UInt64,
-        cacheCreation5m: UInt64 = 0,
+        cacheCreation: UInt64 = 0,
         cacheCreation1h: UInt64 = 0,
         cacheRead: UInt64 = 0,
         usesFastPricing: Bool = false
     ) {
         self.input = input
         self.output = output
-        self.cacheCreation5m = cacheCreation5m
+        self.cacheCreation = cacheCreation
         self.cacheCreation1h = cacheCreation1h
         self.cacheRead = cacheRead
         self.usesFastPricing = usesFastPricing
@@ -30,7 +30,6 @@ enum CodingUsagePricing {
         let input: Double
         let output: Double
         let cacheCreate: Double
-        /// 1h cache writes bill at twice the input rate unless a model overrides it.
         let cacheCreate1h: Double
         let cacheRead: Double
         let fastMultiplier: Double
@@ -39,14 +38,14 @@ enum CodingUsagePricing {
             input: Double,
             output: Double,
             cacheCreate: Double,
-            cacheRead: Double,
             cacheCreate1h: Double? = nil,
+            cacheRead: Double,
             fastMultiplier: Double = 2.0
         ) {
             self.input = input
             self.output = output
             self.cacheCreate = cacheCreate
-            self.cacheCreate1h = cacheCreate1h ?? input * 2
+            self.cacheCreate1h = cacheCreate1h ?? cacheCreate
             self.cacheRead = cacheRead
             self.fastMultiplier = fastMultiplier
         }
@@ -64,7 +63,7 @@ enum CodingUsagePricing {
         return multiplier
             * (Double(tokens.input) * pricing.input
                 + Double(tokens.output) * pricing.output
-                + Double(tokens.cacheCreation5m) * pricing.cacheCreate
+                + Double(tokens.cacheCreation) * pricing.cacheCreate
                 + Double(tokens.cacheCreation1h) * pricing.cacheCreate1h
                 + Double(tokens.cacheRead) * pricing.cacheRead)
     }
@@ -114,18 +113,21 @@ enum CodingUsagePricing {
             input: 15e-6,
             output: 75e-6,
             cacheCreate: 18.75e-6,
+            cacheCreate1h: 30e-6,
             cacheRead: 1.5e-6
         ),
         "claude-opus-4-5": ModelPricing(
             input: 5e-6,
             output: 25e-6,
             cacheCreate: 6.25e-6,
+            cacheCreate1h: 10e-6,
             cacheRead: 0.5e-6
         ),
         "claude-opus-4-6": ModelPricing(
             input: 5e-6,
             output: 25e-6,
             cacheCreate: 6.25e-6,
+            cacheCreate1h: 10e-6,
             cacheRead: 0.5e-6,
             fastMultiplier: 6
         ),
@@ -133,6 +135,7 @@ enum CodingUsagePricing {
             input: 5e-6,
             output: 25e-6,
             cacheCreate: 6.25e-6,
+            cacheCreate1h: 10e-6,
             cacheRead: 0.5e-6,
             fastMultiplier: 6
         ),
@@ -140,6 +143,7 @@ enum CodingUsagePricing {
             input: 5e-6,
             output: 25e-6,
             cacheCreate: 6.25e-6,
+            cacheCreate1h: 10e-6,
             cacheRead: 0.5e-6,
             fastMultiplier: 2
         ),
@@ -147,24 +151,28 @@ enum CodingUsagePricing {
             input: 10e-6,
             output: 50e-6,
             cacheCreate: 12.5e-6,
+            cacheCreate1h: 20e-6,
             cacheRead: 1e-6
         ),
         "claude-haiku-4-5": ModelPricing(
             input: 1e-6,
             output: 5e-6,
             cacheCreate: 1.25e-6,
+            cacheCreate1h: 2e-6,
             cacheRead: 0.1e-6
         ),
         "claude-sonnet-4": ModelPricing(
             input: 3e-6,
             output: 15e-6,
             cacheCreate: 3.75e-6,
+            cacheCreate1h: 6e-6,
             cacheRead: 0.3e-6
         ),
         "claude-3-5-haiku": ModelPricing(
             input: 0.8e-6,
             output: 4e-6,
             cacheCreate: 1e-6,
+            cacheCreate1h: 1.6e-6,
             cacheRead: 0.08e-6
         ),
         "gpt-5": ModelPricing(
@@ -221,6 +229,24 @@ enum CodingUsagePricing {
             cacheCreate: 5e-6,
             cacheRead: 0.5e-6,
             fastMultiplier: 2.5
+        ),
+        "gpt-5.6-sol": ModelPricing(
+            input: 5e-6,
+            output: 30e-6,
+            cacheCreate: 6.25e-6,
+            cacheRead: 0.5e-6
+        ),
+        "gpt-5.6-terra": ModelPricing(
+            input: 2.5e-6,
+            output: 15e-6,
+            cacheCreate: 3.125e-6,
+            cacheRead: 0.25e-6
+        ),
+        "gpt-5.6-luna": ModelPricing(
+            input: 1e-6,
+            output: 6e-6,
+            cacheCreate: 1.25e-6,
+            cacheRead: 0.1e-6
         ),
     ]
 }

@@ -29,7 +29,6 @@ extension CodingUsageLoader {
         }
         .filter(isDirectory)
     }
-
 }
 
 private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
@@ -68,7 +67,7 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
     }
 
     let cacheWrite1h = min(fields.cacheWrite1h, fields.cacheWrite)
-    let cacheWrite5m = fields.cacheWrite - cacheWrite1h
+    let cacheWrite = fields.cacheWrite - cacheWrite1h
     let model = fields.model
     return (
         timestamp,
@@ -83,7 +82,7 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
                 tokens: CodingUsageBillableTokens(
                     input: fields.input,
                     output: outputTokens,
-                    cacheCreation5m: cacheWrite5m,
+                    cacheCreation: cacheWrite,
                     cacheCreation1h: cacheWrite1h,
                     cacheRead: fields.cacheRead
                 )
