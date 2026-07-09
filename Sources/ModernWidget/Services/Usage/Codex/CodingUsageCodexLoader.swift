@@ -260,13 +260,10 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
         } else if key == "model" {
             fields.payloadModel = nonEmptyString(scanner.readString())
         } else if key == "id" {
-            if let id = nonEmptyString(scanner.readString()), fields.sessionMeta == nil {
-                fields.sessionMeta = .identity(id: id)
-            }
+            fields.sessionID = nonEmptyString(scanner.readString()) ?? fields.sessionID
         } else if key == "source" {
-            if let parentID = codexThreadSpawnParentID(&scanner) {
-                fields.sessionMeta = .threadSpawn(parentID: parentID)
-            }
+            fields.threadSpawnParentID =
+                codexThreadSpawnParentID(&scanner) ?? fields.threadSpawnParentID
         } else {
             scanner.skipValue()
         }
@@ -378,9 +375,15 @@ private enum CodexLineType {
     }
 }
 
-private enum CodexSessionMeta {
-    case identity(id: String)
-    case threadSpawn(parentID: String)
+private struct CodexSessionMeta {
+    let id: String?
+    let threadSpawnParentID: String?
+
+    init?(id: String?, threadSpawnParentID: String?) {
+        guard id != nil || threadSpawnParentID != nil else { return nil }
+        self.id = id
+        self.threadSpawnParentID = threadSpawnParentID
+    }
 }
 
 private enum CodexLine {
@@ -400,7 +403,8 @@ private struct CodexLineFields {
     var timestamp: Date?
 
     var isTokenCount = false
-    var sessionMeta: CodexSessionMeta?
+    var sessionID: String?
+    var threadSpawnParentID: String?
     var payloadModel: String?
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
@@ -410,7 +414,12 @@ private struct CodexLineFields {
         guard let timestamp else { return nil }
         switch type {
         case .sessionMeta:
-            guard let sessionMeta else { return nil }
+            guard
+                let sessionMeta = CodexSessionMeta(
+                    id: sessionID,
+                    threadSpawnParentID: threadSpawnParentID
+                )
+            else { return nil }
             return .sessionMeta(sessionMeta, at: timestamp)
         case .turnContext:
             guard let payloadModel else { return nil }
@@ -432,9 +441,9 @@ private struct CodexLineFields {
 }
 
 /// Folds a session's token-count lines into usage events while preserving the cumulative
-/// baseline across confirmed replay windows. A child announces its parent through
-/// `thread_spawn.parent_thread_id`; only a matching parent identity within the elapsed-time
-/// window confirms replay.
+/// baseline across confirmed replay windows. Codex writes the current rollout's metadata
+/// first, then may copy parent metadata into fork history. Only the first `thread_spawn`
+/// source belongs to this rollout; a later matching identity confirms its replay.
 private struct CodexSessionState {
     private struct Replay {
         enum Phase {
@@ -453,6 +462,7 @@ private struct CodexSessionState {
     private let usesFastPricing: Bool
     private var previousTotals: CodexRawUsage?
     private var currentModel: String?
+    private var hasSessionHeader = false
     private var replay: Replay?
 
     init(usesFastPricing: Bool) {
@@ -462,14 +472,20 @@ private struct CodexSessionState {
     mutating func onSessionMeta(_ metadata: CodexSessionMeta, at timestamp: Date) {
         expireReplay(at: timestamp)
 
-        switch metadata {
-        case let .threadSpawn(parentID):
+        if !hasSessionHeader {
+            hasSessionHeader = true
+            guard let parentID = metadata.threadSpawnParentID else { return }
             replay = Replay(startedAt: timestamp, phase: .awaitingParent(id: parentID))
-        case let .identity(id):
-            if let replay, case let .awaitingParent(parentID) = replay.phase, id == parentID {
-                self.replay = Replay(startedAt: replay.startedAt, phase: .replaying)
-            }
+            return
         }
+
+        guard let id = metadata.id, let replay,
+            case let .awaitingParent(parentID) = replay.phase,
+            id == parentID
+        else {
+            return
+        }
+        self.replay = Replay(startedAt: replay.startedAt, phase: .replaying)
     }
 
     mutating func onTurnContext(model: String, at timestamp: Date) {

@@ -264,6 +264,26 @@ final class CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 120)
     }
 
+    @Test("skips nested codex subagent replay when copied parent metadata keeps its source")
+    func skipsNestedCodexSubagentReplayWithCopiedParentSource() throws {
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"grandparent"}}},"id":"parent"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":150,"output_tokens":300,"reasoning_output_tokens":0,"total_tokens":1800}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":160,"output_tokens":320,"reasoning_output_tokens":0,"total_tokens":1920},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/nested-subagent.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.inputTokens == 90)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 20)
+        #expect(codex.totalCounts.totalTokens == 120)
+    }
+
     @Test("ignores codex thread spawn text outside subagent source")
     func ignoresCodexThreadSpawnTextOutsideSubagentSource() throws {
         let log = [
