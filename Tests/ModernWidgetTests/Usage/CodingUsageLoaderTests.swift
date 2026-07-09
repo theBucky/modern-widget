@@ -347,8 +347,8 @@ final class CodingUsageLoaderTests {
         #expect(dayCounts(pi, 2026, 6, 17).totalTokens == 333)
     }
 
-    @Test
-    func `prices gpt 5.6 from pi cache fields`() throws {
+    @Test("prices gpt 5.6 from pi cache fields")
+    func pricesGpt56FromPiCacheFields() throws {
         let log = [
             #"{"type":"message","timestamp":"2026-06-16T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.6-sol","usage":{"input":30,"output":5,"cacheRead":40,"cacheWrite":30,"totalTokens":105}}}"#,
             #"{"type":"message","timestamp":"2026-06-17T01:00:00.000Z","message":{"role":"assistant","model":"gpt-5.6-terra","usage":{"input":30,"output":5,"cacheRead":40,"cacheWrite":30,"totalTokens":105}}}"#,
