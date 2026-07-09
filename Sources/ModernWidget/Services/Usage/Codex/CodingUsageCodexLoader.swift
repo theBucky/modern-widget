@@ -194,51 +194,31 @@ extension CodingUsageLoader {
         usesFastPricing: Bool,
         visit: (CodexUsageEvent) -> Void
     ) {
-        var deduper = CodexReplayDeduper(usesFastPricing: usesFastPricing)
+        var session = CodexSessionState(usesFastPricing: usesFastPricing)
 
-        forEachJSONLine(in: file) { line in
+        forEachJSONLine(in: file) { buffer in
             // Codex lines lead with `timestamp` and `type`, so the scanner classifies a
             // line from its first bytes and abandons the irrelevant majority, payloads
             // untouched. A needle prefilter would rescan every full line instead.
-            guard let fields = scanCodexLine(line) else { return }
-
-            if fields.type == .sessionMeta, fields.hasThreadSpawn {
-                deduper.onThreadSpawn(emit: visit)
-                return
+            guard let line = scanCodexLine(buffer) else { return }
+            switch line {
+            case let .sessionMeta(metadata, timestamp):
+                session.onSessionMeta(metadata, at: timestamp)
+            case let .turnContext(model, timestamp):
+                session.onTurnContext(model: model, at: timestamp)
+            case let .tokenCount(snapshot, timestamp):
+                session.onTokenCount(snapshot, at: timestamp, emit: visit)
             }
-
-            if fields.type == .turnContext, let model = fields.payloadModel {
-                deduper.onTurnContext(model: model, emit: visit)
-                return
-            }
-
-            guard fields.type == .eventMessage, fields.isTokenCount,
-                let timestamp = fields.timestamp
-            else {
-                return
-            }
-
-            deduper.onTokenCount(fields, at: timestamp, emit: visit)
         }
-
-        deduper.finish(emit: visit)
     }
 }
 
-private func codexSecond(_ timestamp: Date) -> Int64 {
-    Int64(timestamp.timeIntervalSince1970.rounded(.down))
-}
-
-/// Empty model strings count as missing everywhere: they must neither reach pricing
-/// nor overwrite the carried-over `currentModel`.
 private func nonEmptyString(_ value: String?) -> String? {
     value?.isEmpty == false ? value : nil
 }
 
-/// Extracts the fields of one Codex log line, returning `nil` as soon as the line
-/// proves irrelevant: an uninteresting top-level `type` stops before the payload, and
-/// a non-token-count `event_msg` stops at the payload's leading `type`.
-private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLineFields? {
+/// Parses one relevant Codex line, stopping as soon as its type proves irrelevant.
+private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLine? {
     guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
         return nil
     }
@@ -259,7 +239,7 @@ private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLineFields?
             scanner.skipValue()
         }
     }
-    return fields
+    return fields.line
 }
 
 /// Returns `false` when the payload proves the line irrelevant, so the caller can
@@ -279,8 +259,14 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
             codexInfo(&scanner, into: &fields)
         } else if key == "model" {
             fields.payloadModel = nonEmptyString(scanner.readString())
+        } else if key == "id" {
+            if let id = nonEmptyString(scanner.readString()), fields.sessionMeta == nil {
+                fields.sessionMeta = .identity(id: id)
+            }
         } else if key == "source" {
-            fields.hasThreadSpawn = codexSourceHasThreadSpawn(&scanner)
+            if let parentID = codexThreadSpawnParentID(&scanner) {
+                fields.sessionMeta = .threadSpawn(parentID: parentID)
+            }
         } else {
             scanner.skipValue()
         }
@@ -288,29 +274,43 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
     return true
 }
 
-private func codexSourceHasThreadSpawn(_ scanner: inout JSONScanner) -> Bool {
-    guard scanner.beginObject() else { return false }
-    var hasThreadSpawn = false
+private func codexThreadSpawnParentID(_ scanner: inout JSONScanner) -> String? {
+    guard scanner.beginObject() else { return nil }
+    var parentID: String?
     while let key = scanner.nextKey() {
         if key == "subagent" {
-            hasThreadSpawn = codexSubagentHasThreadSpawn(&scanner) || hasThreadSpawn
+            parentID = codexSubagentParentID(&scanner) ?? parentID
         } else {
             scanner.skipValue()
         }
     }
-    return hasThreadSpawn
+    return parentID
 }
 
-private func codexSubagentHasThreadSpawn(_ scanner: inout JSONScanner) -> Bool {
-    guard scanner.beginObject() else { return false }
-    var hasThreadSpawn = false
+private func codexSubagentParentID(_ scanner: inout JSONScanner) -> String? {
+    guard scanner.beginObject() else { return nil }
+    var parentID: String?
     while let key = scanner.nextKey() {
         if key == "thread_spawn" {
-            hasThreadSpawn = true
+            parentID = codexParentThreadID(&scanner) ?? parentID
+        } else {
+            scanner.skipValue()
         }
-        scanner.skipValue()
     }
-    return hasThreadSpawn
+    return parentID
+}
+
+private func codexParentThreadID(_ scanner: inout JSONScanner) -> String? {
+    guard scanner.beginObject() else { return nil }
+    var parentID: String?
+    while let key = scanner.nextKey() {
+        if key == "parent_thread_id" {
+            parentID = nonEmptyString(scanner.readString()) ?? parentID
+        } else {
+            scanner.skipValue()
+        }
+    }
+    return parentID
 }
 
 private func codexInfo(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) {
@@ -378,153 +378,136 @@ private enum CodexLineType {
     }
 }
 
-/// Scalar fields pulled from one Codex log line: `turn_context` model carry-over and
-/// `event_msg` token counts from `payload.info`.
+private enum CodexSessionMeta {
+    case identity(id: String)
+    case threadSpawn(parentID: String)
+}
+
+private enum CodexLine {
+    case sessionMeta(CodexSessionMeta, at: Date)
+    case turnContext(model: String, at: Date)
+    case tokenCount(CodexTokenSnapshot, at: Date)
+}
+
+private struct CodexTokenSnapshot {
+    let model: String?
+    let lastUsage: CodexRawUsage?
+    let totalUsage: CodexRawUsage?
+}
+
 private struct CodexLineFields {
     var type: CodexLineType = .other
     var timestamp: Date?
 
     var isTokenCount = false
-    var hasThreadSpawn = false
+    var sessionMeta: CodexSessionMeta?
     var payloadModel: String?
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
     var infoModel: String?
+
+    var line: CodexLine? {
+        guard let timestamp else { return nil }
+        switch type {
+        case .sessionMeta:
+            guard let sessionMeta else { return nil }
+            return .sessionMeta(sessionMeta, at: timestamp)
+        case .turnContext:
+            guard let payloadModel else { return nil }
+            return .turnContext(model: payloadModel, at: timestamp)
+        case .eventMessage:
+            guard isTokenCount else { return nil }
+            return .tokenCount(
+                CodexTokenSnapshot(
+                    model: payloadModel ?? infoModel,
+                    lastUsage: lastUsage,
+                    totalUsage: totalUsage
+                ),
+                at: timestamp
+            )
+        case .other:
+            return nil
+        }
+    }
 }
 
-/// Tracks the subagent replay window. A real
-/// `session_meta.payload.source.subagent.thread_spawn` is followed by the parent's
-/// cumulative snapshots replayed within the same second; those repeats must be dropped,
-/// while a genuinely new event in a later second still counts. The first snapshot after a
-/// spawn is held until a same-second sibling proves it is replay, or a later second, turn
-/// context, or end of file proves it is real and emits it.
-private enum CodexReplayState {
-    /// No spawn pending; events are emitted normally.
-    case idle
-    /// A spawn was seen; waiting for the first replayed snapshot.
-    case awaitingReplay
-    /// Holding one snapshot that is replay if a same-second sibling follows, otherwise real.
-    case pendingReplay(timestamp: Date, fields: CodexLineFields)
-    /// Dropping snapshots that share `second` with the suppressed replay.
-    case suppressing(second: Int64)
-    /// Suppressing `second`, with another spawn awaiting replay once that second passes.
-    case suppressingThenAwaitingReplay(second: Int64)
-}
+/// Folds a session's token-count lines into usage events while preserving the cumulative
+/// baseline across confirmed replay windows. A child announces its parent through
+/// `thread_spawn.parent_thread_id`; only a matching parent identity within the elapsed-time
+/// window confirms replay.
+private struct CodexSessionState {
+    private struct Replay {
+        enum Phase {
+            case awaitingParent(id: String)
+            case replaying
+        }
 
-/// Folds a session's token-count lines into deduplicated usage events. The caller
-/// classifies each line; this type owns the running totals, the carried-over model,
-/// and the `CodexReplayState` machine that drops the cumulative snapshots a subagent
-/// thread-spawn replays within the same second while keeping genuinely new events.
-private struct CodexReplayDeduper {
+        let startedAt: Date
+        let phase: Phase
+    }
+
     /// Model assumed when a Codex line names none, so pricing has something to resolve.
     private static let codexDefaultModel = "gpt-5"
+    private static let replayWindowDuration: TimeInterval = 1
 
     private let usesFastPricing: Bool
     private var previousTotals: CodexRawUsage?
     private var currentModel: String?
-    private var replayState = CodexReplayState.idle
+    private var replay: Replay?
 
     init(usesFastPricing: Bool) {
         self.usesFastPricing = usesFastPricing
     }
 
-    /// A `session_meta` line whose source is a subagent thread-spawn.
-    mutating func onThreadSpawn(emit: (CodexUsageEvent) -> Void) {
-        switch replayState {
-        case .idle, .awaitingReplay:
-            replayState = .awaitingReplay
-        case let .pendingReplay(timestamp, fields):
-            emitEvent(from: fields, at: timestamp, emit: emit)
-            replayState = .awaitingReplay
-        case let .suppressing(second):
-            replayState = .suppressingThenAwaitingReplay(second: second)
-        case .suppressingThenAwaitingReplay:
-            break
+    mutating func onSessionMeta(_ metadata: CodexSessionMeta, at timestamp: Date) {
+        expireReplay(at: timestamp)
+
+        switch metadata {
+        case let .threadSpawn(parentID):
+            replay = Replay(startedAt: timestamp, phase: .awaitingParent(id: parentID))
+        case let .identity(id):
+            if let replay, case let .awaitingParent(parentID) = replay.phase, id == parentID {
+                self.replay = Replay(startedAt: replay.startedAt, phase: .replaying)
+            }
         }
     }
 
-    /// A `turn_context` line carrying the model for subsequent events.
-    mutating func onTurnContext(model: String, emit: (CodexUsageEvent) -> Void) {
-        flushPendingReplay(emit: emit)
+    mutating func onTurnContext(model: String, at timestamp: Date) {
+        expireReplay(at: timestamp)
         currentModel = model
     }
 
-    /// An `event_msg` `token_count` line.
     mutating func onTokenCount(
-        _ fields: CodexLineFields, at timestamp: Date, emit: (CodexUsageEvent) -> Void
+        _ snapshot: CodexTokenSnapshot, at timestamp: Date, emit: (CodexUsageEvent) -> Void
     ) {
-        if consumeReplay(fields, at: timestamp, emit: emit) {
+        expireReplay(at: timestamp)
+        if let replay, case .replaying = replay.phase {
+            updatePreviousTotals(from: snapshot)
             return
         }
-        emitEvent(from: fields, at: timestamp, emit: emit)
+        replay = nil
+        emitEvent(from: snapshot, at: timestamp, emit: emit)
     }
 
-    /// Flushes any snapshot still held back when the session ends.
-    mutating func finish(emit: (CodexUsageEvent) -> Void) {
-        flushPendingReplay(emit: emit)
-    }
-
-    private mutating func flushPendingReplay(emit: (CodexUsageEvent) -> Void) {
-        switch replayState {
-        case let .pendingReplay(timestamp, fields):
-            replayState = .idle
-            emitEvent(from: fields, at: timestamp, emit: emit)
-        case .awaitingReplay:
-            replayState = .idle
-        case let .suppressingThenAwaitingReplay(second):
-            replayState = .suppressing(second: second)
-        case .idle, .suppressing:
-            break
+    private mutating func expireReplay(at timestamp: Date) {
+        guard let replay else { return }
+        let elapsed = timestamp.timeIntervalSince(replay.startedAt)
+        if elapsed < 0 || elapsed >= Self.replayWindowDuration {
+            self.replay = nil
         }
-    }
-
-    private mutating func consumeReplay(
-        _ fields: CodexLineFields, at timestamp: Date, emit: (CodexUsageEvent) -> Void
-    ) -> Bool {
-        let second = codexSecond(timestamp)
-        switch replayState {
-        case let .suppressing(activeSecond):
-            if activeSecond == second {
-                updatePreviousTotals(from: fields)
-                return true
-            }
-            replayState = .idle
-        case let .suppressingThenAwaitingReplay(activeSecond):
-            if activeSecond == second {
-                updatePreviousTotals(from: fields)
-                return true
-            }
-            replayState = .pendingReplay(timestamp: timestamp, fields: fields)
-            return true
-        case .awaitingReplay:
-            replayState = .pendingReplay(timestamp: timestamp, fields: fields)
-            return true
-        case let .pendingReplay(previousTimestamp, previousFields):
-            if codexSecond(previousTimestamp) == second {
-                updatePreviousTotals(from: previousFields)
-                updatePreviousTotals(from: fields)
-                replayState = .suppressing(second: second)
-                return true
-            }
-            emitEvent(from: previousFields, at: previousTimestamp, emit: emit)
-            replayState = .idle
-        case .idle:
-            break
-        }
-        return false
     }
 
     private mutating func emitEvent(
-        from fields: CodexLineFields, at timestamp: Date, emit: (CodexUsageEvent) -> Void
+        from snapshot: CodexTokenSnapshot, at timestamp: Date,
+        emit: (CodexUsageEvent) -> Void
     ) {
-        let rawUsage = fields.lastUsage ?? fields.totalUsage?.subtracting(previousTotals)
-        updatePreviousTotals(from: fields)
+        let rawUsage = snapshot.lastUsage ?? snapshot.totalUsage?.subtracting(previousTotals)
+        updatePreviousTotals(from: snapshot)
         guard let rawUsage, !rawUsage.isEmpty else {
             return
         }
 
-        let model =
-            fields.payloadModel ?? fields.infoModel ?? currentModel ?? Self.codexDefaultModel
+        let model = snapshot.model ?? currentModel ?? Self.codexDefaultModel
         currentModel = model
         emit(
             CodexUsageEvent(
@@ -535,8 +518,8 @@ private struct CodexReplayDeduper {
         )
     }
 
-    private mutating func updatePreviousTotals(from fields: CodexLineFields) {
-        if let totalUsage = fields.totalUsage {
+    private mutating func updatePreviousTotals(from snapshot: CodexTokenSnapshot) {
+        if let totalUsage = snapshot.totalUsage {
             previousTotals = totalUsage
         }
     }

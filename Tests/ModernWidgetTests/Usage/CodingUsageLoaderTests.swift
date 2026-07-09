@@ -196,12 +196,12 @@ final class CodingUsageLoaderTests {
     func loadsCodexUsageFromActiveSessionsBeforeArchivedDuplicates() throws {
         let activeLog = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
-            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cached_input_tokens":30,"output_tokens":35,"reasoning_output_tokens":10,"total_tokens":195}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#,
+            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cached_input_tokens":30,"output_tokens":35,"reasoning_output_tokens":10,"total_tokens":185}}}}"#,
             #"{"timestamp":"2026-06-17T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":11,"cached_input_tokens":1,"output_tokens":9,"reasoning_output_tokens":0,"total_tokens":20},"model":"gpt-5.2-codex"}}}"#,
         ].joined(separator: "\n")
         let archivedLog =
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":999,"cached_input_tokens":99,"output_tokens":99,"reasoning_output_tokens":9,"total_tokens":1107},"model":"gpt-5.2"}}}"#
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":999,"cached_input_tokens":99,"output_tokens":99,"reasoning_output_tokens":9,"total_tokens":1098},"model":"gpt-5.2"}}}"#
 
         try writeFixture(activeLog, to: ".codex/sessions/2026/06/session.jsonl", in: home)
         try writeFixture(
@@ -243,10 +243,11 @@ final class CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 120)
     }
 
-    @Test("skips codex subagent replayed parent token history")
+    @Test("skips confirmed codex subagent replayed parent token history")
     func skipsCodexSubagentReplayedParentTokenHistory() throws {
         let log = [
-            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":0,"total_tokens":1200}}}}"#,
             #"{"timestamp":"2026-06-18T01:00:00.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":150,"output_tokens":300,"reasoning_output_tokens":0,"total_tokens":1800}}}}"#,
             #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":160,"output_tokens":320,"reasoning_output_tokens":0,"total_tokens":1920},"model":"gpt-5.2"}}}"#,
@@ -280,17 +281,36 @@ final class CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 150)
     }
 
-    @Test("keeps pending codex replay when another spawn appears")
-    func keepsPendingCodexReplayWhenAnotherSpawnAppears() throws {
+    @Test("skips a single confirmed codex replay snapshot across a second boundary")
+    func skipsSingleConfirmedCodexReplaySnapshotAcrossSecondBoundary() throws {
         let log = [
-            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-a"}}}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:01.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-b"}}}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1000},"model":"gpt-5.2"}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:02.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1500},"model":"gpt-5.2"}}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1600},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.999Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:01.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:01.001Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":150,"output_tokens":300,"reasoning_output_tokens":0,"total_tokens":1800}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":160,"output_tokens":320,"reasoning_output_tokens":0,"total_tokens":1920},"model":"gpt-5.2"}}}"#,
         ].joined(separator: "\n")
-        try writeFixture(log, to: ".codex/sessions/pending-spawn.jsonl", in: home)
+        try writeFixture(log, to: ".codex/sessions/single-replay.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.inputTokens == 90)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 20)
+        #expect(codex.totalCounts.totalTokens == 120)
+    }
+
+    @Test("keeps codex token snapshots without a matching parent sentinel")
+    func keepsCodexTokenSnapshotsWithoutMatchingParentSentinel() throws {
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"expected-parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"different-parent"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.200Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":150},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":200,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":200},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/unconfirmed-replay.jsonl", in: home)
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
@@ -300,24 +320,22 @@ final class CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 200)
     }
 
-    @Test("keeps suppressing codex replay when another spawn appears")
-    func keepsSuppressingCodexReplayWhenAnotherSpawnAppears() throws {
+    @Test("keeps codex token snapshots when the parent sentinel arrives later")
+    func keepsCodexTokenSnapshotsWhenParentSentinelArrivesLater() throws {
         let log = [
-            #"{"timestamp":"2026-06-18T00:59:59.000Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-a"}}}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1000},"model":"gpt-5.2"}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1500},"model":"gpt-5.2"}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.200Z","type":"session_meta","payload":{"source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-b"}}}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.300Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1600},"model":"gpt-5.2"}}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1700,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":1700},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:01.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:01.100Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":100},"model":"gpt-5.2"}}}"#,
+            #"{"timestamp":"2026-06-18T01:00:01.200Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":150,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":150},"model":"gpt-5.2"}}}"#,
         ].joined(separator: "\n")
-        try writeFixture(log, to: ".codex/sessions/suppressing-spawn.jsonl", in: home)
+        try writeFixture(log, to: ".codex/sessions/late-parent.jsonl", in: home)
 
         let report = CodingUsageLoader(environment: [:], homeDirectory: home)
             .loadReport(scope: scope())
         let codex = try #require(report.agents.first { $0.agent == .codex })
 
-        #expect(codex.totalCounts.inputTokens == 100)
-        #expect(codex.totalCounts.totalTokens == 100)
+        #expect(codex.totalCounts.inputTokens == 150)
+        #expect(codex.totalCounts.totalTokens == 150)
     }
 
     @Test("loads pi usage from assistant messages")
@@ -616,8 +634,8 @@ final class CodingUsageLoaderTests {
     func loadsRepeatedCodexTokenCountSnapshots() throws {
         let log = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
-            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":125}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#,
+            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#,
         ].joined(separator: "\n")
         try writeFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
@@ -626,6 +644,27 @@ final class CodingUsageLoaderTests {
         let codex = try #require(report.agents.first { $0.agent == .codex })
 
         #expect(codex.totalCounts.totalTokens == 240)
+    }
+
+    @Test("ignores codex total-only residual snapshots")
+    func ignoresCodexTotalOnlyResidualSnapshots() throws {
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#,
+            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":999},"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#,
+            #"{"timestamp":"2026-06-18T01:03:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":110,"cached_input_tokens":10,"output_tokens":25,"reasoning_output_tokens":7,"total_tokens":135}}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/total-residual.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.inputTokens == 100)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 25)
+        #expect(codex.totalCounts.reasoningTokens == 7)
+        #expect(codex.totalCounts.totalTokens == 135)
     }
 
     @Test("resolves codex model context from payload, info, turn context, and fallback")
