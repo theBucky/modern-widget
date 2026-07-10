@@ -262,8 +262,9 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
         } else if key == "id" {
             fields.sessionID = nonEmptyString(scanner.readString()) ?? fields.sessionID
         } else if key == "source" {
-            fields.threadSpawnParentID =
-                codexThreadSpawnParentID(&scanner) ?? fields.threadSpawnParentID
+            fields.forkParentID = codexThreadSpawnParentID(&scanner) ?? fields.forkParentID
+        } else if key == "forked_from_id" {
+            fields.forkParentID = nonEmptyString(scanner.readString()) ?? fields.forkParentID
         } else {
             scanner.skipValue()
         }
@@ -377,12 +378,12 @@ private enum CodexLineType {
 
 private struct CodexSessionMeta {
     let id: String?
-    let threadSpawnParentID: String?
+    let forkParentID: String?
 
-    init?(id: String?, threadSpawnParentID: String?) {
-        guard id != nil || threadSpawnParentID != nil else { return nil }
+    init?(id: String?, forkParentID: String?) {
+        guard id != nil || forkParentID != nil else { return nil }
         self.id = id
-        self.threadSpawnParentID = threadSpawnParentID
+        self.forkParentID = forkParentID
     }
 }
 
@@ -404,7 +405,7 @@ private struct CodexLineFields {
 
     var isTokenCount = false
     var sessionID: String?
-    var threadSpawnParentID: String?
+    var forkParentID: String?
     var payloadModel: String?
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
@@ -417,7 +418,7 @@ private struct CodexLineFields {
             guard
                 let sessionMeta = CodexSessionMeta(
                     id: sessionID,
-                    threadSpawnParentID: threadSpawnParentID
+                    forkParentID: forkParentID
                 )
             else { return nil }
             return .sessionMeta(sessionMeta, at: timestamp)
@@ -441,9 +442,10 @@ private struct CodexLineFields {
 }
 
 /// Folds a session's token-count lines into usage events while preserving the cumulative
-/// baseline across confirmed replay windows. Codex writes the current rollout's metadata
-/// first, then may copy parent metadata into fork history. Only the first `thread_spawn`
-/// source belongs to this rollout; a later matching identity confirms its replay.
+/// baseline across confirmed replay windows. Every Codex fork (a subagent `thread_spawn`
+/// or a user fork marked by `forked_from_id`) writes the new rollout's metadata first,
+/// then copies the parent's history, metadata included, into the file. Only the first
+/// fork parent belongs to this rollout; a later matching identity confirms its replay.
 private struct CodexSessionState {
     private struct Replay {
         enum Phase {
@@ -474,7 +476,7 @@ private struct CodexSessionState {
 
         if !hasSessionHeader {
             hasSessionHeader = true
-            guard let parentID = metadata.threadSpawnParentID else { return }
+            guard let parentID = metadata.forkParentID else { return }
             replay = Replay(startedAt: timestamp, phase: .awaitingParent(id: parentID))
             return
         }
@@ -513,11 +515,16 @@ private struct CodexSessionState {
         }
     }
 
+    /// Codex re-emits `token_count` with unchanged usage on rate-limit updates, context
+    /// estimates, and context-full markers, so `last_token_usage` repeats and cannot be
+    /// summed per line. The advance of `total_token_usage`, the accumulator Codex bumps
+    /// once per API request, is the per-request usage; `last_token_usage` remains only as
+    /// a fallback for legacy lines without totals.
     private mutating func emitEvent(
         from snapshot: CodexTokenSnapshot, at timestamp: Date,
         emit: (CodexUsageEvent) -> Void
     ) {
-        let rawUsage = snapshot.lastUsage ?? snapshot.totalUsage?.subtracting(previousTotals)
+        let rawUsage = snapshot.totalUsage?.subtracting(previousTotals) ?? snapshot.lastUsage
         updatePreviousTotals(from: snapshot)
         guard let rawUsage, !rawUsage.isEmpty else {
             return

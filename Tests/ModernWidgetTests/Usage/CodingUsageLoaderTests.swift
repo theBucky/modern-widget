@@ -358,6 +358,71 @@ final class CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 150)
     }
 
+    @Test("skips codex token count re-emissions with unchanged totals")
+    func skipsCodexTokenCountReemissionsWithUnchangedTotals() throws {
+        let repeated =
+            #""info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model":"gpt-5.2"}"#
+        let log = [
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","#
+                + repeated + "}}",
+            #"{"timestamp":"2026-06-18T01:01:30.000Z","type":"event_msg","payload":{"type":"token_count","#
+                + repeated + "}}",
+            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"cached_input_tokens":20,"output_tokens":15,"reasoning_output_tokens":5,"total_tokens":65},"total_token_usage":{"input_tokens":150,"cached_input_tokens":30,"output_tokens":35,"reasoning_output_tokens":10,"total_tokens":185},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/rate-limit-reemit.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.inputTokens == 120)
+        #expect(codex.totalCounts.cacheReadTokens == 30)
+        #expect(codex.totalCounts.outputTokens == 35)
+        #expect(codex.totalCounts.reasoningTokens == 10)
+        #expect(codex.totalCounts.totalTokens == 185)
+    }
+
+    @Test("resumes codex counting after a context-full total overwrite")
+    func resumesCodexCountingAfterContextFullTotalOverwrite() throws {
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.2"}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#,
+            #"{"timestamp":"2026-06-18T01:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":272000}}}}"#,
+            #"{"timestamp":"2026-06-18T01:03:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":50}}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/context-full.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.inputTokens == 130)
+        #expect(codex.totalCounts.cacheReadTokens == 10)
+        #expect(codex.totalCounts.outputTokens == 30)
+        #expect(codex.totalCounts.reasoningTokens == 7)
+        #expect(codex.totalCounts.totalTokens == 170)
+    }
+
+    @Test("skips codex fork replayed history marked by forked_from_id")
+    func skipsCodexForkReplayedHistoryMarkedByForkedFromID() throws {
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"fork","forked_from_id":"origin","source":"cli"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"origin","source":"cli"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":0,"total_tokens":1200}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":160,"output_tokens":320,"reasoning_output_tokens":0,"total_tokens":1920},"model":"gpt-5.2"}}}"#,
+        ].joined(separator: "\n")
+        try writeFixture(log, to: ".codex/sessions/user-fork.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.inputTokens == 540)
+        #expect(codex.totalCounts.cacheReadTokens == 60)
+        #expect(codex.totalCounts.outputTokens == 120)
+        #expect(codex.totalCounts.totalTokens == 720)
+    }
+
     @Test("loads pi usage from assistant messages")
     func loadsPiUsageFromAssistantMessages() throws {
         try writeFixture(
