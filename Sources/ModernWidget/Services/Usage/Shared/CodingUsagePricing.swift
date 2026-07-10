@@ -26,6 +26,35 @@ struct CodingUsageBillableTokens {
 }
 
 enum CodingUsagePricing {
+    struct Resolver {
+        private enum Resolution {
+            case priced(ModelPricing)
+            case unpriced
+        }
+
+        private var resolutions: [String: Resolution] = [:]
+
+        mutating func cost(model: String?, tokens: CodingUsageBillableTokens) -> Double {
+            guard let model else {
+                return 0
+            }
+            if let resolution = resolutions[model] {
+                switch resolution {
+                case let .priced(pricing):
+                    return CodingUsagePricing.cost(pricing: pricing, tokens: tokens)
+                case .unpriced:
+                    return 0
+                }
+            }
+            guard let pricing = CodingUsagePricing.pricing(for: model) else {
+                resolutions[model] = .unpriced
+                return 0
+            }
+            resolutions[model] = .priced(pricing)
+            return CodingUsagePricing.cost(pricing: pricing, tokens: tokens)
+        }
+    }
+
     private struct ModelPricing {
         let input: Double
         let output: Double
@@ -51,14 +80,7 @@ enum CodingUsagePricing {
         }
     }
 
-    static func cost(
-        model: String?,
-        tokens: CodingUsageBillableTokens
-    ) -> Double {
-        guard let model, let pricing = pricing(for: model) else {
-            return 0
-        }
-
+    private static func cost(pricing: ModelPricing, tokens: CodingUsageBillableTokens) -> Double {
         let multiplier = tokens.usesFastPricing ? pricing.fastMultiplier : 1
         return multiplier
             * (Double(tokens.input) * pricing.input
@@ -74,11 +96,15 @@ enum CodingUsagePricing {
             return exact
         }
 
-        return
-            entries
-            .filter { isVersionVariant(normalizedModel, of: $0.key) }
-            .max { left, right in left.key.count < right.key.count }
-            .map(\.value)
+        var matchLength = 0
+        var match: ModelPricing?
+        for (key, pricing) in entries where isVersionVariant(normalizedModel, of: key) {
+            if key.count > matchLength {
+                matchLength = key.count
+                match = pricing
+            }
+        }
+        return match
     }
 
     /// Matches a model to `key` when `key` is its prefix up to a `-`/`.` boundary, so

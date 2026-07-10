@@ -40,21 +40,39 @@ struct CodingUsageBenchmarkTests {
         }
 
         try await CodingUsageBenchmarkRunner.run(
-            name: "load",
+            name: "load.cold",
             options: options,
             maxP95Milliseconds: options.maxLoadP95Milliseconds
+        ) {
+            let coldLoader = CodingUsageLoader(
+                environment: context.environment,
+                homeDirectory: context.homeDirectory
+            )
+            let report = coldLoader.loadReport(scan: referenceScan)
+            sink.consume(report)
+        }
+
+        sink.consume(loader.loadReport(scan: referenceScan))
+        try await CodingUsageBenchmarkRunner.run(
+            name: "load.cached",
+            options: options,
+            maxP95Milliseconds: options.maxCachedLoadP95Milliseconds
         ) {
             let report = loader.loadReport(scan: referenceScan)
             sink.consume(report)
         }
 
         try await CodingUsageBenchmarkRunner.run(
-            name: "startup",
+            name: "startup.cold",
             options: options,
             maxP95Milliseconds: options.maxStartupP95Milliseconds
         ) {
-            let scan = loader.usageScan(scope: context.scope)
-            let report = loader.loadReport(scan: scan)
+            let coldLoader = CodingUsageLoader(
+                environment: context.environment,
+                homeDirectory: context.homeDirectory
+            )
+            let scan = coldLoader.usageScan(scope: context.scope)
+            let report = coldLoader.loadReport(scan: scan)
             sink.consume(scan)
             sink.consume(report)
         }
@@ -80,6 +98,7 @@ private struct CodingUsageBenchmarkOptions {
     let fixtureLines: Int
     let maxScanP95Milliseconds: Double?
     let maxLoadP95Milliseconds: Double?
+    let maxCachedLoadP95Milliseconds: Double?
     let maxStartupP95Milliseconds: Double?
     let maxRefreshP95Milliseconds: Double?
 
@@ -110,6 +129,8 @@ private struct CodingUsageBenchmarkOptions {
             environment["CODING_USAGE_BENCHMARK_MAX_SCAN_P95_MS"])
         maxLoadP95Milliseconds = Self.double(
             environment["CODING_USAGE_BENCHMARK_MAX_LOAD_P95_MS"])
+        maxCachedLoadP95Milliseconds = Self.double(
+            environment["CODING_USAGE_BENCHMARK_MAX_CACHED_LOAD_P95_MS"])
         maxStartupP95Milliseconds = Self.double(
             environment["CODING_USAGE_BENCHMARK_MAX_STARTUP_P95_MS"])
         maxRefreshP95Milliseconds = Self.double(

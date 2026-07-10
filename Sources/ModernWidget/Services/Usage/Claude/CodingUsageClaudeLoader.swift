@@ -45,16 +45,35 @@ extension CodingUsageLoader {
     ) {
         // Files parse in parallel; the date filter stays ahead of the dedupe below so an
         // out-of-window duplicate can never beat an in-window record.
+        let cachedRecords = parseCache.claudeRecords()
         let entries = concurrentMap(files) { file in
-            usageRecords(
-                in: file.url,
-                needles: [JSONLineNeedle(#""usage""#)],
-                parse: claudeUsageEntry
-            )
-            .filter { scope.historyDay(containing: $0.timestamp) != nil }
+            if let cached = cachedRecords[file.fingerprint] {
+                return cached
+            }
+            var pricing = CodingUsagePricing.Resolver()
+            let usageNeedle = JSONLineNeedle(#""usage""#)
+            var records: [ClaudeUsageEntry] = []
+            forEachJSONLine(in: file) { line in
+                guard line.contains(usageNeedle),
+                    let entry = claudeUsageEntry(line, pricing: &pricing)
+                else {
+                    return
+                }
+                records.append(entry)
+            }
+            return records
         }
+        var recordsByFingerprint: [CodingUsageFileFingerprint: [ClaudeUsageEntry]] = [:]
+        recordsByFingerprint.reserveCapacity(files.count)
+        for (file, records) in zip(files, entries) {
+            recordsByFingerprint[file.fingerprint] = records
+        }
+        parseCache.replaceClaudeRecords(recordsByFingerprint)
 
-        for entry in dedupeClaudeEntries(entries.flatMap { $0 }) {
+        let inScope = entries.joined().lazy.filter {
+            scope.historyDay(containing: $0.timestamp) != nil
+        }
+        for entry in dedupeClaudeEntries(inScope) {
             accumulator.add(.claude, counts: entry.counts, at: entry.timestamp)
         }
     }
@@ -92,7 +111,8 @@ extension CodingUsageLoader {
         return url.standardizedFileURL
     }
 
-    func dedupeClaudeEntries(_ entries: [ClaudeUsageEntry]) -> [ClaudeUsageEntry] {
+    func dedupeClaudeEntries<Entries: Sequence>(_ entries: Entries) -> [ClaudeUsageEntry]
+    where Entries.Element == ClaudeUsageEntry {
         var indexesByExactKey: [ClaudeDedupeKey: Int] = [:]
         var indexesByMessageID: [String: Int] = [:]
         var deduped: [ClaudeUsageEntry] = []
@@ -145,7 +165,10 @@ extension CodingUsageLoader {
 }
 
 /// Extracts one Claude entry from a top-level `~/.claude/projects` transcript record.
-private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEntry? {
+private func claudeUsageEntry(
+    _ buffer: UnsafeRawBufferPointer,
+    pricing: inout CodingUsagePricing.Resolver
+) -> ClaudeUsageEntry? {
     guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
         return nil
     }
@@ -153,17 +176,24 @@ private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEn
     var requestID: String?
     var isSidechain = false
     var message: ClaudeMessageFields?
+    var sawRequestID = false
+    var sawIsSidechain = false
     while let key = scanner.nextKey() {
         if key == "timestamp" {
             timestamp = scanner.readTimestamp()
         } else if key == "requestId" {
             requestID = scanner.readString()
+            sawRequestID = true
         } else if key == "isSidechain" {
             isSidechain = scanner.readBool() == true
+            sawIsSidechain = true
         } else if key == "message" {
             message = claudeMessageFields(&scanner)
         } else {
             scanner.skipValue()
+        }
+        if timestamp != nil, message != nil, sawRequestID, sawIsSidechain {
+            break
         }
     }
 
@@ -186,7 +216,7 @@ private func claudeUsageEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEn
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: message.cacheRead,
             totalTokens: totalTokens,
-            costUSD: CodingUsagePricing.cost(
+            costUSD: pricing.cost(
                 model: message.model,
                 tokens: CodingUsageBillableTokens(
                     input: message.input,

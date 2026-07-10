@@ -2,15 +2,20 @@ import Darwin
 import Foundation
 
 extension CodingUsageLoader {
-    /// Maps `file` and hands each non-empty line to `visit` as a borrowed byte slice of
-    /// the mapping. Newlines are located with `memchr` over the raw pointer; slicing the
+    /// Reads small files, maps large files, and hands each non-empty line to `visit` as a
+    /// borrowed byte slice. Newlines are located with `memchr`; slicing the
     /// `Data` per line instead is ~75x slower because every byte pays Collection witness
     /// and bounds-check overhead.
     func forEachJSONLine(
-        in file: URL,
+        in file: CodingUsageFile,
         _ visit: (UnsafeRawBufferPointer) -> Void
     ) {
-        guard let data = try? Data(contentsOf: file, options: .mappedIfSafe), !data.isEmpty else {
+        // Pi produces thousands of tiny sessions. Reading those directly avoids one VM
+        // mapping lifecycle per file; larger transcripts stay mapped to avoid a copy.
+        let directReadByteLimit = 128 * 1024
+        let options: Data.ReadingOptions =
+            (file.fingerprint.byteCount ?? 0) < directReadByteLimit ? [] : .mappedIfSafe
+        guard let data = try? Data(contentsOf: file.url, options: options), !data.isEmpty else {
             return
         }
         data.withUnsafeBytes { raw in
@@ -46,24 +51,5 @@ extension CodingUsageLoader {
             }
             initializedCount = elements.count
         }
-    }
-
-    /// Collects whatever `parse` extracts from each line of `file`, skipping lines that
-    /// lack any needle so the scanner only descends into candidate lines.
-    func usageRecords<Record>(
-        in file: URL,
-        needles: [JSONLineNeedle],
-        parse: (UnsafeRawBufferPointer) -> Record?
-    ) -> [Record] {
-        var records: [Record] = []
-        forEachJSONLine(in: file) { line in
-            guard needles.allSatisfy(line.contains) else {
-                return
-            }
-            if let record = parse(line) {
-                records.append(record)
-            }
-        }
-        return records
     }
 }
