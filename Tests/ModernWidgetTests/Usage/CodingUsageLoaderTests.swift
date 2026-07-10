@@ -243,6 +243,21 @@ final class CodingUsageLoaderTests {
         #expect(codex.totalCounts.totalTokens == 120)
     }
 
+    @Test
+    func `Dedupes identical codex events across files in one source`() throws {
+        let event =
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5},"model":"gpt-5.2"}}}"#
+
+        try writeFixture(event, to: ".codex/sessions/first.jsonl", in: home)
+        try writeFixture(event, to: ".codex/sessions/second.jsonl", in: home)
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let codex = try #require(report.agents.first { $0.agent == .codex })
+
+        #expect(codex.totalCounts.totalTokens == 120)
+    }
+
     @Test("skips confirmed codex subagent replayed parent token history")
     func skipsCodexSubagentReplayedParentTokenHistory() throws {
         let log = [
@@ -1004,6 +1019,93 @@ final class CodingUsageLoaderTests {
         )
 
         #expect(loader.usageScan(scope: scope()).fingerprint != first)
+    }
+
+    @Test(arguments: CodingUsageAgent.allCases)
+    func `Reload reflects changed and deleted usage files`(_ agent: CodingUsageAgent) throws {
+        let fixture:
+            (
+                path: String, initial: String, initialTotal: UInt64, changed: String,
+                changedTotal: UInt64
+            )
+        switch agent {
+        case .claude:
+            fixture = (
+                ".claude/projects/project/session/chat.jsonl",
+                #"{"timestamp":"2026-06-18T03:04:05.000Z","requestId":"request","message":{"id":"message","model":"claude-sonnet-4","usage":{"input_tokens":10,"output_tokens":1}}}"#,
+                11,
+                #"{"timestamp":"2026-06-18T03:04:05.000Z","requestId":"request","message":{"id":"message","model":"claude-sonnet-4","usage":{"input_tokens":20,"output_tokens":2}}}"#,
+                22
+            )
+        case .codex:
+            fixture = (
+                ".codex/sessions/session.jsonl",
+                #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
+                48,
+                #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":60},"model":"gpt-5.2-codex"}}}"#,
+                60
+            )
+        case .pi:
+            fixture = (
+                ".pi/agent/sessions/project/session.jsonl",
+                #"{"type":"message","timestamp":"2026-06-18T03:04:05.000Z","message":{"role":"assistant","model":"gpt-5.2","usage":{"input":10,"output":1,"totalTokens":11}}}"#,
+                11,
+                #"{"type":"message","timestamp":"2026-06-18T03:04:05.000Z","message":{"role":"assistant","model":"gpt-5.2","usage":{"input":20,"output":2,"totalTokens":22}}}"#,
+                22
+            )
+        }
+
+        try writeFixture(fixture.initial, to: fixture.path, in: home)
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let initial = try #require(
+            loader.loadReport(scope: scope()).agents.first { $0.agent == agent }
+        )
+
+        try writeFixture(
+            fixture.changed,
+            to: fixture.path,
+            in: home,
+            modifiedAt: date(2026, 6, 18, 12, 1)
+        )
+        let changed = try #require(
+            loader.loadReport(scope: scope()).agents.first { $0.agent == agent }
+        )
+
+        try FileManager.default.removeItem(at: home.appendingPathComponent(fixture.path))
+        let removed = try #require(
+            loader.loadReport(scope: scope()).agents.first { $0.agent == agent }
+        )
+
+        #expect(initial.totalCounts.totalTokens == fixture.initialTotal)
+        #expect(changed.totalCounts.totalTokens == fixture.changedTotal)
+        #expect(removed.totalCounts.totalTokens == 0)
+    }
+
+    @Test
+    func `Codex config change reprices unchanged usage files`() throws {
+        try writeFixture(
+            #"{"timestamp":"2026-06-18T03:04:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":0,"output_tokens":8,"reasoning_output_tokens":0,"total_tokens":48},"model":"gpt-5.2-codex"}}}"#,
+            to: ".codex/sessions/session.jsonl",
+            in: home
+        )
+        try writeFixture(#"service_tier = "standard""#, to: ".codex/config.toml", in: home)
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let first = try #require(
+            loader.loadReport(scope: scope()).agents.first { $0.agent == .codex }
+        )
+
+        try writeFixture(
+            #"service_tier = "fast""#,
+            to: ".codex/config.toml",
+            in: home,
+            modifiedAt: date(2026, 6, 18, 12, 1)
+        )
+        let repriced = try #require(
+            loader.loadReport(scope: scope()).agents.first { $0.agent == .codex }
+        )
+
+        #expect(first.totalCounts.totalTokens == 48)
+        #expect(abs(repriced.totalCounts.costUSD - first.totalCounts.costUSD * 2) < 0.00000001)
     }
 
     @Test("reports no usage when no usage data is found")

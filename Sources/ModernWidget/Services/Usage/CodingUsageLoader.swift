@@ -19,6 +19,7 @@ struct CodingUsageFingerprint: Equatable, Sendable {
 struct CodingUsageLoader: Sendable {
     let environment: [String: String]
     let homeDirectory: URL
+    let parseCache: CodingUsageParseCache
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -26,6 +27,7 @@ struct CodingUsageLoader: Sendable {
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
+        self.parseCache = CodingUsageParseCache()
     }
 
     func installedAgents() -> Set<CodingUsageAgent> {
@@ -113,7 +115,7 @@ struct CodingUsageLoader: Sendable {
 
 struct CodingUsageAccumulator {
     private let scope: CodingUsageDateScope
-    private var dailyCounts: [CodingUsageAgent: [Date: CodingTokenCounts]] = [:]
+    private var dailyCounts: [CodingUsageAgent: [CodingTokenCounts]] = [:]
 
     init(scope: CodingUsageDateScope) {
         self.scope = scope
@@ -122,20 +124,24 @@ struct CodingUsageAccumulator {
     mutating func add(
         _ agent: CodingUsageAgent, counts tokenCounts: CodingTokenCounts, at date: Date
     ) {
-        guard let day = scope.historyDay(containing: date) else {
+        guard let dayIndex = scope.historyDayIndex(containing: date) else {
             return
         }
-        dailyCounts[agent, default: [:]][day, default: CodingTokenCounts()].add(tokenCounts)
+        let dayCount = scope.historyDays.count
+        dailyCounts[
+            agent,
+            default: Array(repeating: CodingTokenCounts(), count: dayCount),
+        ][dayIndex].add(tokenCounts)
     }
 
     func agentSummaries(for agents: [CodingUsageAgent]) -> [CodingUsageAgentSummary] {
         agents.map { agent in
             CodingUsageAgentSummary(
                 agent: agent,
-                dailyCounts: scope.historyDays.map { day in
+                dailyCounts: scope.historyDays.enumerated().map { index, day in
                     CodingUsageDaySummary(
                         date: day,
-                        counts: dailyCounts[agent]?[day] ?? CodingTokenCounts()
+                        counts: dailyCounts[agent]?[index] ?? CodingTokenCounts()
                     )
                 }
             )

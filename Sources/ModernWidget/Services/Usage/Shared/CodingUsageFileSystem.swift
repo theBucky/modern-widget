@@ -1,6 +1,6 @@
 import Foundation
 
-struct CodingUsageFileFingerprint: Equatable, Sendable {
+struct CodingUsageFileFingerprint: Hashable, Sendable {
     let path: String
     let modifiedAt: Date?
     let byteCount: Int?
@@ -47,7 +47,7 @@ extension CodingUsageLoader {
             return nil
         }
         return CodingUsageFileFingerprint(
-            path: file.standardizedFileURL.path,
+            path: file.path,
             modifiedAt: values?.contentModificationDate,
             byteCount: values?.fileSize
         )

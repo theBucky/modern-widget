@@ -1,17 +1,35 @@
 import Foundation
 
+struct PiUsageRecord: Sendable {
+    let timestamp: Date
+    let counts: CodingTokenCounts
+}
+
 extension CodingUsageLoader {
     func loadPiUsage(
         files: [CodingUsageFile],
         into accumulator: inout CodingUsageAccumulator
     ) {
+        let cachedRecords = parseCache.piRecords()
         let records = concurrentMap(files) { file in
-            usageRecords(
-                in: file.url,
-                needles: [JSONLineNeedle(#""usage""#), JSONLineNeedle(#""message""#)],
-                parse: piUsageRecord
-            )
+            if let cached = cachedRecords[file.fingerprint] {
+                return cached
+            }
+            var pricing = CodingUsagePricing.Resolver()
+            var records: [PiUsageRecord] = []
+            forEachJSONLine(in: file) { line in
+                if let record = piUsageRecord(line, pricing: &pricing) {
+                    records.append(record)
+                }
+            }
+            return records
         }
+        var recordsByFingerprint: [CodingUsageFileFingerprint: [PiUsageRecord]] = [:]
+        recordsByFingerprint.reserveCapacity(files.count)
+        for (file, fileRecords) in zip(files, records) {
+            recordsByFingerprint[file.fingerprint] = fileRecords
+        }
+        parseCache.replacePiRecords(recordsByFingerprint)
         for record in records.joined() {
             accumulator.add(.pi, counts: record.counts, at: record.timestamp)
         }
@@ -31,9 +49,10 @@ extension CodingUsageLoader {
     }
 }
 
-private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
-    -> (timestamp: Date, counts: CodingTokenCounts)?
-{
+private func piUsageRecord(
+    _ buffer: UnsafeRawBufferPointer,
+    pricing: inout CodingUsagePricing.Resolver
+) -> PiUsageRecord? {
     guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
         return nil
     }
@@ -42,10 +61,17 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
     var fields = PiMessageFields()
 
     while let key = scanner.nextKey() {
-        if key == "timestamp" {
+        if key == "type" {
+            if !scanner.readStringEquals("message") {
+                return nil
+            }
+        } else if key == "timestamp" {
             timestamp = scanner.readTimestamp()
         } else if key == "message" {
-            fields = piMessageFields(&scanner)
+            guard let messageFields = piMessageFields(&scanner) else {
+                return nil
+            }
+            fields = messageFields
         } else {
             scanner.skipValue()
         }
@@ -69,15 +95,15 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
     let cacheWrite1h = min(fields.cacheWrite1h, fields.cacheWrite)
     let cacheWrite = fields.cacheWrite - cacheWrite1h
     let model = fields.model
-    return (
-        timestamp,
-        CodingTokenCounts(
+    return PiUsageRecord(
+        timestamp: timestamp,
+        counts: CodingTokenCounts(
             inputTokens: fields.input,
             outputTokens: outputTokens,
             cacheCreationTokens: fields.cacheWrite,
             cacheReadTokens: fields.cacheRead,
             totalTokens: totalTokens,
-            costUSD: CodingUsagePricing.cost(
+            costUSD: pricing.cost(
                 model: model,
                 tokens: CodingUsageBillableTokens(
                     input: fields.input,
@@ -91,12 +117,15 @@ private func piUsageRecord(_ buffer: UnsafeRawBufferPointer)
     )
 }
 
-private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields {
+private func piMessageFields(_ scanner: inout JSONScanner) -> PiMessageFields? {
     var fields = PiMessageFields()
-    guard scanner.beginObject() else { return fields }
+    guard scanner.beginObject() else { return nil }
     while let key = scanner.nextKey() {
         if key == "role" {
             fields.isAssistant = scanner.readStringEquals("assistant")
+            if !fields.isAssistant {
+                return nil
+            }
         } else if key == "model" {
             fields.model = scanner.readString()
         } else if key == "usage" {

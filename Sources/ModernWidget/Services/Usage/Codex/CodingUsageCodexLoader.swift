@@ -14,7 +14,7 @@ struct CodexUsageFileKey: Hashable {
 struct CodexUsageEvent: Hashable {
     let timestamp: Date
     let model: String
-    let counts: CodingTokenCounts
+    let rawUsage: CodexRawUsage
 }
 
 struct CodexScopedEventKey: Hashable {
@@ -22,7 +22,7 @@ struct CodexScopedEventKey: Hashable {
     let event: CodexUsageEvent
 }
 
-struct CodexRawUsage {
+struct CodexRawUsage: Hashable, Sendable {
     let inputTokens: UInt64
     let cachedInputTokens: UInt64
     let outputTokens: UInt64
@@ -44,7 +44,11 @@ struct CodexRawUsage {
         inputTokens == 0 && cachedInputTokens == 0 && outputTokens == 0 && reasoningTokens == 0
     }
 
-    func tokenCounts(model: String, usesFastPricing: Bool) -> CodingTokenCounts {
+    func tokenCounts(
+        model: String,
+        usesFastPricing: Bool,
+        pricing: inout CodingUsagePricing.Resolver
+    ) -> CodingTokenCounts {
         let billedInputTokens = inputTokens - cachedInputTokens
         return CodingTokenCounts(
             inputTokens: billedInputTokens,
@@ -52,7 +56,7 @@ struct CodexRawUsage {
             cacheReadTokens: cachedInputTokens,
             reasoningTokens: reasoningTokens,
             totalTokens: inputTokens.saturatingAdd(outputTokens),
-            costUSD: CodingUsagePricing.cost(
+            costUSD: pricing.cost(
                 model: model,
                 tokens: CodingUsageBillableTokens(
                     input: billedInputTokens,
@@ -85,8 +89,20 @@ extension CodingUsageLoader {
         var seenFiles: Set<CodexUsageFileKey> = []
         var seenEvents: Set<CodexScopedEventKey> = []
         var fastPricingByHome: [String: Bool] = [:]
+        var pricing = CodingUsagePricing.Resolver()
+        let cachedEvents = parseCache.codexEvents()
+        var eventsByFingerprint: [CodingUsageFileFingerprint: [CodexUsageEvent]] = [:]
+        eventsByFingerprint.reserveCapacity(sources.lazy.map(\.files.count).reduce(0, +))
+        let sourceCountByHome = Dictionary(
+            grouping: sources.filter { !$0.files.isEmpty },
+            by: { $0.home.path }
+        )
+        .mapValues(\.count)
 
         for source in sources {
+            guard !source.files.isEmpty else {
+                continue
+            }
             let homePath = source.home.path
             let usesFastPricing: Bool
             if let cached = fastPricingByHome[homePath] {
@@ -97,31 +113,48 @@ extension CodingUsageLoader {
                 fastPricingByHome[homePath] = usesFastPricing
             }
 
-            let files = source.files.filter { file in
-                let fileKey = CodexUsageFileKey(
-                    scope: homePath,
-                    path: relativePath(file.url, from: source.directory)
-                )
-                return seenFiles.insert(fileKey).inserted
-            }
+            let needsFileDedupe = sourceCountByHome[homePath, default: 0] > 1
+            let files =
+                needsFileDedupe
+                ? source.files.filter { file in
+                    let fileKey = CodexUsageFileKey(
+                        scope: homePath,
+                        path: relativePath(file.url, from: source.directory)
+                    )
+                    return seenFiles.insert(fileKey).inserted
+                }
+                : source.files
 
             // Sessions parse in parallel; the cross-file event dedupe below stays
             // sequential in file order so active files keep beating archived ones.
             let eventLists = concurrentMap(files) { file in
+                if let cached = cachedEvents[file.fingerprint] {
+                    return cached
+                }
                 var events: [CodexUsageEvent] = []
-                forEachCodexUsageEvent(in: file.url, usesFastPricing: usesFastPricing) {
+                forEachCodexUsageEvent(in: file) {
                     events.append($0)
                 }
                 return events
             }
 
-            for event in eventLists.joined() {
-                let eventKey = CodexScopedEventKey(scope: homePath, event: event)
-                if seenEvents.insert(eventKey).inserted {
-                    accumulator.add(.codex, counts: event.counts, at: event.timestamp)
+            for (file, events) in zip(files, eventLists) {
+                eventsByFingerprint[file.fingerprint] = events
+                for event in events {
+                    let eventKey = CodexScopedEventKey(scope: homePath, event: event)
+                    guard seenEvents.insert(eventKey).inserted else {
+                        continue
+                    }
+                    let counts = event.rawUsage.tokenCounts(
+                        model: event.model,
+                        usesFastPricing: usesFastPricing,
+                        pricing: &pricing
+                    )
+                    accumulator.add(.codex, counts: counts, at: event.timestamp)
                 }
             }
         }
+        parseCache.replaceCodexEvents(eventsByFingerprint)
     }
 
     func codexUsageSources(homes: [URL], scope: CodingUsageDateScope) -> [CodexUsageSource] {
@@ -190,11 +223,10 @@ extension CodingUsageLoader {
     }
 
     func forEachCodexUsageEvent(
-        in file: URL,
-        usesFastPricing: Bool,
+        in file: CodingUsageFile,
         visit: (CodexUsageEvent) -> Void
     ) {
-        var session = CodexSessionState(usesFastPricing: usesFastPricing)
+        var session = CodexSessionState()
 
         forEachJSONLine(in: file) { buffer in
             // Codex lines lead with `timestamp` and `type`, so the scanner classifies a
@@ -230,10 +262,15 @@ private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLine? {
                 return nil
             }
         } else if key == "timestamp" {
-            fields.timestamp = scanner.readTimestamp()
+            fields.timestamp = scanner.readStringValue()
         } else if key == "payload" {
-            guard codexPayload(&scanner, into: &fields) else {
+            switch codexPayload(&scanner, into: &fields) {
+            case .relevant:
+                break
+            case .irrelevant:
                 return nil
+            case .complete:
+                return fields.line
             }
         } else {
             scanner.skipValue()
@@ -246,19 +283,32 @@ private func scanCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLine? {
 /// abandon it mid-scan. Bailing on a non-token-count `payload.type` is only safe once
 /// the top-level type is known to be `event_msg`; a payload that precedes the type
 /// (never observed, but legal JSON) is scanned in full.
-private func codexPayload(_ scanner: inout JSONScanner, into fields: inout CodexLineFields) -> Bool
-{
-    guard scanner.beginObject() else { return true }
+private enum CodexPayloadScanResult {
+    case relevant
+    case irrelevant
+    case complete
+}
+
+private func codexPayload(
+    _ scanner: inout JSONScanner,
+    into fields: inout CodexLineFields
+) -> CodexPayloadScanResult {
+    guard scanner.beginObject() else { return .relevant }
     while let key = scanner.nextKey() {
         if key == "type" {
             fields.isTokenCount = scanner.readStringEquals("token_count")
             if !fields.isTokenCount, fields.type == .eventMessage {
-                return false
+                return .irrelevant
             }
         } else if key == "info" {
             codexInfo(&scanner, into: &fields)
         } else if key == "model" {
             fields.payloadModel = nonEmptyString(scanner.readString())
+            if fields.type == .turnContext, fields.timestamp != nil,
+                fields.payloadModel != nil
+            {
+                return .complete
+            }
         } else if key == "id" {
             fields.sessionID = nonEmptyString(scanner.readString()) ?? fields.sessionID
         } else if key == "source" {
@@ -268,8 +318,13 @@ private func codexPayload(_ scanner: inout JSONScanner, into fields: inout Codex
         } else {
             scanner.skipValue()
         }
+        if fields.type == .sessionMeta, fields.timestamp != nil,
+            fields.sessionID != nil, fields.forkParentID != nil
+        {
+            return .complete
+        }
     }
-    return true
+    return .relevant
 }
 
 private func codexThreadSpawnParentID(_ scanner: inout JSONScanner) -> String? {
@@ -401,7 +456,7 @@ private struct CodexTokenSnapshot {
 
 private struct CodexLineFields {
     var type: CodexLineType = .other
-    var timestamp: Date?
+    var timestamp: JSONStringValue?
 
     var isTokenCount = false
     var sessionID: String?
@@ -412,7 +467,7 @@ private struct CodexLineFields {
     var infoModel: String?
 
     var line: CodexLine? {
-        guard let timestamp else { return nil }
+        guard let timestamp = timestamp.flatMap(LogTimestamp.parse) else { return nil }
         switch type {
         case .sessionMeta:
             guard
@@ -461,15 +516,10 @@ private struct CodexSessionState {
     private static let codexDefaultModel = "gpt-5"
     private static let replayWindowDuration: TimeInterval = 1
 
-    private let usesFastPricing: Bool
     private var previousTotals: CodexRawUsage?
     private var currentModel: String?
     private var hasSessionHeader = false
     private var replay: Replay?
-
-    init(usesFastPricing: Bool) {
-        self.usesFastPricing = usesFastPricing
-    }
 
     mutating func onSessionMeta(_ metadata: CodexSessionMeta, at timestamp: Date) {
         expireReplay(at: timestamp)
@@ -536,7 +586,7 @@ private struct CodexSessionState {
             CodexUsageEvent(
                 timestamp: timestamp,
                 model: model,
-                counts: rawUsage.tokenCounts(model: model, usesFastPricing: usesFastPricing)
+                rawUsage: rawUsage
             )
         )
     }

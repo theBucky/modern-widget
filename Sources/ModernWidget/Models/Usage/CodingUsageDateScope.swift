@@ -27,10 +27,25 @@ struct CodingUsageDateScope: Equatable, Sendable {
     }
 
     func historyDay(containing date: Date) -> Date? {
+        historyDayIndex(containing: date).map { historyDays[$0] }
+    }
+
+    func historyDayIndex(containing date: Date) -> Int? {
         guard date >= history.start && date < history.end else {
             return nil
         }
-        return calendar.startOfDay(for: date)
+
+        var lowerBound = 0
+        var upperBound = historyDays.count
+        while lowerBound < upperBound {
+            let middle = lowerBound + (upperBound - lowerBound) / 2
+            if historyDays[middle] <= date {
+                lowerBound = middle + 1
+            } else {
+                upperBound = middle
+            }
+        }
+        return lowerBound - 1
     }
 
     /// The windows the usage table totals over. The scope is the single type that
