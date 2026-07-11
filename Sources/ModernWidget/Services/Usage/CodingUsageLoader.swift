@@ -107,11 +107,11 @@ struct CodingUsageLoader: Sendable {
                 piFiles = files
             }
         }
-        let extraCodexFiles =
+        let codexConfigFingerprints =
             activeAgents.contains(.codex) ? codexFingerprintFiles(homes: codexHomes) : []
         let files =
             ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
-            + extraCodexFiles)
+            + codexConfigFingerprints)
             .uniqued(by: \.path)
             .sorted { $0.path < $1.path }
         let fingerprint = CodingUsageFingerprint(
