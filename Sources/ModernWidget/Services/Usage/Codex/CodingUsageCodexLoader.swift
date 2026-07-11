@@ -582,7 +582,14 @@ private struct CodexSessionState {
             return
         }
 
-        let model = snapshot.model ?? currentModel ?? Self.codexDefaultModel
+        // Reuse the previous model instance when the snapshot repeats it, so cached
+        // events share one string per model run instead of allocating one per event.
+        let model: String
+        if let snapshotModel = snapshot.model, snapshotModel != currentModel {
+            model = snapshotModel
+        } else {
+            model = currentModel ?? Self.codexDefaultModel
+        }
         currentModel = model
         emit(
             CodexUsageEvent(
