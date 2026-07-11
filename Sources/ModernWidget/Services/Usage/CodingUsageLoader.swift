@@ -16,6 +16,12 @@ struct CodingUsageFingerprint: Equatable, Sendable {
     let files: [CodingUsageFileFingerprint]
 }
 
+private enum CodingUsageAgentSweep: Sendable {
+    case claude([CodingUsageFile])
+    case codex([CodexUsageSource])
+    case pi([CodingUsageFile])
+}
+
 struct CodingUsageLoader: Sendable {
     let environment: [String: String]
     let homeDirectory: URL
@@ -69,18 +75,43 @@ struct CodingUsageLoader: Sendable {
             piDirectories: piDirectories
         )
         let activeAgents = enabledAgents.intersection(installedAgents)
-        let claudeFiles =
-            activeAgents.contains(.claude)
-            ? claudeUsageFiles(in: claudeDirectories, scope: scope) : []
-        let codexSources =
-            activeAgents.contains(.codex) ? codexUsageSources(homes: codexHomes, scope: scope) : []
-        let piFiles =
-            activeAgents.contains(.pi) ? piUsageFiles(in: piDirectories, scope: scope) : []
-        let extraCodexFiles =
+        // Each sweep stats thousands of files; scanning the agents together bounds
+        // the wall time by the slowest sweep instead of the sum.
+        let sweeps: [@Sendable () -> CodingUsageAgentSweep] = [
+            {
+                .claude(
+                    activeAgents.contains(.claude)
+                        ? self.claudeUsageFiles(in: claudeDirectories, scope: scope) : [])
+            },
+            {
+                .codex(
+                    activeAgents.contains(.codex)
+                        ? self.codexUsageSources(homes: codexHomes, scope: scope) : [])
+            },
+            {
+                .pi(
+                    activeAgents.contains(.pi)
+                        ? self.piUsageFiles(in: piDirectories, scope: scope) : [])
+            },
+        ]
+        var claudeFiles: [CodingUsageFile] = []
+        var codexSources: [CodexUsageSource] = []
+        var piFiles: [CodingUsageFile] = []
+        for sweep in concurrentMap(sweeps, { $0() }) {
+            switch sweep {
+            case let .claude(files):
+                claudeFiles = files
+            case let .codex(sources):
+                codexSources = sources
+            case let .pi(files):
+                piFiles = files
+            }
+        }
+        let codexConfigFingerprints =
             activeAgents.contains(.codex) ? codexFingerprintFiles(homes: codexHomes) : []
         let files =
             ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
-            + extraCodexFiles.compactMap(usageFileFingerprint))
+            + codexConfigFingerprints)
             .uniqued(by: \.path)
             .sorted { $0.path < $1.path }
         let fingerprint = CodingUsageFingerprint(

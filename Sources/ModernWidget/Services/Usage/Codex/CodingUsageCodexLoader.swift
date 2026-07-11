@@ -191,9 +191,16 @@ extension CodingUsageLoader {
         .filter(isDirectory)
     }
 
-    func codexFingerprintFiles(homes: [URL]) -> [URL] {
-        homes.map {
-            $0.appendingPathComponent("config.toml")
+    /// Each home's `config.toml` joins the scan fingerprint because its service tier
+    /// changes pricing without touching any session file. Symlinks resolve so a
+    /// dotfile-managed config still changes the fingerprint when its target is
+    /// edited, matching the read in `codexConfigRequestsFastPricing`.
+    func codexFingerprintFiles(homes: [URL]) -> [CodingUsageFileFingerprint] {
+        homes.compactMap {
+            usageFileFingerprint(
+                path: $0.appendingPathComponent("config.toml").path,
+                resolvingSymlinks: true
+            )
         }
     }
 
@@ -580,7 +587,14 @@ private struct CodexSessionState {
             return
         }
 
-        let model = snapshot.model ?? currentModel ?? Self.codexDefaultModel
+        // Reuse the previous model instance when the snapshot repeats it, so cached
+        // events share one string per model run instead of allocating one per event.
+        let model: String
+        if let snapshotModel = snapshot.model, snapshotModel != currentModel {
+            model = snapshotModel
+        } else {
+            model = currentModel ?? Self.codexDefaultModel
+        }
         currentModel = model
         emit(
             CodexUsageEvent(

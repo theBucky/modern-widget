@@ -287,6 +287,25 @@ struct JSONStringValue {
             as? String
     }
 
+    /// FNV-1a over the decoded payload bytes, for callers that only ever compare a
+    /// string for identity and can drop the text itself. Escaped payloads decode
+    /// first so the hash tracks the string's value, not its encoding; undecodable
+    /// escapes fall back to the raw bytes, still deterministic per encoding.
+    var fnv1a64: UInt64 {
+        if hasEscape, let string {
+            return Self.fnv1a64(of: string.utf8)
+        }
+        return Self.fnv1a64(of: UnsafeBufferPointer(start: start, count: count))
+    }
+
+    private static func fnv1a64(of bytes: some Sequence<UInt8>) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in bytes {
+            hash = (hash ^ UInt64(byte)) &* 0x100_0000_01b3
+        }
+        return hash
+    }
+
     func equals(_ literal: StaticString) -> Bool {
         literal.withUTF8Buffer { literalBytes in
             if !hasEscape {
