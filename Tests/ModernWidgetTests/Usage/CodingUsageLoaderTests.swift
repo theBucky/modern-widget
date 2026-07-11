@@ -1159,6 +1159,32 @@ final class CodingUsageLoaderTests {
         #expect(loader.installedAgents() == Set(CodingUsageAgent.allCases))
     }
 
+    @Test("tracks symlinked codex config in the scan fingerprint")
+    func tracksSymlinkedCodexConfigInTheScanFingerprint() throws {
+        try writeFixture(#"service_tier = "standard""#, to: ".dotfiles/codex.toml", in: home)
+        try FileManager.default.createDirectory(
+            at: home.appendingPathComponent(".codex/sessions"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(
+            at: home.appendingPathComponent(".codex/config.toml"),
+            withDestinationURL: home.appendingPathComponent(".dotfiles/codex.toml")
+        )
+
+        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let before = loader.usageScan(scope: scope()).fingerprint
+        #expect(before.files.contains { $0.path.hasSuffix("config.toml") })
+
+        try writeFixture(
+            #"service_tier = "fast""#,
+            to: ".dotfiles/codex.toml",
+            in: home,
+            modifiedAt: date(2026, 6, 18, 13)
+        )
+        let after = loader.usageScan(scope: scope()).fingerprint
+        #expect(before != after)
+    }
+
     private func scope() -> CodingUsageDateScope {
         CodingUsageDateScope(
             now: date(2026, 6, 18, 12),

@@ -75,10 +75,17 @@ extension CodingUsageLoader {
         return paths
     }
 
-    /// Symlinks and other non-regular files are excluded (`lstat`, not `stat`).
-    func usageFileFingerprint(path: String) -> CodingUsageFileFingerprint? {
+    /// By default symlinks and other non-regular files are excluded, matching the
+    /// physical `fts` walk. `resolvingSymlinks` stats through a link instead, for
+    /// config files whose readers also follow it: the link's own attributes never
+    /// change when its target is edited, so only the target's fingerprint can
+    /// detect the edit.
+    func usageFileFingerprint(
+        path: String, resolvingSymlinks: Bool = false
+    ) -> CodingUsageFileFingerprint? {
         var status = stat()
-        guard lstat(path, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else {
+        let statted = resolvingSymlinks ? stat(path, &status) : lstat(path, &status)
+        guard statted == 0, (status.st_mode & S_IFMT) == S_IFREG else {
             return nil
         }
         let modifiedAt = Date(

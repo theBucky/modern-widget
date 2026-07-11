@@ -192,10 +192,15 @@ extension CodingUsageLoader {
     }
 
     /// Each home's `config.toml` joins the scan fingerprint because its service tier
-    /// changes pricing without touching any session file.
+    /// changes pricing without touching any session file. Symlinks resolve so a
+    /// dotfile-managed config still changes the fingerprint when its target is
+    /// edited, matching the read in `codexConfigRequestsFastPricing`.
     func codexFingerprintFiles(homes: [URL]) -> [CodingUsageFileFingerprint] {
         homes.compactMap {
-            usageFileFingerprint(path: $0.appendingPathComponent("config.toml").path)
+            usageFileFingerprint(
+                path: $0.appendingPathComponent("config.toml").path,
+                resolvingSymlinks: true
+            )
         }
     }
 
