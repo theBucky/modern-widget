@@ -1159,6 +1159,25 @@ final class CodingUsageLoaderTests {
         #expect(loader.installedAgents() == Set(CodingUsageAgent.allCases))
     }
 
+    @Test("dedupes claude messages whose ids arrive escaped differently")
+    func dedupesClaudeMessagesWhoseIdsArriveEscapedDifferently() throws {
+        // The second id spells "msg-a" with a unicode escape for the hyphen.
+        try writeFixture(
+            [
+                #"{"timestamp":"2026-06-18T01:00:00.000Z","requestId":"req-a","message":{"id":"msg-a","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+                #"{"timestamp":"2026-06-18T02:00:00.000Z","requestId":"req-a","message":{"id":"msg\u002da","model":"claude-sonnet-4-20250514","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+            ].joined(separator: "\n"),
+            to: ".claude/projects/project-a/session-a/chat.jsonl",
+            in: home
+        )
+
+        let report = CodingUsageLoader(environment: [:], homeDirectory: home)
+            .loadReport(scope: scope())
+        let claude = try #require(report.agents.first { $0.agent == .claude })
+
+        #expect(claude.totalCounts.totalTokens == 15)
+    }
+
     @Test("tracks symlinked codex config in the scan fingerprint")
     func tracksSymlinkedCodexConfigInTheScanFingerprint() throws {
         try writeFixture(#"service_tier = "standard""#, to: ".dotfiles/codex.toml", in: home)
