@@ -1,23 +1,27 @@
 import Foundation
 
+/// Message and request ids survive only as 64-bit FNV-1a keys: dedupe never needs the
+/// text back, integer keys index far faster than strings, and the cache drops two heap
+/// strings per entry. A collision merely merges two usage records (odds ~1e-11 at
+/// current volumes).
 struct ClaudeUsageEntry {
     let timestamp: Date
     let counts: CodingTokenCounts
-    let messageID: String?
-    let requestID: String?
+    let messageKey: UInt64?
+    let requestKey: UInt64?
     let isSidechain: Bool
 }
 
 struct ClaudeDedupeKey: Hashable {
-    let messageID: String
-    let requestID: String?
+    let messageKey: UInt64
+    let requestKey: UInt64?
 }
 
 /// Scalar fields pulled from a Claude `message` object. Cache creation prefers the
 /// `cache_creation` object's ephemeral buckets; the flat `cache_creation_input_tokens`
 /// fallback counts only as 5 minute cache creation, never 1 hour.
 private struct ClaudeMessageFields {
-    var id: String?
+    var idKey: UInt64?
     var model: String?
     var hasUsage = false
     var input: UInt64 = 0
@@ -114,11 +118,11 @@ extension CodingUsageLoader {
     func dedupeClaudeEntries<Entries: Sequence>(_ entries: Entries) -> [ClaudeUsageEntry]
     where Entries.Element == ClaudeUsageEntry {
         var indexesByExactKey: [ClaudeDedupeKey: Int] = [:]
-        var indexesByMessageID: [String: Int] = [:]
+        var indexesByMessageKey: [UInt64: Int] = [:]
         var deduped: [ClaudeUsageEntry] = []
 
         for entry in entries {
-            guard let messageID = entry.messageID else {
+            guard let messageKey = entry.messageKey else {
                 deduped.append(entry)
                 continue
             }
@@ -126,10 +130,10 @@ extension CodingUsageLoader {
             // A reply is logged twice: once on the main chain and once as a sidechain
             // summary sharing the same message id. Match the exact (message, request)
             // pair, and also collapse same-message entries when either is a sidechain.
-            let exactKey = ClaudeDedupeKey(messageID: messageID, requestID: entry.requestID)
+            let exactKey = ClaudeDedupeKey(messageKey: messageKey, requestKey: entry.requestKey)
             let existingIndex =
                 indexesByExactKey[exactKey]
-                ?? indexesByMessageID[messageID].flatMap {
+                ?? indexesByMessageKey[messageKey].flatMap {
                     entry.isSidechain || deduped[$0].isSidechain ? $0 : nil
                 }
 
@@ -137,7 +141,7 @@ extension CodingUsageLoader {
                 if shouldReplaceClaudeEntry(entry, existing: deduped[existingIndex]) {
                     deduped[existingIndex] = entry
                     indexesByExactKey[exactKey] = existingIndex
-                    indexesByMessageID[messageID] = existingIndex
+                    indexesByMessageKey[messageKey] = existingIndex
                 }
                 continue
             }
@@ -145,7 +149,7 @@ extension CodingUsageLoader {
             let index = deduped.count
             deduped.append(entry)
             indexesByExactKey[exactKey] = index
-            indexesByMessageID[messageID] = index
+            indexesByMessageKey[messageKey] = index
         }
 
         return deduped
@@ -173,7 +177,7 @@ private func claudeUsageEntry(
         return nil
     }
     var timestamp: Date?
-    var requestID: String?
+    var requestKey: UInt64?
     var isSidechain = false
     var message: ClaudeMessageFields?
     var sawRequestID = false
@@ -182,7 +186,7 @@ private func claudeUsageEntry(
         if key == "timestamp" {
             timestamp = scanner.readTimestamp()
         } else if key == "requestId" {
-            requestID = scanner.readString()
+            requestKey = scanner.readStringValue()?.fnv1a64
             sawRequestID = true
         } else if key == "isSidechain" {
             isSidechain = scanner.readBool() == true
@@ -228,8 +232,8 @@ private func claudeUsageEntry(
                 )
             )
         ),
-        messageID: message.id,
-        requestID: requestID,
+        messageKey: message.idKey,
+        requestKey: requestKey,
         isSidechain: isSidechain
     )
 }
@@ -239,7 +243,7 @@ private func claudeMessageFields(_ scanner: inout JSONScanner) -> ClaudeMessageF
     var fields = ClaudeMessageFields()
     while let key = scanner.nextKey() {
         if key == "id" {
-            fields.id = scanner.readString()
+            fields.idKey = scanner.readStringValue()?.fnv1a64
         } else if key == "model" {
             fields.model = scanner.readString()
         } else if key == "usage" {

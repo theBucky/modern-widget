@@ -287,6 +287,18 @@ struct JSONStringValue {
             as? String
     }
 
+    /// FNV-1a over the raw payload bytes, for callers that only ever compare a string
+    /// for identity and can drop the text itself. Escapes are not decoded: two
+    /// encodings of the same string hash apart, which the opaque ASCII ids used as
+    /// dedupe keys never exercise.
+    var fnv1a64: UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for offset in 0..<count {
+            hash = (hash ^ UInt64(start[offset])) &* 0x100_0000_01b3
+        }
+        return hash
+    }
+
     func equals(_ literal: StaticString) -> Bool {
         literal.withUTF8Buffer { literalBytes in
             if !hasEscape {
