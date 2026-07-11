@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct CodingUsageFileFingerprint: Hashable, Sendable {
@@ -14,42 +15,80 @@ struct CodingUsageFile: Sendable {
 }
 
 extension CodingUsageLoader {
+    /// Enumerates `.jsonl` files under `directory`. The name walk runs on `fts(3)`
+    /// without statting anything, then the per-file mtime/size fingerprints, the bulk
+    /// of the sweep's syscalls, stat on all cores.
     func usageFiles(in directory: URL, modifiedSince: Date) -> [CodingUsageFile] {
-        guard
-            let enumerator = FileManager.default.enumerator(
-                at: directory,
-                includingPropertiesForKeys: [
-                    .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
-                ]
+        let directoryPath = directory.path
+        let candidates = jsonlPaths(under: directoryPath)
+
+        let files = concurrentMap(candidates) { path -> CodingUsageFile? in
+            guard let fingerprint = usageFileFingerprint(path: path) else {
+                return nil
+            }
+            if let modifiedAt = fingerprint.modifiedAt, modifiedAt < modifiedSince {
+                return nil
+            }
+            return CodingUsageFile(
+                url: URL(fileURLWithPath: path, isDirectory: false),
+                fingerprint: fingerprint
             )
+        }
+        return files.compactMap { $0 }.sorted { $0.fingerprint.path < $1.fingerprint.path }
+    }
+
+    /// Walks `rootPath` and returns every `.jsonl` file path under it. `FTS_NOSTAT`
+    /// keeps the walk on `readdir` and `d_type` alone, so it costs one syscall per
+    /// directory instead of one per entry. Symlinks are reported but not followed,
+    /// matching the fingerprint stage's `lstat`.
+    private func jsonlPaths(under rootPath: String) -> [String] {
+        var argv = [strdup(rootPath), nil]
+        defer { free(argv[0]) }
+        guard
+            let stream = argv.withUnsafeMutableBufferPointer({
+                fts_open($0.baseAddress!, FTS_PHYSICAL | FTS_NOSTAT | FTS_NOCHDIR, nil)
+            })
         else {
             return []
         }
+        defer { fts_close(stream) }
 
-        var files: [CodingUsageFile] = []
-        for case let file as URL in enumerator {
-            guard file.pathExtension == "jsonl", let fingerprint = usageFileFingerprint(file) else {
-                continue
+        var paths: [String] = []
+        while let entry = fts_read(stream) {
+            let node = entry.pointee
+            switch Int32(node.fts_info) {
+            case FTS_F, FTS_NSOK:
+                // Suffix match with a non-empty stem, as `pathExtension == "jsonl"` had.
+                let length = Int(node.fts_pathlen)
+                guard
+                    length > 6,
+                    strncmp(node.fts_path + length - 6, ".jsonl", 6) == 0,
+                    node.fts_path[length - 7] != UInt8(ascii: "/")
+                else {
+                    break
+                }
+                paths.append(String(cString: node.fts_path))
+            default:
+                break
             }
-            if let modifiedAt = fingerprint.modifiedAt, modifiedAt < modifiedSince {
-                continue
-            }
-            files.append(CodingUsageFile(url: file, fingerprint: fingerprint))
         }
-        return files.sorted { $0.fingerprint.path < $1.fingerprint.path }
+        return paths
     }
 
-    func usageFileFingerprint(_ file: URL) -> CodingUsageFileFingerprint? {
-        let values = try? file.resourceValues(forKeys: [
-            .isRegularFileKey, .contentModificationDateKey, .fileSizeKey,
-        ])
-        guard values?.isRegularFile == true else {
+    /// Symlinks and other non-regular files are excluded (`lstat`, not `stat`).
+    func usageFileFingerprint(path: String) -> CodingUsageFileFingerprint? {
+        var status = stat()
+        guard lstat(path, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else {
             return nil
         }
+        let modifiedAt = Date(
+            timeIntervalSince1970: TimeInterval(status.st_mtimespec.tv_sec)
+                + TimeInterval(status.st_mtimespec.tv_nsec) / 1_000_000_000
+        )
         return CodingUsageFileFingerprint(
-            path: file.path,
-            modifiedAt: values?.contentModificationDate,
-            byteCount: values?.fileSize
+            path: path,
+            modifiedAt: modifiedAt,
+            byteCount: Int(status.st_size)
         )
     }
 

@@ -191,9 +191,11 @@ extension CodingUsageLoader {
         .filter(isDirectory)
     }
 
-    func codexFingerprintFiles(homes: [URL]) -> [URL] {
-        homes.map {
-            $0.appendingPathComponent("config.toml")
+    /// Each home's `config.toml` joins the scan fingerprint because its service tier
+    /// changes pricing without touching any session file.
+    func codexFingerprintFiles(homes: [URL]) -> [CodingUsageFileFingerprint] {
+        homes.compactMap {
+            usageFileFingerprint(path: $0.appendingPathComponent("config.toml").path)
         }
     }
 
