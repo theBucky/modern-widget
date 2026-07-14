@@ -46,9 +46,10 @@ Everything runs locally. State is stored with `UserDefaults`, and AI usage is re
 - Pi usage is loaded from `PI_AGENT_DIR` or `~/.pi/agent/sessions`.
 - Active and archived Codex sessions are deduplicated.
 - Claude sidechain duplicates are collapsed.
-- Pi entries with missing output infer output from total tokens; explicit zero output stays zero.
-- Cost estimates support known Claude and GPT/Codex/Pi model pricing.
-- The panel refreshes usage roughly every 10 minutes.
+- Pi contributes its persisted total tokens and total cost without local repricing.
+- Claude, OpenAI, and xAI prices use separate embedded provider catalogs.
+- Unknown manually priced models are omitted until the app adds explicit support.
+- The panel refreshes usage every 10, 30, or 60 minutes according to its setting.
 
 ## Requirements
 
@@ -108,8 +109,8 @@ script/build_and_run.sh verify
 
 ## Coding usage benchmark
 
-Use the benchmark script to measure the usage refresh pipeline. It reports `scan`, `load`,
-`startup`, and `refresh.no_change` timings with min, mean, p50, p95, and max milliseconds.
+Use the benchmark script to measure the usage refresh pipeline. It reports `scan`, `load.cold`,
+`load.cached`, `startup.cold`, and `refresh.no_change` timings with min, mean, p50, p95, and max milliseconds.
 
 ```bash
 script/benchmark_coding_usage.sh --mode real
@@ -123,6 +124,7 @@ script/benchmark_coding_usage.sh \
   --mode fixture \
   --max-scan-p95-ms 25 \
   --max-load-p95-ms 500 \
+  --max-cached-load-p95-ms 100 \
   --max-startup-p95-ms 550 \
   --max-refresh-p95-ms 25
 ```
@@ -138,12 +140,12 @@ Sources/ModernWidget/
 │   ├── LocalDay.swift                     # shared calendar-day key for walk, supplement, and retention logic
 │   ├── Reminder/
 │   │   ├── ReminderNotificationIssue.swift  # notification permission and delivery issues
-│   │   ├── ReminderSchedule.swift           # countdown phases and reminder timing
 │   │   └── ReminderState.swift              # timer state, presets, and snapshots
 │   ├── Usage/
-│   │   ├── CodingTokenCounts.swift          # token and cost totals
 │   │   ├── CodingUsageDateScope.swift       # usage reporting windows
-│   │   └── CodingUsageSummary.swift         # coding agent usage report models
+│   │   ├── CodingUsagePresentation.swift    # chart and display projection
+│   │   ├── CodingUsageSummary.swift         # coding agent usage report models
+│   │   └── CodingUsageTotals.swift          # normalized token and cost totals
 │   └── WalkHistory/
 │       └── WalkHistoryCalendar.swift        # month grid and weekday helpers
 ├── Resources/                             # Claude, Codex, and Pi logo assets
@@ -158,7 +160,7 @@ Sources/ModernWidget/
 │   │   ├── Claude/                        # Claude log loading
 │   │   ├── Codex/                         # Codex log loading
 │   │   ├── Pi/                            # Pi log loading
-│   │   └── Shared/                        # file scanning, JSON parsing, pricing
+│   │   └── Shared/                        # file scanning, caching, and JSON parsing
 │   └── WalkHistoryStore.swift             # walk persistence and day counts
 └── Views/
     ├── MenuBarPanelView.swift             # tabbed menu bar panel shell
@@ -173,7 +175,6 @@ Tests/ModernWidgetTests/
 ├── LocalDayTests.swift                    # shared day-key behavior
 ├── ReminderEngineTests.swift              # timer engine behavior
 ├── ReminderNotificationIssueTests.swift   # notification issue mapping
-├── ReminderScheduleTests.swift            # reminder schedule timing
 ├── ReminderStateTests.swift               # reminder state transitions
 ├── WalkHistoryCalendarTests.swift         # calendar grid
 ├── WalkHistoryStoreTests.swift            # walk persistence
