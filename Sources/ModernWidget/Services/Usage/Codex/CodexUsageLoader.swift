@@ -1,13 +1,8 @@
 import Foundation
 
-struct CodexUsageSource: Sendable {
-    let directory: URL
-    let files: [CodingUsageFile]
-}
-
 struct CodexUsageScan: Sendable {
     let isInstalled: Bool
-    let sources: [CodexUsageSource]
+    let files: [CodingUsageFile]
 }
 
 private struct CodexSessionFile {
@@ -79,20 +74,19 @@ struct CodexUsageLoader: Sendable {
 
     func scan(scope: CodingUsageDateScope, enabled: Bool) -> CodexUsageScan {
         let isInstalled = fileSystem.isDirectory(homeDirectory)
-        let sources = enabled && isInstalled ? usageSources(scope: scope) : []
-        return CodexUsageScan(isInstalled: isInstalled, sources: sources)
+        let files = enabled && isInstalled ? usageFiles(scope: scope) : []
+        return CodexUsageScan(isInstalled: isInstalled, files: files)
     }
 
     func load(_ scan: CodexUsageScan, visit: (CodingUsageEvent) -> Void) {
-        let files = usageFiles(in: scan)
         let cachedHistories = historyCache.snapshot()
-        let histories = concurrentMap(files) { file in
+        let histories = concurrentMap(scan.files) { file in
             cachedHistories[file] ?? parseCodexFile(file)
         }
 
         var historiesByFile: [CodingUsageFile: CodexFileHistory] = [:]
-        historiesByFile.reserveCapacity(files.count)
-        for (file, history) in zip(files, histories) {
+        historiesByFile.reserveCapacity(scan.files.count)
+        for (file, history) in zip(scan.files, histories) {
             historiesByFile[file] = history
         }
         historyCache.replace(with: historiesByFile)
@@ -102,7 +96,7 @@ struct CodexUsageLoader: Sendable {
         )
         var filesBySession: [UInt64: CodexSessionFile] = [:]
         filesBySession.reserveCapacity(parentKeys.count)
-        for (file, history) in zip(files, histories) {
+        for (file, history) in zip(scan.files, histories) {
             guard let header = history.header else {
                 continue
             }
@@ -118,7 +112,7 @@ struct CodexUsageLoader: Sendable {
         let cachedForks = forkCache.snapshot()
         var resolvedForks: [CodingUsageFile: CodexResolvedFork] = [:]
         var pricing = CodexUsageCostResolver()
-        for (file, history) in zip(files, histories) {
+        for (file, history) in zip(scan.files, histories) {
             let parent = history.header?.forkParentID.flatMap { filesBySession[$0] }
             let records: [CodexUsageRecord]
             if history.isFork {
@@ -149,20 +143,7 @@ struct CodexUsageLoader: Sendable {
         forkCache.replace(with: resolvedForks)
     }
 
-    private func usageFiles(in scan: CodexUsageScan) -> [CodingUsageFile] {
-        var seenRelativePaths: Set<String> = []
-        return scan.sources.flatMap { source in
-            source.files.compactMap { file in
-                let relativePath = fileSystem.relativePath(file.url, from: source.directory)
-                guard seenRelativePaths.insert(relativePath).inserted else {
-                    return nil
-                }
-                return file
-            }
-        }
-    }
-
-    private func usageSources(scope: CodingUsageDateScope) -> [CodexUsageSource] {
+    private func usageFiles(scope: CodingUsageDateScope) -> [CodingUsageFile] {
         let sessions = homeDirectory.appendingPathComponent("sessions")
         let archivedSessions = homeDirectory.appendingPathComponent("archived_sessions")
         var directories: [URL] = []
@@ -176,14 +157,17 @@ struct CodexUsageLoader: Sendable {
             directories.append(homeDirectory)
         }
 
-        return directories.map { directory in
-            CodexUsageSource(
-                directory: directory,
-                files: fileSystem.usageFiles(
-                    in: directory,
-                    modifiedSince: scope.history.start
-                )
-            )
+        var seenRelativePaths: Set<String> = []
+        return directories.flatMap { directory in
+            let pathPrefix = directory.standardizedFileURL.path + "/"
+            return fileSystem.usageFiles(
+                in: directory,
+                modifiedSince: scope.history.start
+            ).filter { file in
+                precondition(file.path.hasPrefix(pathPrefix))
+                let relativePath = String(file.path.dropFirst(pathPrefix.count))
+                return seenRelativePaths.insert(relativePath).inserted
+            }
         }
     }
 

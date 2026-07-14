@@ -58,7 +58,7 @@ struct CodingUsageFileSystem: Sendable {
             let node = entry.pointee
             switch Int32(node.fts_info) {
             case FTS_F, FTS_NSOK:
-                // Suffix match with a non-empty stem, as `pathExtension == "jsonl"` had.
+                // Match a `.jsonl` suffix with a nonempty stem.
                 let length = Int(node.fts_pathlen)
                 guard
                     length > 6,
@@ -104,20 +104,4 @@ struct CodingUsageFileSystem: Sendable {
             && isDirectory.boolValue
     }
 
-    func relativePath(_ url: URL, from base: URL) -> String {
-        let basePath = base.standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        if path.hasPrefix(basePath + "/") {
-            return String(path.dropFirst(basePath.count + 1))
-        }
-        return url.lastPathComponent
-    }
-}
-
-extension Sequence {
-    /// Keeps the first element for each distinct key, preserving order.
-    func uniqued<Key: Hashable>(by key: (Element) -> Key) -> [Element] {
-        var seen: Set<Key> = []
-        return filter { seen.insert(key($0)).inserted }
-    }
 }

@@ -52,26 +52,27 @@ struct CodingUsageLoader: Sendable {
         scope: CodingUsageDateScope,
         enabledAgents: Set<CodingUsageAgent> = Set(CodingUsageAgent.allCases)
     ) -> CodingUsageScan {
-        let scans: [@Sendable () -> CodingUsageProviderScan] = [
-            {
-                .claude(
-                    claude.scan(scope: scope, enabled: enabledAgents.contains(.claude))
+        let scans = concurrentMap(CodingUsageAgent.allCases) { agent in
+            switch agent {
+            case .claude:
+                return CodingUsageProviderScan.claude(
+                    claude.scan(scope: scope, enabled: enabledAgents.contains(agent))
                 )
-            },
-            {
-                .codex(
-                    codex.scan(scope: scope, enabled: enabledAgents.contains(.codex))
+            case .codex:
+                return CodingUsageProviderScan.codex(
+                    codex.scan(scope: scope, enabled: enabledAgents.contains(agent))
                 )
-            },
-            {
-                .pi(pi.scan(scope: scope, enabled: enabledAgents.contains(.pi)))
-            },
-        ]
+            case .pi:
+                return CodingUsageProviderScan.pi(
+                    pi.scan(scope: scope, enabled: enabledAgents.contains(agent))
+                )
+            }
+        }
 
         var claudeScan = ClaudeUsageScan(isInstalled: false, files: [])
-        var codexScan = CodexUsageScan(isInstalled: false, sources: [])
+        var codexScan = CodexUsageScan(isInstalled: false, files: [])
         var piScan = PiUsageScan(isInstalled: false, files: [])
-        for scan in concurrentMap(scans, { $0() }) {
+        for scan in scans {
             switch scan {
             case let .claude(value):
                 claudeScan = value
@@ -94,8 +95,7 @@ struct CodingUsageLoader: Sendable {
         }
         let activeAgents = enabledAgents.intersection(installedAgents)
         let files =
-            (claudeScan.files + codexScan.sources.flatMap(\.files) + piScan.files)
-            .uniqued(by: \.path)
+            (claudeScan.files + codexScan.files + piScan.files)
             .sorted { $0.path < $1.path }
 
         return CodingUsageScan(

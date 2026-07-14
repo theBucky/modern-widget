@@ -40,7 +40,7 @@ struct CodingUsageDiscoveryTests {
 
         #expect(scan.installedAgents == Set(CodingUsageAgent.allCases))
         #expect(scan.claude.files.isEmpty)
-        #expect(scan.codex.sources.flatMap(\.files).count == 1)
+        #expect(scan.codex.files.count == 1)
         #expect(scan.pi.files.isEmpty)
         #expect(scan.fingerprint.agents == [.codex])
     }

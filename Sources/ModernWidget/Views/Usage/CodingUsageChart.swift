@@ -46,7 +46,7 @@ struct CodingUsageChart: View {
     }
 
     private var maxCost: Double {
-        days.map(\.totals.costUSD).max() ?? 0
+        days.lazy.map(\.totals.costUSD).max() ?? 0
     }
 
     private var minimumVisibleCost: Double {

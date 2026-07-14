@@ -342,9 +342,6 @@ private enum CodingUsageBenchmarkPrinter {
         let bytes = files.reduce(0) { total, file in
             total + file.byteCount
         }
-        let codexFileCount = scan.codex.sources.reduce(0) { total, source in
-            total + source.files.count
-        }
         print("")
         print("coding usage benchmark")
         print("mode \(options.mode.rawValue)")
@@ -353,7 +350,7 @@ private enum CodingUsageBenchmarkPrinter {
         print("history_days \(scan.scope.historyDays.count)")
         print("files.total \(files.count)")
         print("files.claude \(scan.claude.files.count)")
-        print("files.codex \(codexFileCount)")
+        print("files.codex \(scan.codex.files.count)")
         print("files.pi \(scan.pi.files.count)")
         print("bytes \(bytes)")
         print("")
@@ -392,7 +389,7 @@ private struct CodingUsageBenchmarkSink {
         value &+= UInt64(scan.fingerprint.files.count)
         value &+= UInt64(scan.claude.files.count)
         value &+= UInt64(scan.pi.files.count)
-        value &+= UInt64(scan.codex.sources.count)
+        value &+= UInt64(scan.codex.files.count)
     }
 
     mutating func consume(_ report: CodingUsageReport) {

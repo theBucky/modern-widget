@@ -7,7 +7,6 @@ struct PiUsageScan: Sendable {
 
 private struct PiMessageFields {
     var isAssistant = false
-    var hasUsage = false
     var totalTokens: UInt64?
     var totalCostUSD: Double?
 }
@@ -85,7 +84,7 @@ private func parsePiEvent(_ buffer: UnsafeRawBufferPointer) -> CodingUsageEvent?
     }
 
     guard scanner.finishDocument(), isMessage, let timestamp, let message,
-        message.isAssistant, message.hasUsage,
+        message.isAssistant,
         let totalTokens = message.totalTokens,
         let totalCostUSD = message.totalCostUSD,
         totalCostUSD >= 0,
@@ -113,7 +112,6 @@ private func parsePiMessage(_ scanner: inout JSONScanner) -> PiMessageFields? {
             guard scanner.beginObject() else {
                 continue
             }
-            fields.hasUsage = true
             parsePiUsage(&scanner, into: &fields)
         } else {
             scanner.skipValue()
