@@ -2,16 +2,6 @@ import Foundation
 
 /// Parses the UTC ISO-8601 timestamp strings the agent logs emit.
 enum LogTimestamp {
-    static func parse(_ value: String) -> Date? {
-        let count = value.utf8.count
-        return value.withCString {
-            parseUTC(
-                start: UnsafeRawPointer($0).assumingMemoryBound(to: UInt8.self),
-                count: count
-            )
-        }
-    }
-
     /// Parses a borrowed JSON string timestamp without allocating.
     static func parse(_ value: JSONStringValue) -> Date? {
         if value.hasEscape {
@@ -129,7 +119,6 @@ enum LogTimestamp {
     private static func isLeapYear(_ year: Int) -> Bool {
         year.isMultiple(of: 4) && (!year.isMultiple(of: 100) || year.isMultiple(of: 400))
     }
-
 }
 
 extension JSONScanner {

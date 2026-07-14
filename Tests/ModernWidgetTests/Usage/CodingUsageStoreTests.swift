@@ -9,7 +9,7 @@ struct CodingUsageStoreTests {
     private func makeStore(home: URL) -> CodingUsageStore {
         CodingUsageStore(
             defaults: makeDefaults("CodingUsageStoreTests"),
-            loader: CodingUsageLoader(environment: [:], homeDirectory: home)
+            loader: CodingUsageLoader(homeDirectory: home)
         )
     }
 

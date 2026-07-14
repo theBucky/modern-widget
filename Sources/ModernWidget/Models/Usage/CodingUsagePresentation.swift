@@ -25,7 +25,7 @@ enum CodingUsagePeriod: CaseIterable, Identifiable, Sendable {
 struct CodingUsagePresentation: Equatable, Sendable {
     struct PeriodTotal: Equatable, Identifiable, Sendable {
         let period: CodingUsagePeriod
-        let counts: CodingTokenCounts
+        let totals: CodingUsageTotals
 
         var id: CodingUsagePeriod { period }
     }
@@ -52,11 +52,11 @@ struct CodingUsagePresentation: Equatable, Sendable {
             scope: scope,
             activeAgents: activeAgents
         )
-        let todayCounts = Self.counts(
+        let todayTotals = Self.totals(
             in: CodingUsagePeriod.today.interval(in: scope),
             sections: sections
         )
-        let yesterdayCounts = Self.counts(
+        let yesterdayTotals = Self.totals(
             in: CodingUsagePeriod.yesterday.interval(in: scope),
             sections: sections
         )
@@ -64,10 +64,10 @@ struct CodingUsagePresentation: Equatable, Sendable {
         self.isLoading = report.state == .loading
         self.today = CodingUsageTodaySummary(
             date: scope.today.start,
-            counts: todayCounts,
+            totals: todayTotals,
             costTrend: CodingUsageCostTrend(
-                currentCostUSD: todayCounts.costUSD,
-                previousCostUSD: yesterdayCounts.costUSD
+                currentCostUSD: todayTotals.costUSD,
+                previousCostUSD: yesterdayTotals.costUSD
             )
         )
         self.sections = sections
@@ -89,32 +89,32 @@ struct CodingUsagePresentation: Equatable, Sendable {
                 periodTotals: CodingUsagePeriod.allCases.map { period in
                     PeriodTotal(
                         period: period,
-                        counts: counts(in: period.interval(in: scope), days: summary.dailyCounts)
+                        totals: totals(in: period.interval(in: scope), days: summary.days)
                     )
                 },
-                chartDays: summary.dailyCounts
+                chartDays: summary.days
             )
         }
     }
 
-    private static func counts(
+    private static func totals(
         in interval: DateInterval,
         sections: [AgentSection]
-    ) -> CodingTokenCounts {
-        sections.reduce(into: CodingTokenCounts()) { total, section in
-            total.add(counts(in: interval, days: section.chartDays))
+    ) -> CodingUsageTotals {
+        sections.reduce(into: CodingUsageTotals()) { total, section in
+            total.add(totals(in: interval, days: section.chartDays))
         }
     }
 
-    private static func counts(
+    private static func totals(
         in interval: DateInterval,
         days: [CodingUsageDaySummary]
-    ) -> CodingTokenCounts {
-        days.reduce(into: CodingTokenCounts()) { total, day in
+    ) -> CodingUsageTotals {
+        days.reduce(into: CodingUsageTotals()) { total, day in
             guard day.date >= interval.start && day.date < interval.end else {
                 return
             }
-            total.add(day.counts)
+            total.add(day.totals)
         }
     }
 }

@@ -46,7 +46,7 @@ struct CodingUsageChart: View {
     }
 
     private var maxCost: Double {
-        days.map(\.counts.costUSD).max() ?? 0
+        days.lazy.map(\.totals.costUSD).max() ?? 0
     }
 
     private var minimumVisibleCost: Double {
@@ -64,10 +64,10 @@ struct CodingUsageChart: View {
         if isRedacted {
             return 1
         }
-        guard day.counts.hasCost else {
+        guard day.totals.hasCost else {
             return 0
         }
-        return max(day.counts.costUSD, minimumVisibleCost)
+        return max(day.totals.costUSD, minimumVisibleCost)
     }
 
     private var selectedDay: CodingUsageDaySummary? {
@@ -81,7 +81,7 @@ struct CodingUsageChart: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
                 .foregroundStyle(.primary)
-            CodingUsageValueText(counts: day.counts)
+            CodingUsageValueText(totals: day.totals)
         }
         .font(.caption2.monospacedDigit())
         .padding(.horizontal, 5)

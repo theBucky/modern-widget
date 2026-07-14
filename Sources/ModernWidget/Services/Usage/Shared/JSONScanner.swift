@@ -8,12 +8,15 @@ import Foundation
 /// dominant cost, so the scanner steps over unwanted strings, arrays, and objects
 /// without allocating them.
 ///
-/// Assumes well-formed JSONL from the agent tools; malformed input yields a partial
-/// extraction that the per-agent guards reject rather than a hard error.
+/// Provider parsers finish each relevant document before accepting extracted fields;
+/// malformed input is rejected without turning scanner failures into hard errors.
 struct JSONScanner {
     private let base: UnsafePointer<UInt8>
     private let count: Int
     private var index: Int = 0
+    private var objectDepth = 0
+    private var objectNeedsSeparator: UInt64 = 0
+    private var isValid = true
 
     init?(_ buffer: UnsafeRawBufferPointer) {
         guard let base = buffer.baseAddress, !buffer.isEmpty else {
@@ -31,6 +34,14 @@ struct JSONScanner {
             skipValue()
             return false
         }
+        guard objectDepth < UInt64.bitWidth else {
+            isValid = false
+            index = count
+            return false
+        }
+        let mask = UInt64(1) << objectDepth
+        objectNeedsSeparator &= ~mask
+        objectDepth += 1
         index += 1
         return true
     }
@@ -39,30 +50,58 @@ struct JSONScanner {
     /// `nil` once the object closes (the closing `}` is consumed). The cursor is left at
     /// the start of the member value, ready for a `read*`/`skipValue`/`beginObject` call.
     mutating func nextKey() -> JSONKey? {
+        guard objectDepth > 0 else {
+            isValid = false
+            return nil
+        }
         skipWhitespace()
-        guard index < count else { return nil }
+        guard index < count else {
+            isValid = false
+            return nil
+        }
 
         if base[index] == .closeBrace {
             index += 1
+            closeObject()
             return nil
         }
 
-        if base[index] == .comma {
+        let mask = UInt64(1) << (objectDepth - 1)
+        if objectNeedsSeparator & mask != 0 {
+            guard base[index] == .comma else {
+                isValid = false
+                return nil
+            }
             index += 1
             skipWhitespace()
             if index < count, base[index] == .closeBrace {
+                isValid = false
                 index += 1
+                closeObject()
                 return nil
             }
+        } else if base[index] == .comma {
+            isValid = false
+            return nil
         }
         guard let key = consumeStringPayload() else {
+            isValid = false
             return nil
         }
         skipWhitespace()
-        if index < count, base[index] == .colon {
-            index += 1
+        guard index < count, base[index] == .colon else {
+            isValid = false
+            return nil
         }
+        index += 1
+        objectNeedsSeparator |= mask
         return JSONKey(start: key.start, count: key.count)
+    }
+
+    /// Returns `true` only after every entered object closed and no trailing bytes remain.
+    mutating func finishDocument() -> Bool {
+        skipWhitespace()
+        return isValid && objectDepth == 0 && index == count
     }
 
     /// Reads an unsigned integer. Returns `nil` for fractional, negative, overflowing,
@@ -75,6 +114,7 @@ struct JSONScanner {
             return nil
         }
 
+        let start = index
         var value: UInt64 = 0
         var overflow = false
         while index < count, base[index].isDigit {
@@ -85,11 +125,27 @@ struct JSONScanner {
             index += 1
         }
 
-        guard index == count || !base[index].isNumberByte else {
+        guard !(base[start] == .zero && index - start > 1),
+            index == count || !base[index].isNumberByte
+        else {
             skipValue()
             return nil
         }
         return overflow ? nil : value
+    }
+
+    /// Reads a finite JSON number using Swift's locale-independent parser.
+    mutating func readDouble() -> Double? {
+        skipWhitespace()
+        let scalar = consumeScalar()
+        guard isValidJSONNumber(scalar) else {
+            return nil
+        }
+        let bytes = UnsafeBufferPointer(start: scalar.start, count: scalar.count)
+        guard let value = Double(String(decoding: bytes, as: UTF8.self)), value.isFinite else {
+            return nil
+        }
+        return value
     }
 
     /// Reads a string value, returning `nil` (after skipping) for non-string values.
@@ -130,16 +186,8 @@ struct JSONScanner {
 
     /// Skips the value at the cursor regardless of type.
     mutating func skipValue() {
-        skipWhitespace()
-        guard index < count else { return }
-
-        switch base[index] {
-        case .quote:
-            skipStringPayload()
-        case .openBrace, .openBracket:
-            consumeContainer()
-        default:
-            _ = consumeScalar()
+        if !consumeValue(depth: 0) {
+            isValid = false
         }
     }
 
@@ -149,11 +197,14 @@ struct JSONScanner {
         }
     }
 
+    private mutating func closeObject() {
+        objectDepth -= 1
+        objectNeedsSeparator &= ~(UInt64(1) << objectDepth)
+    }
+
     private mutating func readBareScalar(equals literal: StaticString) -> Bool {
         let scalar = consumeScalar()
-        let scalarCount = scalar.count
-        return scalarCount == literal.utf8CodeUnitCount
-            && memcmp(scalar.start, literal.utf8Start, scalarCount) == 0
+        return matches(literal, scalar: scalar)
     }
 
     private mutating func consumeScalar() -> (start: UnsafePointer<UInt8>, count: Int) {
@@ -177,6 +228,11 @@ struct JSONScanner {
         while cursor < count {
             let byte = base[cursor]
             if byte == .backslash {
+                guard cursor + 1 < count else {
+                    isValid = false
+                    index = count
+                    return nil
+                }
                 hasEscape = true
                 cursor += 2
                 continue
@@ -193,8 +249,9 @@ struct JSONScanner {
             cursor += 1
         }
 
+        isValid = false
         index = count
-        return JSONStringValue(start: base + start, count: count - start, hasEscape: hasEscape)
+        return nil
     }
 
     /// Skips a quoted string on the discard path without materializing its payload,
@@ -204,7 +261,7 @@ struct JSONScanner {
     /// preceded by an even backslash run; the read path keeps `consumeStringPayload` so it
     /// can still report `hasEscape`. The cursor lands past the closing quote, or at the end
     /// for an unterminated string.
-    private mutating func skipStringPayload() {
+    private mutating func skipStringPayload() -> Bool {
         var cursor = index + 1
         while cursor < count,
             let hit = memchr(base + cursor, Int32(UInt8.quote), count - cursor)
@@ -218,35 +275,147 @@ struct JSONScanner {
             }
             if !escaped {
                 index = quoteIndex + 1
-                return
+                return true
             }
             cursor = quoteIndex + 1
         }
+        isValid = false
         index = count
+        return false
     }
 
-    /// Consumes the object or array at the cursor, honoring nested containers and strings.
-    private mutating func consumeContainer() {
-        var depth = 1
-        index += 1
+    private mutating func consumeValue(depth: Int) -> Bool {
+        skipWhitespace()
+        guard index < count, depth < UInt64.bitWidth else {
+            return false
+        }
 
-        while index < count {
-            switch base[index] {
-            case .quote:
-                skipStringPayload()
-            case .openBrace, .openBracket:
-                depth += 1
-                index += 1
-            case .closeBrace, .closeBracket:
-                depth -= 1
-                index += 1
-                if depth == 0 {
-                    return
-                }
-            default:
-                index += 1
+        switch base[index] {
+        case .quote:
+            return skipStringPayload()
+        case .openBrace:
+            return consumeObjectValue(depth: depth + 1)
+        case .openBracket:
+            return consumeArray(depth: depth + 1)
+        default:
+            return isValidJSONScalar(consumeScalar())
+        }
+    }
+
+    private mutating func consumeObjectValue(depth: Int) -> Bool {
+        let startingDepth = objectDepth
+        guard depth < UInt64.bitWidth, beginObject() else {
+            return false
+        }
+        while nextKey() != nil {
+            guard consumeValue(depth: depth) else {
+                isValid = false
+                return false
             }
         }
+        return isValid && objectDepth == startingDepth
+    }
+
+    private mutating func consumeArray(depth: Int) -> Bool {
+        index += 1
+        skipWhitespace()
+        if consume(.closeBracket) {
+            return true
+        }
+
+        while index < count {
+            guard consumeValue(depth: depth) else {
+                return false
+            }
+            skipWhitespace()
+            if consume(.closeBracket) {
+                return true
+            }
+            guard consume(.comma) else {
+                return false
+            }
+            skipWhitespace()
+        }
+        return false
+    }
+
+    private mutating func consume(_ byte: UInt8) -> Bool {
+        guard index < count, base[index] == byte else {
+            return false
+        }
+        index += 1
+        return true
+    }
+
+    private func isValidJSONScalar(
+        _ scalar: (start: UnsafePointer<UInt8>, count: Int)
+    ) -> Bool {
+        matches("true", scalar: scalar)
+            || matches("false", scalar: scalar)
+            || matches("null", scalar: scalar)
+            || isValidJSONNumber(scalar)
+    }
+
+    private func matches(
+        _ literal: StaticString,
+        scalar: (start: UnsafePointer<UInt8>, count: Int)
+    ) -> Bool {
+        scalar.count == literal.utf8CodeUnitCount
+            && memcmp(scalar.start, literal.utf8Start, scalar.count) == 0
+    }
+
+    private func isValidJSONNumber(
+        _ scalar: (start: UnsafePointer<UInt8>, count: Int)
+    ) -> Bool {
+        var cursor = 0
+        if cursor < scalar.count, scalar.start[cursor] == .minus {
+            cursor += 1
+        }
+        guard cursor < scalar.count else {
+            return false
+        }
+
+        if scalar.start[cursor] == .zero {
+            cursor += 1
+        } else {
+            guard scalar.start[cursor] >= UInt8(ascii: "1"),
+                scalar.start[cursor] <= .nine
+            else {
+                return false
+            }
+            repeat {
+                cursor += 1
+            } while cursor < scalar.count && scalar.start[cursor].isDigit
+        }
+
+        if cursor < scalar.count, scalar.start[cursor] == .dot {
+            cursor += 1
+            guard cursor < scalar.count, scalar.start[cursor].isDigit else {
+                return false
+            }
+            repeat {
+                cursor += 1
+            } while cursor < scalar.count && scalar.start[cursor].isDigit
+        }
+
+        if cursor < scalar.count,
+            scalar.start[cursor] == .lowerE || scalar.start[cursor] == .upperE
+        {
+            cursor += 1
+            if cursor < scalar.count,
+                scalar.start[cursor] == .plus || scalar.start[cursor] == .minus
+            {
+                cursor += 1
+            }
+            guard cursor < scalar.count, scalar.start[cursor].isDigit else {
+                return false
+            }
+            repeat {
+                cursor += 1
+            } while cursor < scalar.count && scalar.start[cursor].isDigit
+        }
+
+        return cursor == scalar.count
     }
 }
 
@@ -287,23 +456,13 @@ struct JSONStringValue {
             as? String
     }
 
-    /// FNV-1a over the decoded payload bytes, for callers that only ever compare a
-    /// string for identity and can drop the text itself. Escaped payloads decode
-    /// first so the hash tracks the string's value, not its encoding; undecodable
-    /// escapes fall back to the raw bytes, still deterministic per encoding.
+    /// Compact identity for cached dedupe records; avoids retaining two allocated ID
+    /// strings for every Claude message in the active history window.
     var fnv1a64: UInt64 {
         if hasEscape, let string {
-            return Self.fnv1a64(of: string.utf8)
+            return codingUsageIdentityHash(string.utf8)
         }
-        return Self.fnv1a64(of: UnsafeBufferPointer(start: start, count: count))
-    }
-
-    private static func fnv1a64(of bytes: some Sequence<UInt8>) -> UInt64 {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in bytes {
-            hash = (hash ^ UInt64(byte)) &* 0x100_0000_01b3
-        }
-        return hash
+        return codingUsageIdentityHash(UnsafeBufferPointer(start: start, count: count))
     }
 
     func equals(_ literal: StaticString) -> Bool {
