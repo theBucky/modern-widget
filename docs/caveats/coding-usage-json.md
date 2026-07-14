@@ -13,13 +13,7 @@ Claude Code, Codex, and Pi persist different schemas. Parse each source into str
 
 ## Claude
 
-Session JSONL is discovered under configured Claude project directories:
-
-* `$CLAUDE_CONFIG_DIR/projects`
-* `$XDG_CONFIG_HOME/claude/projects`
-* `~/.claude/projects`
-
-If `CLAUDE_CONFIG_DIR` already points to `projects`, discovery normalizes it to the parent configuration directory.
+Session JSONL is discovered under `~/.claude/projects`.
 
 ```json
 {
@@ -27,6 +21,7 @@ If `CLAUDE_CONFIG_DIR` already points to `projects`, discovery normalizes it to 
   "requestId": "req_123",
   "isSidechain": false,
   "message": {
+    "role": "assistant",
     "id": "msg_123",
     "model": "claude-sonnet-5",
     "usage": {
@@ -45,7 +40,7 @@ If `CLAUDE_CONFIG_DIR` already points to `projects`, discovery normalizes it to 
 
 Claude rules:
 
-* Count records containing `timestamp`, `message.model`, and `message.usage`.
+* Count assistant records containing `timestamp`, `message.model`, and `message.usage`.
 * Keep normal input, output, cache reads, five-minute cache writes, and one-hour cache writes distinct until pricing completes.
 * Prefer structured cache creation. Use legacy `cache_creation_input_tokens` as a five-minute write only when the structured object is absent.
 * Apply the data-residency modifier only when it is explicitly persisted on the event. Ignore historical fast-mode pricing and use regular catalog prices.
@@ -56,12 +51,11 @@ Claude rules:
 
 ## Codex
 
-Rollout JSONL is discovered under:
+Rollout JSONL is discovered under the standard Codex home:
 
-* `$CODEX_HOME/sessions`
-* `$CODEX_HOME/archived_sessions`
-* `$CODEX_HOME` when neither child directory exists
-* `~/.codex` when `CODEX_HOME` is unset
+* `~/.codex/sessions`
+* `~/.codex/archived_sessions`
+* `~/.codex` when neither child directory exists
 
 ```json
 {
@@ -97,7 +91,7 @@ Codex rules:
 
 ## Pi
 
-Session JSONL is discovered under `$PI_AGENT_DIR` or `~/.pi/agent/sessions`.
+Session JSONL is discovered under `~/.pi/agent/sessions`.
 
 ```json
 {

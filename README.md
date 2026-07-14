@@ -41,9 +41,9 @@ Everything runs locally. State is stored with `UserDefaults`, and AI usage is re
 
 ### AI usage tracking
 
-- Claude usage is loaded from `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME/claude`, or `~/.claude`.
-- Codex usage is loaded from `CODEX_HOME` or `~/.codex`.
-- Pi usage is loaded from `PI_AGENT_DIR` or `~/.pi/agent/sessions`.
+- Claude usage is loaded from `~/.claude/projects`.
+- Codex usage is loaded from `~/.codex`.
+- Pi usage is loaded from `~/.pi/agent/sessions`.
 - Active and archived Codex sessions are deduplicated.
 - Claude sidechain duplicates are collapsed.
 - Pi contributes its persisted total tokens and total cost without local repricing.

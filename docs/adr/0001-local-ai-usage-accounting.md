@@ -47,7 +47,7 @@ Claude message and request identifiers are used only for provider-specific dedup
 
 Codex usage is read from rollout JSONL written by the official client. GPT and Grok records use the same Responses API-derived persisted shape, but their price tables remain provider-specific.
 
-`total_token_usage` is cumulative. Per-request usage is the non-negative delta from the previous cumulative snapshot. `last_token_usage` is only a fallback for records without a cumulative total. Re-emitted unchanged snapshots contribute nothing.
+`total_token_usage` is cumulative. Per-request usage is the non-negative delta from the previous cumulative snapshot, so an unchanged cumulative snapshot contributes nothing. `last_token_usage` is a per-request fallback for legacy records without a cumulative total; equal fallback values can represent distinct requests and are counted independently.
 
 Forked rollouts may copy parent history. A `forked_from_id` or structured subagent `thread_spawn` relationship suppresses confirmed inherited history while preserving usage created by the child.
 
