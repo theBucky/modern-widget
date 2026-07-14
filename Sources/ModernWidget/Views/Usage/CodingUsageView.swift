@@ -1,13 +1,17 @@
 import SwiftUI
 
 struct CodingUsageView: View {
-    let store: CodingUsageStore
+    @Environment(CodingUsageStore.self) private var store
 
     var body: some View {
         let presentation = store.presentation
 
         VStack(spacing: PanelLayout.sectionSpacing) {
-            CodingUsageTodayTotalSection(summary: presentation.today)
+            #if DEBUG
+                CodingUsageTodayTotalReplayHarness(summary: presentation.today)
+            #else
+                CodingUsageTodayTotalSection(summary: presentation.today)
+            #endif
             Divider()
             ForEach(presentation.sections) { section in
                 AgentUsageSection(section: section)

@@ -1,30 +1,26 @@
 import SwiftUI
 
 struct ReminderPaneView: View {
-    let engine: ReminderEngine
-    let walkHistoryStore: WalkHistoryStore
-    let dailySupplementStore: DailySupplementStore
+    @Environment(ReminderEngine.self) private var engine
 
     var body: some View {
         let snapshot = engine.currentSnapshot
 
         VStack(spacing: PanelLayout.paneSpacing) {
-            ReminderIntervalMenu(engine: engine)
+            ReminderIntervalMenu()
             ReminderStatusSection(snapshot: snapshot)
-            ReminderActionsSection(
-                phase: snapshot.phase,
-                engine: engine,
-                walkHistoryStore: walkHistoryStore
-            )
-            DailySupplementToggle(store: dailySupplementStore)
+            ReminderActionsSection(phase: snapshot.phase)
+            DailySupplementToggle()
         }
     }
 }
 
 private struct ReminderIntervalMenu: View {
-    @Bindable var engine: ReminderEngine
+    @Environment(ReminderEngine.self) private var engine
 
     var body: some View {
+        @Bindable var engine = engine
+
         Picker("Reminder interval", selection: $engine.reminderMinutes) {
             ForEach(ReminderState.minutePresets, id: \.self) { minutes in
                 Text("\(minutes) min").tag(minutes)
@@ -42,15 +38,15 @@ private struct ReminderStatusSection: View {
     let snapshot: ReminderSnapshot
 
     var body: some View {
-        let status = statusDisplay
+        let display = ReminderStatusDisplay(snapshot)
 
         VStack(spacing: PanelLayout.tightSpacing) {
-            status.title
+            Text(display.title)
                 .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(status.tint)
+                .foregroundStyle(tint(for: display.emphasis))
 
-            Text(status.message)
+            Text(display.message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -65,45 +61,22 @@ private struct ReminderStatusSection: View {
         .frame(maxWidth: .infinity)
     }
 
-    private var statusDisplay: ReminderStatusDisplay {
-        switch snapshot.phase {
-        case .countingDown:
-            return ReminderStatusDisplay(
-                title: Text(countdownLabel),
-                message: "until next break",
-                tint: .primary
-            )
-        case .paused:
-            return ReminderStatusDisplay(
-                title: Text(countdownLabel),
-                message: "paused",
-                tint: .secondary
-            )
-        case .overdue:
-            return ReminderStatusDisplay(
-                title: Text("MOVE"),
-                message: "muscles atrophy, circulation stops, you know...",
-                tint: .red
-            )
+    private func tint(for emphasis: ReminderStatusDisplay.Emphasis) -> Color {
+        switch emphasis {
+        case .active:
+            return .primary
+        case .muted:
+            return .secondary
+        case .alert:
+            return .red
         }
     }
-
-    private var countdownLabel: String {
-        Duration.seconds(snapshot.secondsRemaining)
-            .formatted(.time(pattern: .minuteSecond(padMinuteToLength: 2)))
-    }
-}
-
-private struct ReminderStatusDisplay {
-    let title: Text
-    let message: LocalizedStringResource
-    let tint: Color
 }
 
 private struct ReminderActionsSection: View {
     let phase: ReminderPhase
-    let engine: ReminderEngine
-    let walkHistoryStore: WalkHistoryStore
+
+    @Environment(ReminderEngine.self) private var engine
 
     var body: some View {
         let pauseTitle: LocalizedStringKey = phase == .paused ? "Resume timer" : "Pause timer"
@@ -120,9 +93,7 @@ private struct ReminderActionsSection: View {
             .help(pauseTitle)
 
             Button {
-                let now = Date.now
-                engine.completeBreak(at: now)
-                walkHistoryStore.recordWalk(now)
+                engine.completeBreak(at: .now)
             } label: {
                 actionLabel("Complete break", systemImage: "arrow.counterclockwise")
             }
@@ -142,9 +113,11 @@ private struct ReminderActionsSection: View {
 }
 
 private struct DailySupplementToggle: View {
-    @Bindable var store: DailySupplementStore
+    @Environment(DailySupplementStore.self) private var store
 
     var body: some View {
+        @Bindable var store = store
+
         Toggle("daily supplement taken", isOn: $store.isTakenToday)
             .toggleStyle(.checkbox)
             .font(.caption)

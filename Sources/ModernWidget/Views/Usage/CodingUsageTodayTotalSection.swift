@@ -3,43 +3,22 @@ import SwiftUI
 struct CodingUsageTodayTotalSection: View {
     let summary: CodingUsageTodaySummary
 
-    #if DEBUG
-        @State private var replayToken = 0
-        @State private var replaySummary: CodingUsageTodaySummary?
-    #endif
-
     var body: some View {
-        #if DEBUG
-            let visibleSummary = replaySummary ?? summary
-        #else
-            let visibleSummary = summary
-        #endif
-
         HStack(alignment: .bottom) {
-            CodingUsageCostTrendGroup(summary: visibleSummary)
+            CodingUsageCostTrendGroup(summary: summary)
 
             Spacer(minLength: 16)
 
-            trailingGroup(summary: visibleSummary)
+            dateTokenGroup
                 .layoutPriority(1)
         }
         // The numeric rolls and the layout share one transaction; per-text animations
         // leave the layout un-animated, snapping the fill and badge to the new width
         // mid-roll and hard-clipping the old string at the fill edge.
-        .animation(.easeOut(duration: 0.5), value: visibleSummary)
+        .animation(.easeOut(duration: 0.5), value: summary)
     }
 
-    private func trailingGroup(summary: CodingUsageTodaySummary) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            #if DEBUG
-                replayButton
-            #endif
-
-            dateTokenGroup(summary: summary)
-        }
-    }
-
-    private func dateTokenGroup(summary: CodingUsageTodaySummary) -> some View {
+    private var dateTokenGroup: some View {
         VStack(alignment: .trailing, spacing: 2) {
             Text(summary.date, format: .codingUsageDay)
             Text(summary.totals.totalTokens, format: .codingUsageTokens)
@@ -47,53 +26,6 @@ struct CodingUsageTodayTotalSection: View {
         .font(.caption.monospacedDigit().weight(.semibold))
         .foregroundStyle(.secondary)
     }
-
-    #if DEBUG
-        private var replayButton: some View {
-            Button {
-                replaySummaryAnimation()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .help("Replay summary animation")
-            .accessibilityLabel("Replay summary animation")
-        }
-
-        private func replaySummaryAnimation() {
-            replayToken += 1
-            let token = replayToken
-            replaySummary = Self.replayStartSummary(for: summary)
-
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(120))
-                guard token == replayToken else {
-                    return
-                }
-
-                replaySummary = nil
-            }
-        }
-
-        private static func replayStartSummary(for summary: CodingUsageTodaySummary)
-            -> CodingUsageTodaySummary
-        {
-            var totals = summary.totals
-            let targetCostUSD = max(summary.totals.costUSD, 0.15)
-            totals.costUSD = max(targetCostUSD * 0.35, 0.01)
-            totals.totalTokens = max(summary.totals.totalTokens / 3, 1)
-
-            return CodingUsageTodaySummary(
-                date: summary.date,
-                totals: totals,
-                costTrend: CodingUsageCostTrend(
-                    currentCostUSD: totals.costUSD,
-                    previousCostUSD: totals.costUSD * 2
-                )
-            )
-        }
-    #endif
 }
 
 private struct CodingUsageCostTrendGroup: View {

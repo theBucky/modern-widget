@@ -9,9 +9,9 @@ Sources/ModernWidget/
   App/                 SwiftUI app entry and MenuBarExtra scene
   Models/
     HistoryRetention   shared three-month retention window
-    Reminder/          countdown state, snapshots, schedules
+    Reminder/          countdown state, snapshots, status display
     Usage/             Claude/Codex/Pi usage report models
-    WalkHistory/       month grid and weekday helpers
+    WalkHistory/       month grid, weekday helpers, day cell display
   Services/
     DailySupplementStore daily supplement persistence
     Reminder/          timer engine and notification delivery

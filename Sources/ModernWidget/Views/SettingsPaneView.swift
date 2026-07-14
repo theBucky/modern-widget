@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct SettingsPaneView: View {
-    @Bindable var store: CodingUsageStore
-
+    @Environment(CodingUsageStore.self) private var store
     @Environment(LaunchAtLoginManager.self) private var launchAtLoginManager
     @Environment(UpdaterManager.self) private var updaterManager
 
     var body: some View {
+        @Bindable var store = store
         @Bindable var loginManager = launchAtLoginManager
 
         Form {

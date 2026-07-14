@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct WalkHistoryCalendarView: View {
-    let historyStore: WalkHistoryStore
-    let supplementStore: DailySupplementStore
     @State private var visibleMonth = HistoryRetention.currentMonth()
 
     var body: some View {
@@ -13,11 +11,7 @@ struct WalkHistoryCalendarView: View {
         VStack(spacing: PanelLayout.sectionSpacing) {
             MonthNavigationHeader(visibleMonth: $visibleMonth)
             WeekdayHeader()
-            WalkDaysGrid(
-                cells: month.dayCells,
-                historyStore: historyStore,
-                supplementStore: supplementStore
-            )
+            WalkDaysGrid(cells: month.dayCells)
         }
     }
 }
@@ -93,8 +87,9 @@ private struct WeekdayHeader: View {
 
 private struct WalkDaysGrid: View {
     let cells: [WalkHistoryMonth.DayCell]
-    let historyStore: WalkHistoryStore
-    let supplementStore: DailySupplementStore
+
+    @Environment(WalkHistoryStore.self) private var walkHistoryStore
+    @Environment(DailySupplementStore.self) private var dailySupplementStore
 
     var body: some View {
         LazyVGrid(columns: CalendarLayout.columns, spacing: CalendarLayout.cellSpacing) {
@@ -103,10 +98,15 @@ private struct WalkDaysGrid: View {
                 // vary per element, forcing id computation to evaluate every row body.
                 ZStack {
                     if let date = cell.date {
+                        let count = walkHistoryStore.walkCount(on: date)
                         WalkDayCell(
                             date: date,
-                            count: historyStore.walkCount(on: date),
-                            isSupplementTaken: supplementStore.isTaken(on: date)
+                            count: count,
+                            display: WalkHistoryDayDisplay(
+                                date: date,
+                                walkCount: count,
+                                isSupplementTaken: dailySupplementStore.isTaken(on: date)
+                            )
                         )
                     } else {
                         Color.clear.frame(height: CalendarLayout.cellHeight)
@@ -120,7 +120,7 @@ private struct WalkDaysGrid: View {
 private struct WalkDayCell: View {
     let date: Date
     let count: Int
-    let isSupplementTaken: Bool
+    let display: WalkHistoryDayDisplay
 
     var body: some View {
         ZStack {
@@ -148,23 +148,24 @@ private struct WalkDayCell: View {
     }
 
     private var labelColor: Color {
-        let calendar = LocalDay.calendar
-        if calendar.startOfDay(for: date) > calendar.startOfDay(for: .now) {
+        switch display.label {
+        case .future:
             return .secondary.opacity(0.5)
-        }
-        if isSupplementTaken {
+        case .supplementTaken:
             return PanelColor.statusGreen
+        case .supplementPending:
+            return PanelColor.statusOrange
         }
-        return PanelColor.statusOrange
     }
 
     private var fill: Color {
-        if LocalDay.calendar.isDateInToday(date) {
+        switch display.fill {
+        case .today:
             return Color.accentColor.opacity(0.15)
-        }
-        if count > 0 {
+        case .walked:
             return Color.primary.opacity(0.05)
+        case .empty:
+            return .clear
         }
-        return .clear
     }
 }

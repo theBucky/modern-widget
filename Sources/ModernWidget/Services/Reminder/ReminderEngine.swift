@@ -23,6 +23,11 @@ final class ReminderEngine {
     @ObservationIgnored
     private var notificationIssue: ReminderNotificationIssue?
 
+    /// Completing a break also records a walk; the composition root wires this hook
+    /// so the engine stays ignorant of history storage.
+    @ObservationIgnored
+    var onBreakCompleted: ((Date) -> Void)?
+
     @ObservationIgnored
     private let defaults: UserDefaults
     @ObservationIgnored
@@ -87,6 +92,7 @@ final class ReminderEngine {
         updateState {
             $0.restart(at: date)
         }
+        onBreakCompleted?(date)
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {

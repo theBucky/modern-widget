@@ -45,11 +45,6 @@ private enum Pane: Hashable {
 }
 
 struct MenuBarPanelView: View {
-    let engine: ReminderEngine
-    let walkHistoryStore: WalkHistoryStore
-    let dailySupplementStore: DailySupplementStore
-    let usageStore: CodingUsageStore
-
     @State private var selectedPane: Pane = .timer
 
     var body: some View {
@@ -61,15 +56,9 @@ struct MenuBarPanelView: View {
             // The ZStack overlays the outgoing and incoming panes during the crossfade;
             // as direct VStack children they would stack vertically and jump the layout.
             ZStack(alignment: .top) {
-                PaneBody(
-                    pane: selectedPane,
-                    engine: engine,
-                    walkHistoryStore: walkHistoryStore,
-                    dailySupplementStore: dailySupplementStore,
-                    usageStore: usageStore
-                )
-                .id(selectedPane)
-                .transition(.opacity)
+                PaneBody(pane: selectedPane)
+                    .id(selectedPane)
+                    .transition(.opacity)
             }
         }
         .frame(width: selectedPane.width)
@@ -79,28 +68,17 @@ struct MenuBarPanelView: View {
 
 private struct PaneBody: View {
     let pane: Pane
-    let engine: ReminderEngine
-    let walkHistoryStore: WalkHistoryStore
-    let dailySupplementStore: DailySupplementStore
-    let usageStore: CodingUsageStore
 
     var body: some View {
         switch pane {
         case .timer:
-            ReminderPaneView(
-                engine: engine,
-                walkHistoryStore: walkHistoryStore,
-                dailySupplementStore: dailySupplementStore
-            )
+            ReminderPaneView()
         case .calendar:
-            WalkHistoryCalendarView(
-                historyStore: walkHistoryStore,
-                supplementStore: dailySupplementStore
-            )
+            WalkHistoryCalendarView()
         case .usage:
-            CodingUsageView(store: usageStore)
+            CodingUsageView()
         case .settings:
-            SettingsPaneView(store: usageStore)
+            SettingsPaneView()
         }
     }
 }

@@ -161,6 +161,19 @@ struct ReminderEngineTests {
         #expect(snapshot.secondsRemaining == 3000)
     }
 
+    @Test("completing a break fires the break-completed hook with the completion date")
+    func completingBreakFiresHook() {
+        let defaults = makeDefaults("ReminderEngineTests")
+        let engine = makeEngine(defaults)
+        var recorded: [Date] = []
+        engine.onBreakCompleted = { recorded.append($0) }
+
+        let now = Date.now
+        engine.completeBreak(at: now)
+
+        #expect(recorded == [now])
+    }
+
     @Test("changing to a different preset clears a stale notification issue")
     func changingPresetClearsNotificationIssue() async {
         let defaults = makeDefaults("ReminderEngineTests")
