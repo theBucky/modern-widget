@@ -46,23 +46,44 @@ private enum Pane: Hashable {
 
 struct MenuBarPanelView: View {
     @State private var selectedPane: Pane = .timer
+    @State private var displayedPane: Pane = .timer
+    @State private var isContentVisible = true
 
     var body: some View {
         VStack(spacing: PanelLayout.paneSpacing) {
-            // The switch must run in a real transaction (Binding.animation): a scoped
-            // `.animation(value:)` crossfades the panes but lets the MenuBarExtra
-            // window snap to the new width instead of tracking it.
-            PanelTopBar(selection: $selectedPane.animation(.smooth(duration: 0.2)))
-            // The ZStack overlays the outgoing and incoming panes during the crossfade;
-            // as direct VStack children they would stack vertically and jump the layout.
-            ZStack(alignment: .top) {
-                PaneBody(pane: selectedPane)
-                    .id(selectedPane)
-                    .transition(.opacity)
-            }
+            PanelTopBar(selection: $selectedPane)
+            PaneBody(pane: displayedPane)
+                .opacity(isContentVisible ? 1 : 0)
         }
-        .frame(width: selectedPane.width)
+        .frame(width: displayedPane.width)
         .padding(PanelLayout.outerPadding)
+        .task(id: selectedPane) {
+            await transitionToSelectedPane()
+        }
+    }
+
+    /// A pane switch runs fade out, resize, fade in as one cancellable sequence.
+    /// The resize must be its own real transaction (withAnimation) or the
+    /// MenuBarExtra window snaps to the new width instead of tracking it, and the
+    /// content stays hidden until the resize settles so nothing renders outside
+    /// the still-moving window bounds.
+    private func transitionToSelectedPane() async {
+        let fadeOutDuration = 0.08
+        let resizeDuration = 0.1
+
+        do {
+            if displayedPane != selectedPane {
+                withAnimation(.easeOut(duration: fadeOutDuration)) { isContentVisible = false }
+                try await Task.sleep(for: .seconds(fadeOutDuration))
+
+                withAnimation(.smooth(duration: resizeDuration)) { displayedPane = selectedPane }
+                // Extra beat past the resize so the spring settles before the reveal.
+                try await Task.sleep(for: .seconds(resizeDuration + 0.02))
+            }
+            withAnimation(.easeOut(duration: 0.12)) { isContentVisible = true }
+        } catch {
+            // Cancelled by a newer selection: its task converges the state.
+        }
     }
 }
 
