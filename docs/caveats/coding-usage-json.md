@@ -1,19 +1,29 @@
-# Coding usage JSON caveats
+# Coding usage JSON contracts
 
-Claude Code, Codex, and Pi persist different schemas. Parse each source into strict provider types, finish pricing and deduplication inside that provider, then emit only `timestamp`, `totalTokens`, and `costUSD` to shared aggregation.
+Claude Code, Codex, and Pi persist session history, not billing records. ModernWidget therefore treats each format as a separate ingestion contract: consume only fields the producer writes, finish provider-specific accounting locally, then emit `timestamp`, `totalTokens`, and `costUSD` to shared aggregation. Missing billing dimensions are never inferred.
 
-## Shared rules
+Pricing policy and supported model families are fixed by [ADR 0001](../adr/0001-local-ai-usage-accounting.md). This document describes the persisted shapes and the accounting traps around them.
 
-* Reject files older than the active history window before parsing.
-* Treat malformed records as unusable input. Token addition remains saturating.
-* Use embedded official regular prices only. Do not add promotional price windows.
-* Store prices as ordinary per-million-token decimals, with every category present on every model record.
-* Omit an unknown manually priced model entirely. Do not emit token-only or zero-cost partial events.
-* Keep provider identifiers and raw billing categories out of the shared report model.
+## Shared boundary
 
-## Claude
+| Producer | Physical JSONL roots | Billable record |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects` | assistant `message.usage` |
+| Codex | `~/.codex/sessions`, `~/.codex/archived_sessions`, or `~/.codex` when neither child exists | `event_msg` with `payload.type == "token_count"` |
+| Pi | `~/.pi/agent/sessions` | assistant `message` with persisted token and cost totals |
 
-Session JSONL is discovered under `~/.claude/projects`.
+Production uses these default roots under the current user's home directory. It does not read provider configuration or environment variables to discover alternate homes, and it does not follow symlinked trees.
+
+- Only regular `.jsonl` files participate. The rolling report covers today and the preceding 29 local calendar days.
+- A file must be recent enough to contain billable usage, and each emitted event must also fall inside the report window. Codex has one non-billable exception for resolving an older fork parent.
+- Unknown keys are skipped, but the complete JSON document must remain structurally valid. A malformed consumed field rejects its record instead of becoming zero.
+- Token arithmetic saturates at integer bounds. Numeric cost parsing is locale-independent and rejects non-finite or negative persisted costs.
+- Parsed files are cached by path, modification time, change time, size, device, and inode. This invalidates same-size rewrites even when a producer preserves the modification time.
+- An unknown manually priced model is a no-op. It contributes neither tokens nor cost, because a token-only or zero-cost partial event would not be an absolute total.
+
+## Claude Code
+
+A usable Claude line has this shape. Fields outside the example are irrelevant to accounting.
 
 ```json
 {
@@ -27,72 +37,67 @@ Session JSONL is discovered under `~/.claude/projects`.
     "usage": {
       "input_tokens": 100,
       "output_tokens": 25,
+      "cache_read_input_tokens": 40,
+      "cache_creation_input_tokens": 15,
       "cache_creation": {
         "ephemeral_5m_input_tokens": 10,
         "ephemeral_1h_input_tokens": 5
       },
-      "cache_read_input_tokens": 40,
-      "inference_geo": "us"
+      "inference_geo": "us",
+      "service_tier": "standard",
+      "speed": "standard"
     }
   }
 }
 ```
 
-Claude rules:
+The parser requires a valid timestamp, an assistant message, a known model, and a usage object. Present token fields must be non-negative integers. Missing token categories are zero.
 
-* Count assistant records containing `timestamp`, `message.model`, and `message.usage`.
-* Keep normal input, output, cache reads, five-minute cache writes, and one-hour cache writes distinct until pricing completes.
-* Prefer structured cache creation. Use legacy `cache_creation_input_tokens` as a five-minute write only when the structured object is absent.
-* Apply the data-residency modifier only when it is explicitly persisted on the event. Ignore historical fast-mode pricing and use regular catalog prices.
-* Apply official long-context rates per request using normal input plus cache reads and writes.
-* Deduplicate with Claude message and request identifiers. A main-chain record wins over its sidechain copy.
-* Filter by event date before deduplication so an out-of-window copy cannot hide an in-window event.
-* Treat unsupported legacy models and models without a complete catalog price as unknown-model no-ops.
+- `input_tokens`, `output_tokens`, `cache_read_input_tokens`, five-minute cache writes, and one-hour cache writes remain separate through pricing. `totalTokens` is their saturating sum.
+- Structured `cache_creation` wins whenever it is present. The legacy flat `cache_creation_input_tokens` is a five-minute write only when the structured object is absent; the two forms are never added together.
+- `inference_geo == "us"` enables the data-residency modifier only for models whose official table supports it. Persisted `speed` and `service_tier` values do not alter the regular price.
+- Long-context selection is per message and uses every input category, including cache reads and writes. A threshold applies only when the explicit model table defines one.
+- Deduplication runs after date filtering. `message.id` and `requestId` identify copies, `isSidechain == false` wins over a replayed sidechain record, and an out-of-window copy cannot hide an in-window event.
 
 ## Codex
 
-Rollout JSONL is discovered under the standard Codex home:
+Codex accounting spans three line types. A rollout can contain many unrelated `response_item` and `world_state` lines; they are ignored.
 
-* `~/.codex/sessions`
-* `~/.codex/archived_sessions`
-* `~/.codex` when neither child directory exists
-
-```json
-{
-  "timestamp": "2026-06-18T02:00:00.250Z",
-  "type": "event_msg",
-  "payload": {
-    "type": "token_count",
-    "info": {
-      "total_token_usage": {
-        "input_tokens": 120,
-        "cached_input_tokens": 40,
-        "output_tokens": 30,
-        "reasoning_output_tokens": 8,
-        "total_tokens": 150
-      },
-      "model": "gpt-5.5"
-    }
-  }
-}
+```jsonl
+{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"session-id","forked_from_id":"parent-id","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent-id"}}}}}
+{"timestamp":"2026-06-18T01:00:00.100Z","type":"turn_context","payload":{"turn_id":"turn-id","model":"gpt-5.5"}}
+{"timestamp":"2026-06-18T01:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":150}}}}
 ```
 
-Codex rules:
+`session_meta.payload.id` identifies the rollout. A fork parent comes from `forked_from_id` or the structured `source.subagent.thread_spawn.parent_thread_id`; scalar `source` values carry no parent identity. The current model comes from the token payload, its `info` object, or the preceding `turn_context`, in that order.
 
-* `total_token_usage` is cumulative. Subtract the previous cumulative snapshot to obtain one request. Use `last_token_usage` only when cumulative usage is absent.
-* Resolve the model from the token event, its `info` object, or the preceding `turn_context`.
-* Clamp `cached_input_tokens` to `input_tokens`, then price the remainder as ordinary input.
-* Do not infer cache writes. Codex rollouts do not persist `cache_write_tokens`, and a cache miss is still ordinary input.
-* Do not read `config.toml` or infer service tier. Price every observable Codex request at standard rates.
-* Keep OpenAI and xAI price catalogs separate even though Codex persists both through the same Responses-derived token shape.
-* Apply long-context price tiers to each request, never a session or daily total.
-* Suppress confirmed inherited fork history identified by `forked_from_id` or structured subagent `thread_spawn` metadata.
-* Resolve an explicitly referenced fork parent even when its file predates the reporting window. Never emit the parent's out-of-window usage.
-* Active session files take precedence over archived copies with the same relative path.
+Each accepted `last_token_usage` or `total_token_usage` object must contain integer `input_tokens`, `cached_input_tokens`, and `output_tokens`. `reasoning_output_tokens` and `total_tokens` are derived fields and are ignored.
+
+- `total_token_usage` is cumulative. The billable request is its non-negative delta from the previous cumulative snapshot; an unchanged snapshot emits nothing.
+- `last_token_usage` is a per-request fallback only when no cumulative total is present. It advances the cumulative baseline before a later total arrives, preventing the fallback request from being counted twice.
+- A zero snapshot can still update model and cumulative state. Independent rollouts are never deduplicated merely because their token values match.
+- `cached_input_tokens` is clamped to `input_tokens`. Cached input is priced at the cache-read rate, ordinary input is `input_tokens - cached_input_tokens`, and output remains separate.
+- OpenAI and xAI models share this persisted token shape but not a price catalog. Long-context selection is per derived request, never per rollout or day.
+
+### Fork replay
+
+Forked rollouts copy parent turns and cumulative snapshots without storing a replay boundary. The child and parent histories are compared to find the longest exact replay prefix. Inherited token snapshots advance model and cumulative state but do not emit usage; the first real child snapshot and every later child request remain billable.
+
+The parent must be available to establish that boundary. A recent child may reference a parent whose file is older than the report window, so Codex retains old file metadata and parses only the referenced parent. Discovery of such an old parent relies on the official rollout filename ending in its session UUID. Parent events are never emitted.
+
+If a fork relationship is explicit but the parent cannot be resolved, the fork emits nothing. Guessing a replay boundary would silently classify indistinguishable inherited and child snapshots as billable usage.
+
+Active session files take precedence over archived files with the same relative path.
+
+### Unobservable charges
+
+Codex rollouts persist cache reads but not `cache_write_tokens`. GPT 5.6 cache writes may be billable, but a cache miss is still ordinary input and does not prove a write. ModernWidget therefore records no cache-write charge.
+
+Rollouts also do not reliably persist the service tier used by each request. Configuration and launch settings cannot recover historical per-request tier selection, so every observable Codex request uses the regular multiplier. Fast and priority surcharges are not inferred.
 
 ## Pi
 
-Session JSONL is discovered under `~/.pi/agent/sessions`.
+Pi already persists the final usage cost on each assistant message.
 
 ```json
 {
@@ -100,27 +105,26 @@ Session JSONL is discovered under `~/.pi/agent/sessions`.
   "timestamp": "2026-06-18T02:00:00.000Z",
   "message": {
     "role": "assistant",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
     "usage": {
+      "input": 100,
+      "output": 25,
+      "cacheRead": 40,
+      "cacheWrite": 15,
       "totalTokens": 180,
       "cost": {
-        "total": 0.0042
+        "input": 0.0003,
+        "output": 0.000375,
+        "cacheRead": 0.000012,
+        "cacheWrite": 0.00005625,
+        "total": 0.00074325
       }
     }
   }
 }
 ```
 
-Pi rules:
+The parser requires `type == "message"`, a valid timestamp, `message.role == "assistant"`, integer `usage.totalTokens`, and finite non-negative `usage.cost.total`. A record with both totals equal to zero is ignored.
 
-* Count only assistant messages containing both `usage.totalTokens` and `usage.cost.total`.
-* Treat both persisted values as authoritative.
-* Ignore model names and token category fields. Never reconstruct Pi pricing locally.
-
-## Benchmark
-
-```bash
-script/benchmark_coding_usage.sh --mode real
-script/benchmark_coding_usage.sh --mode fixture --fixture-files 90 --fixture-lines 400
-```
-
-The benchmark reports `scan`, `load.cold`, `load.cached`, `startup.cold`, and `refresh.no_change` with minimum, mean, p50, p95, and maximum milliseconds. Optional `--max-*-p95-ms` arguments turn the fixture run into a regression gate.
+Each qualifying assistant message contributes its persisted `totalTokens` and `cost.total` once. Model, provider, token categories, and cost components are deliberately ignored: reconstructing Pi pricing would duplicate the producer's calculation and create a second source of truth.
