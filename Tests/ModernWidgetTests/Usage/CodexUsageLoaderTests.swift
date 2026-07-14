@@ -79,6 +79,28 @@ struct CodexUsageLoaderTests {
         #expect(abs(totals.costUSD - 0.000_878_5) < 0.000_000_001)
     }
 
+    @Test("advances cumulative accounting after per-request fallback")
+    func advancesCumulativeAccountingAfterFallback() throws {
+        let home = try makeFixtureRoot("CodexUsageMixedCumulativeFallback")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let log = [
+            tokenCount(
+                at: "2026-06-18T01:00:00.000Z",
+                input: 100,
+                cached: 0,
+                output: 0,
+                model: "gpt-5.3-codex"
+            ),
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":0}}}}"#,
+            tokenCount(at: "2026-06-18T01:02:00.000Z", input: 120, cached: 0, output: 0),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 120)
+    }
+
     @Test("resumes cumulative accounting after a context reset")
     func resumesAfterCumulativeReset() throws {
         let home = try makeFixtureRoot("CodexUsageCumulativeReset")

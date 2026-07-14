@@ -54,6 +54,14 @@ struct CodexRawUsage: Hashable, Sendable {
             outputTokens: outputTokens.saturatingSubtract(previous?.outputTokens ?? 0)
         )
     }
+
+    func adding(_ other: Self) -> Self {
+        Self(
+            inputTokens: inputTokens.saturatingAdd(other.inputTokens),
+            cachedInputTokens: cachedInputTokens.saturatingAdd(other.cachedInputTokens),
+            outputTokens: outputTokens.saturatingAdd(other.outputTokens)
+        )
+    }
 }
 
 struct CodexUsageLoader: Sendable {
@@ -629,21 +637,11 @@ private struct CodexSessionState {
         if let model = snapshot.model {
             currentModel = model
         }
+        let usage = usage(from: snapshot)
         if inheritedTokenCount > 0 {
             inheritedTokenCount -= 1
-            updatePreviousTotals(from: snapshot)
             return
         }
-        emitRecord(from: snapshot, at: timestamp, emit: emit)
-    }
-
-    private mutating func emitRecord(
-        from snapshot: CodexTokenSnapshot,
-        at timestamp: Date,
-        emit: (CodexUsageRecord) -> Void
-    ) {
-        let usage = snapshot.totalUsage?.subtracting(previousTotals) ?? snapshot.lastUsage
-        updatePreviousTotals(from: snapshot)
         guard let usage, !usage.isEmpty else {
             return
         }
@@ -651,9 +649,16 @@ private struct CodexSessionState {
         emit(CodexUsageRecord(timestamp: timestamp, model: currentModel, usage: usage))
     }
 
-    private mutating func updatePreviousTotals(from snapshot: CodexTokenSnapshot) {
+    private mutating func usage(from snapshot: CodexTokenSnapshot) -> CodexRawUsage? {
         if let totalUsage = snapshot.totalUsage {
+            let usage = totalUsage.subtracting(previousTotals)
             previousTotals = totalUsage
+            return usage
         }
+        guard let lastUsage = snapshot.lastUsage else {
+            return nil
+        }
+        previousTotals = previousTotals?.adding(lastUsage) ?? lastUsage
+        return lastUsage
     }
 }
