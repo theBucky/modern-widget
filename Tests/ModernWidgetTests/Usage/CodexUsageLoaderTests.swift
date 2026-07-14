@@ -342,6 +342,52 @@ struct CodexUsageLoaderTests {
         #expect(totals.totalTokens == 120)
     }
 
+    @Test("resolves fork parents outside the history window")
+    func resolvesStaleForkParent() throws {
+        let home = try makeFixtureRoot("CodexUsageStaleForkParent")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let parentID = "00000000-0000-0000-0000-000000000001"
+        let parent = [
+            #"{"timestamp":"2026-05-01T00:59:00.000Z","type":"session_meta","payload":{"id":"\#(parentID)"}}"#,
+            turnContext(
+                at: "2026-05-01T00:59:00.100Z",
+                id: "shared-turn",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-05-01T00:59:01.000Z", input: 100, cached: 0, output: 20),
+        ].joined(separator: "\n")
+        let child = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"child","forked_from_id":"\#(parentID)"}}"#,
+            turnContext(
+                at: "2026-06-18T01:00:00.010Z",
+                id: "shared-turn",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.020Z", input: 100, cached: 0, output: 20),
+            turnContext(
+                at: "2026-06-18T01:00:00.100Z",
+                id: "child-turn",
+                model: "gpt-5.3-codex"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.200Z", input: 200, cached: 0, output: 40),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(
+            parent,
+            to: ".codex/sessions/2026/05/01/rollout-2026-05-01T00-59-00-\(parentID).jsonl",
+            in: home,
+            modifiedAt: date(2026, 5, 1)
+        )
+        try writeCodingUsageFixture(
+            child,
+            to: ".codex/sessions/2026/06/18/child.jsonl",
+            in: home
+        )
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 120)
+    }
+
     @Test("inherits the model from replayed fork snapshots")
     func inheritsForkReplayModel() throws {
         let home = try makeFixtureRoot("CodexUsageForkReplayModel")

@@ -87,6 +87,7 @@ Codex rules:
 * Keep OpenAI and xAI price catalogs separate even though Codex persists both through the same Responses-derived token shape.
 * Apply long-context price tiers to each request, never a session or daily total.
 * Suppress confirmed inherited fork history identified by `forked_from_id` or structured subagent `thread_spawn` metadata.
+* Resolve an explicitly referenced fork parent even when its file predates the reporting window. Never emit the parent's out-of-window usage.
 * Active session files take precedence over archived copies with the same relative path.
 
 ## Pi

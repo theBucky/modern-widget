@@ -350,7 +350,7 @@ private enum CodingUsageBenchmarkPrinter {
         print("history_days \(scan.scope.historyDays.count)")
         print("files.total \(files.count)")
         print("files.claude \(scan.claude.files.count)")
-        print("files.codex \(scan.codex.files.count)")
+        print("files.codex \(scan.codex.files.count + scan.codex.parentCandidates.count)")
         print("files.pi \(scan.pi.files.count)")
         print("bytes \(bytes)")
         print("")
@@ -389,7 +389,7 @@ private struct CodingUsageBenchmarkSink {
         value &+= UInt64(scan.fingerprint.files.count)
         value &+= UInt64(scan.claude.files.count)
         value &+= UInt64(scan.pi.files.count)
-        value &+= UInt64(scan.codex.files.count)
+        value &+= UInt64(scan.codex.files.count + scan.codex.parentCandidates.count)
     }
 
     mutating func consume(_ report: CodingUsageReport) {

@@ -75,7 +75,7 @@ Pi's persisted usage is authoritative. ModernWidget sums `usage.totalTokens` and
 
 ### Runtime and persistence
 
-The app scans only the active history window and rejects stale files before parsing. Parsed immutable provider events may be cached by file fingerprint. Refresh fingerprints contain only inputs that can change the resulting report.
+The app limits billable files to the active history window. Codex also retains metadata for older rollout files and parses an older parent only when a recent fork references its session identifier. Parent events remain outside the reporting window; the parent history is used only to distinguish inherited snapshots from child usage. Parsed immutable provider events may be cached by file fingerprint.
 
 No derived usage database is introduced. Restarting the app rescans source logs, so newly supported models become visible without a migration. Fields discarded by the producer, such as historical Codex cache-write tokens or per-request service tier, cannot be recovered later.
 

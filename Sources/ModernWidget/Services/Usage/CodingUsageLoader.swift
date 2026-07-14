@@ -70,7 +70,7 @@ struct CodingUsageLoader: Sendable {
         }
 
         var claudeScan = ClaudeUsageScan(isInstalled: false, files: [])
-        var codexScan = CodexUsageScan(isInstalled: false, files: [])
+        var codexScan = CodexUsageScan(isInstalled: false, files: [], parentCandidates: [])
         var piScan = PiUsageScan(isInstalled: false, files: [])
         for scan in scans {
             switch scan {
@@ -95,7 +95,7 @@ struct CodingUsageLoader: Sendable {
         }
         let activeAgents = enabledAgents.intersection(installedAgents)
         let files =
-            (claudeScan.files + codexScan.files + piScan.files)
+            (claudeScan.files + codexScan.files + codexScan.parentCandidates + piScan.files)
             .sorted { $0.path < $1.path }
 
         return CodingUsageScan(

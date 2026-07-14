@@ -3,6 +3,7 @@ import Foundation
 struct CodexUsageScan: Sendable {
     let isInstalled: Bool
     let files: [CodingUsageFile]
+    let parentCandidates: [CodingUsageFile]
 }
 
 private struct CodexSessionFile {
@@ -74,8 +75,15 @@ struct CodexUsageLoader: Sendable {
 
     func scan(scope: CodingUsageDateScope, enabled: Bool) -> CodexUsageScan {
         let isInstalled = fileSystem.isDirectory(homeDirectory)
-        let files = enabled && isInstalled ? usageFiles(scope: scope) : []
-        return CodexUsageScan(isInstalled: isInstalled, files: files)
+        guard enabled && isInstalled else {
+            return CodexUsageScan(isInstalled: isInstalled, files: [], parentCandidates: [])
+        }
+        let files = usageFiles(scope: scope)
+        return CodexUsageScan(
+            isInstalled: true,
+            files: files.recent,
+            parentCandidates: files.parentCandidates
+        )
     }
 
     func load(_ scan: CodexUsageScan, visit: (CodingUsageEvent) -> Void) {
@@ -83,20 +91,25 @@ struct CodexUsageLoader: Sendable {
         let histories = concurrentMap(scan.files) { file in
             cachedHistories[file] ?? parseCodexFile(file)
         }
-
-        var historiesByFile: [CodingUsageFile: CodexFileHistory] = [:]
-        historiesByFile.reserveCapacity(scan.files.count)
-        for (file, history) in zip(scan.files, histories) {
-            historiesByFile[file] = history
-        }
-        historyCache.replace(with: historiesByFile)
-
         let parentKeys = Set(
             histories.compactMap { $0.header?.forkParentID }
         )
+        let parentFiles = scan.parentCandidates.filter { file in
+            rolloutSessionIDHash(file).map(parentKeys.contains) == true
+        }
+        let parentHistories = concurrentMap(parentFiles) { file in
+            cachedHistories[file] ?? parseCodexFile(file)
+        }
+        let dependencyFiles = scan.files + parentFiles
+        let dependencyHistories = histories + parentHistories
+
+        historyCache.replace(
+            with: Dictionary(uniqueKeysWithValues: zip(dependencyFiles, dependencyHistories))
+        )
+
         var filesBySession: [UInt64: CodexSessionFile] = [:]
         filesBySession.reserveCapacity(parentKeys.count)
-        for (file, history) in zip(scan.files, histories) {
+        for (file, history) in zip(dependencyFiles, dependencyHistories) {
             guard let header = history.header else {
                 continue
             }
@@ -143,7 +156,9 @@ struct CodexUsageLoader: Sendable {
         forkCache.replace(with: resolvedForks)
     }
 
-    private func usageFiles(scope: CodingUsageDateScope) -> [CodingUsageFile] {
+    private func usageFiles(scope: CodingUsageDateScope) -> (
+        recent: [CodingUsageFile], parentCandidates: [CodingUsageFile]
+    ) {
         let sessions = homeDirectory.appendingPathComponent("sessions")
         let archivedSessions = homeDirectory.appendingPathComponent("archived_sessions")
         var directories: [URL] = []
@@ -158,22 +173,41 @@ struct CodexUsageLoader: Sendable {
         }
 
         var seenRelativePaths: Set<String> = []
-        return directories.flatMap { directory in
+        let files = directories.flatMap { directory in
             let pathPrefix = directory.standardizedFileURL.path + "/"
             return fileSystem.usageFiles(
                 in: directory,
-                modifiedSince: scope.history.start
+                modifiedSince: .distantPast
             ).filter { file in
                 precondition(file.path.hasPrefix(pathPrefix))
                 let relativePath = String(file.path.dropFirst(pathPrefix.count))
                 return seenRelativePaths.insert(relativePath).inserted
             }
         }
+        return (
+            recent: files.filter { $0.modifiedAt >= scope.history.start },
+            parentCandidates: files.filter { $0.modifiedAt < scope.history.start }
+        )
     }
 
     private var homeDirectory: URL {
         fileSystem.homeDirectory.appendingPathComponent(".codex")
     }
+}
+
+private func rolloutSessionIDHash(_ file: CodingUsageFile) -> UInt64? {
+    guard file.path.hasSuffix(".jsonl") else {
+        return nil
+    }
+    let stem = file.path.dropLast(6)
+    guard stem.count > 36 else {
+        return nil
+    }
+    let separator = stem.index(stem.endIndex, offsetBy: -37)
+    guard stem[separator] == "-" else {
+        return nil
+    }
+    return codingUsageIdentityHash(stem.suffix(36).utf8)
 }
 
 private func parseCodexFile(_ file: CodingUsageFile) -> CodexFileHistory {

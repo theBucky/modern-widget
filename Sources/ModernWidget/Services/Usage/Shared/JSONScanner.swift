@@ -460,17 +460,9 @@ struct JSONStringValue {
     /// strings for every Claude message in the active history window.
     var fnv1a64: UInt64 {
         if hasEscape, let string {
-            return Self.fnv1a64(of: string.utf8)
+            return codingUsageIdentityHash(string.utf8)
         }
-        return Self.fnv1a64(of: UnsafeBufferPointer(start: start, count: count))
-    }
-
-    private static func fnv1a64(of bytes: some Sequence<UInt8>) -> UInt64 {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in bytes {
-            hash = (hash ^ UInt64(byte)) &* 0x100_0000_01b3
-        }
-        return hash
+        return codingUsageIdentityHash(UnsafeBufferPointer(start: start, count: count))
     }
 
     func equals(_ literal: StaticString) -> Bool {
