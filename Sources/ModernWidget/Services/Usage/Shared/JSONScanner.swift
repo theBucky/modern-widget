@@ -36,7 +36,7 @@ struct JSONScanner {
         }
         guard objectDepth < UInt64.bitWidth else {
             isValid = false
-            skipValue()
+            index = count
             return false
         }
         let mask = UInt64(1) << objectDepth
