@@ -41,7 +41,7 @@ private struct ClaudeMessageFields {
 
 struct ClaudeUsageLoader: Sendable {
     private let fileSystem: CodingUsageFileSystem
-    private let cache = CodingUsageFileCache<ClaudeUsageEntry>()
+    private let cache = CodingUsageFileCache<[ClaudeUsageEntry]>()
 
     init(fileSystem: CodingUsageFileSystem) {
         self.fileSystem = fileSystem

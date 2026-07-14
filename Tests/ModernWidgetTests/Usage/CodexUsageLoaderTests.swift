@@ -187,23 +187,53 @@ struct CodexUsageLoaderTests {
         #expect(!totals.hasUsage)
     }
 
-    @Test("suppresses inherited history in a forked rollout")
+    @Test("suppresses every inherited snapshot without suppressing a fast child turn")
     func suppressesForkReplay() throws {
         let home = try makeFixtureRoot("CodexUsageForkReplay")
         defer { try? FileManager.default.removeItem(at: home) }
-        let log = [
+        let parent = [
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"session_meta","payload":{"id":"origin"}}"#,
+            turnContext(
+                at: "2026-06-18T00:59:00.100Z",
+                id: "origin-turn-1",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T00:59:01.000Z", input: 400, cached: 40, output: 80),
+            turnContext(
+                at: "2026-06-18T00:59:30.000Z",
+                id: "origin-turn-2",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T00:59:31.000Z", input: 1_000, cached: 100, output: 200),
+        ].joined(separator: "\n")
+        let child = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"fork","forked_from_id":"origin"}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"origin"}}"#,
-            tokenCount(at: "2026-06-18T01:00:00.100Z", input: 1_000, cached: 100, output: 200),
-            tokenCount(
-                at: "2026-06-18T01:01:00.000Z",
-                input: 1_600,
-                cached: 160,
-                output: 320,
+            turnContext(
+                at: "2026-06-18T01:00:00.010Z",
+                id: "origin-turn-1",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.020Z", input: 400, cached: 40, output: 80),
+            turnContext(
+                at: "2026-06-18T01:00:00.030Z",
+                id: "origin-turn-2",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.040Z", input: 1_000, cached: 100, output: 200),
+            turnContext(
+                at: "2026-06-18T01:00:00.100Z",
+                id: "fork-turn",
                 model: "gpt-5.3-codex"
             ),
+            tokenCount(
+                at: "2026-06-18T01:00:00.200Z",
+                input: 1_600,
+                cached: 160,
+                output: 320
+            ),
         ].joined(separator: "\n")
-        try writeCodingUsageFixture(log, to: ".codex/sessions/fork.jsonl", in: home)
+        try writeCodingUsageFixture(parent, to: ".codex/sessions/origin.jsonl", in: home)
+        try writeCodingUsageFixture(child, to: ".codex/sessions/fork.jsonl", in: home)
 
         let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 
@@ -214,19 +244,38 @@ struct CodexUsageLoaderTests {
     func suppressesStructuredSubagentReplay() throws {
         let home = try makeFixtureRoot("CodexUsageSubagentReplay")
         defer { try? FileManager.default.removeItem(at: home) }
-        let log = [
+        let parent = [
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
+            turnContext(
+                at: "2026-06-18T00:59:00.100Z",
+                id: "parent-turn-1",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T00:59:01.000Z", input: 400, cached: 40, output: 80),
+            turnContext(
+                at: "2026-06-18T00:59:30.000Z",
+                id: "parent-turn-2",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T00:59:31.000Z", input: 1_000, cached: 100, output: 200),
+        ].joined(separator: "\n")
+        let child = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
-            tokenCount(at: "2026-06-18T01:00:00.100Z", input: 1_000, cached: 100, output: 200),
-            tokenCount(
-                at: "2026-06-18T01:01:00.000Z",
-                input: 1_600,
-                cached: 160,
-                output: 320,
+            tokenCount(at: "2026-06-18T01:00:00.020Z", input: 1_000, cached: 100, output: 200),
+            turnContext(
+                at: "2026-06-18T01:00:00.100Z",
+                id: "child-turn",
                 model: "gpt-5.3-codex"
             ),
+            tokenCount(
+                at: "2026-06-18T01:00:00.200Z",
+                input: 1_600,
+                cached: 160,
+                output: 320
+            ),
         ].joined(separator: "\n")
-        try writeCodingUsageFixture(log, to: ".codex/sessions/subagent.jsonl", in: home)
+        try writeCodingUsageFixture(parent, to: ".codex/sessions/parent.jsonl", in: home)
+        try writeCodingUsageFixture(child, to: ".codex/sessions/subagent.jsonl", in: home)
 
         let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 
@@ -267,4 +316,8 @@ private func tokenCount(
     let modelField = model.map { #","model":"\#($0)""# } ?? ""
     return
         #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"output_tokens":\#(output),"reasoning_output_tokens":0,"total_tokens":\#(input + output)}\#(modelField)}}}"#
+}
+
+private func turnContext(at timestamp: String, id: String, model: String) -> String {
+    #"{"timestamp":"\#(timestamp)","type":"turn_context","payload":{"turn_id":"\#(id)","model":"\#(model)"}}"#
 }

@@ -14,7 +14,7 @@ private struct PiMessageFields {
 
 struct PiUsageLoader: Sendable {
     private let fileSystem: CodingUsageFileSystem
-    private let cache = CodingUsageFileCache<CodingUsageEvent>()
+    private let cache = CodingUsageFileCache<[CodingUsageEvent]>()
 
     init(fileSystem: CodingUsageFileSystem) {
         self.fileSystem = fileSystem
