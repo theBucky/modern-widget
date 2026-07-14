@@ -23,7 +23,7 @@ enum CodingUsageAgent: String, CaseIterable, Hashable, Sendable {
 
 struct CodingUsageDaySummary: Equatable, Sendable {
     let date: Date
-    let counts: CodingTokenCounts
+    let totals: CodingUsageTotals
 }
 
 struct CodingUsageCostTrend: Equatable, Sendable {
@@ -60,20 +60,20 @@ struct CodingUsageCostTrend: Equatable, Sendable {
 
 struct CodingUsageTodaySummary: Equatable, Sendable {
     let date: Date
-    let counts: CodingTokenCounts
+    let totals: CodingUsageTotals
     let costTrend: CodingUsageCostTrend
 }
 
 struct CodingUsageAgentSummary: Equatable, Sendable {
     let agent: CodingUsageAgent
-    let dailyCounts: [CodingUsageDaySummary]
+    let days: [CodingUsageDaySummary]
 
     /// A full zero-usage grid over `days`, matching the shape the loader produces so
     /// placeholders and freshly enabled agents share the real data's day axis.
     static func zeroed(agent: CodingUsageAgent, days: [Date]) -> Self {
         Self(
             agent: agent,
-            dailyCounts: days.map { CodingUsageDaySummary(date: $0, counts: CodingTokenCounts()) }
+            days: days.map { CodingUsageDaySummary(date: $0, totals: CodingUsageTotals()) }
         )
     }
 }

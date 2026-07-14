@@ -64,7 +64,7 @@ private struct CodingUsageTable: View {
                 GridRow {
                     Text(total.period.title)
                         .foregroundStyle(.secondary)
-                    CodingUsageValueText(counts: total.counts)
+                    CodingUsageValueText(totals: total.totals)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }

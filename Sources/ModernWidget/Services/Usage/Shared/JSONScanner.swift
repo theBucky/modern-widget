@@ -92,6 +92,30 @@ struct JSONScanner {
         return overflow ? nil : value
     }
 
+    /// Reads a finite JSON number. JSON delimiters terminate `strtod` before it can
+    /// leave the borrowed line buffer, avoiding a String allocation per currency value.
+    mutating func readDouble() -> Double? {
+        skipWhitespace()
+        let scalar = consumeScalar()
+        guard scalar.count > 0 else {
+            return nil
+        }
+        if index == count {
+            let bytes = UnsafeBufferPointer(start: scalar.start, count: scalar.count)
+            guard let value = Double(String(decoding: bytes, as: UTF8.self)), value.isFinite else {
+                return nil
+            }
+            return value
+        }
+        let start = UnsafeRawPointer(scalar.start).assumingMemoryBound(to: CChar.self)
+        var end: UnsafeMutablePointer<CChar>?
+        let value = strtod(start, &end)
+        guard let end, end == start + scalar.count, value.isFinite else {
+            return nil
+        }
+        return value
+    }
+
     /// Reads a string value, returning `nil` (after skipping) for non-string values.
     mutating func readString() -> String? {
         readStringValue()?.string
@@ -287,10 +311,8 @@ struct JSONStringValue {
             as? String
     }
 
-    /// FNV-1a over the decoded payload bytes, for callers that only ever compare a
-    /// string for identity and can drop the text itself. Escaped payloads decode
-    /// first so the hash tracks the string's value, not its encoding; undecodable
-    /// escapes fall back to the raw bytes, still deterministic per encoding.
+    /// Compact identity for cached dedupe records; avoids retaining two allocated ID
+    /// strings for every Claude message in the active history window.
     var fnv1a64: UInt64 {
         if hasEscape, let string {
             return Self.fnv1a64(of: string.utf8)

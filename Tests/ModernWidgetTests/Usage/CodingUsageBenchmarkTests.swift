@@ -11,9 +11,10 @@ struct CodingUsageBenchmarkTests {
         "measures coding usage startup and refresh paths",
         .enabled(if: ProcessInfo.processInfo.environment["CODING_USAGE_BENCHMARK"] == "1")
     )
-    func measuresCodingUsageStartupAndRefreshPaths() async throws {
+    func measuresCodingUsageStartupAndRefreshPaths() throws {
         let options = CodingUsageBenchmarkOptions(
-            environment: ProcessInfo.processInfo.environment)
+            environment: ProcessInfo.processInfo.environment
+        )
         let context = try CodingUsageBenchmarkContext(options: options)
         defer { context.cleanUp() }
 
@@ -30,7 +31,7 @@ struct CodingUsageBenchmarkTests {
             scan: referenceScan
         )
 
-        try await CodingUsageBenchmarkRunner.run(
+        CodingUsageBenchmarkRunner.run(
             name: "scan",
             options: options,
             maxP95Milliseconds: options.maxScanP95Milliseconds
@@ -39,7 +40,7 @@ struct CodingUsageBenchmarkTests {
             sink.consume(scan)
         }
 
-        try await CodingUsageBenchmarkRunner.run(
+        CodingUsageBenchmarkRunner.run(
             name: "load.cold",
             options: options,
             maxP95Milliseconds: options.maxLoadP95Milliseconds
@@ -53,7 +54,7 @@ struct CodingUsageBenchmarkTests {
         }
 
         sink.consume(loader.loadReport(scan: referenceScan))
-        try await CodingUsageBenchmarkRunner.run(
+        CodingUsageBenchmarkRunner.run(
             name: "load.cached",
             options: options,
             maxP95Milliseconds: options.maxCachedLoadP95Milliseconds
@@ -62,7 +63,7 @@ struct CodingUsageBenchmarkTests {
             sink.consume(report)
         }
 
-        try await CodingUsageBenchmarkRunner.run(
+        CodingUsageBenchmarkRunner.run(
             name: "startup.cold",
             options: options,
             maxP95Milliseconds: options.maxStartupP95Milliseconds
@@ -77,7 +78,7 @@ struct CodingUsageBenchmarkTests {
             sink.consume(report)
         }
 
-        try await CodingUsageBenchmarkRunner.run(
+        CodingUsageBenchmarkRunner.run(
             name: "refresh.no_change",
             options: options,
             maxP95Milliseconds: options.maxRefreshP95Milliseconds
@@ -90,8 +91,13 @@ struct CodingUsageBenchmarkTests {
     }
 }
 
+private enum CodingUsageBenchmarkMode: String {
+    case real
+    case fixture
+}
+
 private struct CodingUsageBenchmarkOptions {
-    let mode: String
+    let mode: CodingUsageBenchmarkMode
     let iterations: Int
     let warmups: Int
     let fixtureFiles: Int
@@ -103,8 +109,10 @@ private struct CodingUsageBenchmarkOptions {
     let maxRefreshP95Milliseconds: Double?
 
     init(environment: [String: String]) {
-        let rawMode = environment["CODING_USAGE_BENCHMARK_MODE"] ?? "real"
-        mode = rawMode == "fixture" ? "fixture" : "real"
+        mode =
+            CodingUsageBenchmarkMode(
+                rawValue: environment["CODING_USAGE_BENCHMARK_MODE"] ?? ""
+            ) ?? .real
         iterations = Self.integer(
             environment["CODING_USAGE_BENCHMARK_ITERATIONS"],
             defaultValue: 5,
@@ -149,10 +157,7 @@ private struct CodingUsageBenchmarkOptions {
     }
 
     private static func double(_ value: String?) -> Double? {
-        guard let value, !value.isEmpty else {
-            return nil
-        }
-        return Double(value)
+        value.flatMap(Double.init)
     }
 }
 
@@ -165,12 +170,12 @@ private struct CodingUsageBenchmarkContext {
 
     init(options: CodingUsageBenchmarkOptions) throws {
         switch options.mode {
-        case "real":
+        case .real:
             environment = ProcessInfo.processInfo.environment
             homeDirectory = FileManager.default.homeDirectoryForCurrentUser
             scope = CodingUsageDateScope()
             temporaryRoot = nil
-        default:
+        case .fixture:
             let root = FileManager.default.temporaryDirectory.appendingPathComponent(
                 "CodingUsageBenchmark.\(UUID().uuidString)",
                 isDirectory: true
@@ -199,7 +204,6 @@ private struct CodingUsageBenchmarkContext {
         }
         try? FileManager.default.removeItem(at: temporaryRoot)
     }
-
 }
 
 private enum CodingUsageBenchmarkFixture {
@@ -209,20 +213,9 @@ private enum CodingUsageBenchmarkFixture {
         files: Int,
         lines: Int
     ) throws {
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        try writeCodexConfig(root: root, modifiedAt: scope.now)
-
         for index in 0..<files {
             try writeUsageFile(root: root, index: index, lines: lines, scope: scope)
         }
-    }
-
-    private static func writeCodexConfig(root: URL, modifiedAt: Date) throws {
-        try write(
-            #"service_tier = "standard""#,
-            to: root.appendingPathComponent(".codex/config.toml"),
-            modifiedAt: modifiedAt
-        )
     }
 
     private static func writeUsageFile(
@@ -233,55 +226,57 @@ private enum CodingUsageBenchmarkFixture {
     ) throws {
         var text = ""
         text.reserveCapacity(lines * 260)
+        let agent = CodingUsageAgent.allCases[index % CodingUsageAgent.allCases.count]
         for line in 0..<lines {
             let timestamp = timestamp(line: line, scope: scope)
-            text += lineJSON(agent: index % 3, index: index, line: line, timestamp: timestamp)
+            text += lineJSON(agent: agent, index: index, line: line, timestamp: timestamp)
         }
-        try write(
+        try writeCodingUsageFixture(
             text,
-            to: root.appendingPathComponent(path(agent: index % 3, index: index)),
+            to: path(agent: agent, index: index),
+            in: root,
             modifiedAt: scope.now
         )
     }
 
     private static func lineJSON(
-        agent: Int,
+        agent: CodingUsageAgent,
         index: Int,
         line: Int,
         timestamp: String
     ) -> String {
         switch agent {
-        case 0:
+        case .claude:
             return
                 #"{"timestamp":""# + timestamp
-                + #"","version":"1.2.3","sessionId":"session-\#(index)","requestId":"req-\#(index)-\#(line)","message":{"id":"msg-\#(index)-\#(line)","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}}"#
+                + #"","version":"1.2.3","sessionId":"session-\#(index)","requestId":"req-\#(index)-\#(line)","message":{"id":"msg-\#(index)-\#(line)","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}}"#
                 + "\n"
-        case 1:
+        case .codex:
             return
                 #"{"timestamp":""# + timestamp
-                + #"","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":150},"model":"gpt-5.2-codex"}}}"#
+                + #"","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":150},"model":"gpt-5.3-codex"}}}"#
                 + "\n"
-        default:
+        case .pi:
             return
                 #"{"type":"message","timestamp":""# + timestamp
-                + #"","message":{"role":"assistant","model":"gpt-5.2","usage":{"input":100,"output":40,"cacheRead":20,"cacheWrite":10,"totalTokens":170}}}"#
+                + #"","message":{"role":"assistant","model":"gpt-5.3-codex","usage":{"input":100,"output":40,"cacheRead":20,"cacheWrite":10,"totalTokens":170,"cost":{"total":0.001}}}}"#
                 + "\n"
         }
     }
 
-    private static func path(agent: Int, index: Int) -> String {
+    private static func path(agent: CodingUsageAgent, index: Int) -> String {
         switch agent {
-        case 0:
+        case .claude:
             return ".claude/projects/project-\(index)/session-\(index)/chat.jsonl"
-        case 1:
+        case .codex:
             return ".codex/sessions/2026/06/session-\(index).jsonl"
-        default:
+        case .pi:
             return ".pi/agent/sessions/project-\(index)/prefix_session-\(index).jsonl"
         }
     }
 
     private static func timestamp(line: Int, scope: CodingUsageDateScope) -> String {
-        let day = max(0, scope.historyDays.count - 1 - line % 30)
+        let day = scope.historyDays.count - 1 - line % scope.historyDays.count
         let date = scope.historyDays[day].addingTimeInterval(TimeInterval(line % 86_400))
         let calendar = Calendar(identifier: .gregorian)
         let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: date)
@@ -295,18 +290,6 @@ private enum CodingUsageBenchmarkFixture {
             components.second!
         )
     }
-
-    private static func write(_ text: String, to url: URL, modifiedAt: Date) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes(
-            [.modificationDate: modifiedAt],
-            ofItemAtPath: url.path
-        )
-    }
 }
 
 private enum CodingUsageBenchmarkRunner {
@@ -314,11 +297,11 @@ private enum CodingUsageBenchmarkRunner {
         name: String,
         options: CodingUsageBenchmarkOptions,
         maxP95Milliseconds: Double?,
-        body: () async throws -> Void
-    ) async throws {
+        body: () -> Void
+    ) {
         for _ in 0..<options.warmups {
             CodingUsageBenchmarkPrinter.printProgress(name: name, phase: "warmup")
-            try await body()
+            body()
         }
 
         var samples: [Double] = []
@@ -329,7 +312,7 @@ private enum CodingUsageBenchmarkRunner {
                 phase: "run \(samples.count + 1)/\(options.iterations)"
             )
             let startedAt = DispatchTime.now().uptimeNanoseconds
-            try await body()
+            body()
             let endedAt = DispatchTime.now().uptimeNanoseconds
             samples.append(Double(endedAt - startedAt) / 1_000_000)
         }
@@ -349,24 +332,16 @@ private enum CodingUsageBenchmarkRunner {
 private struct CodingUsageBenchmarkResult {
     let samples: [Double]
 
-    var minimumMilliseconds: Double { samples.min() ?? 0 }
-    var maximumMilliseconds: Double { samples.max() ?? 0 }
-    var meanMilliseconds: Double {
-        guard !samples.isEmpty else {
-            return 0
-        }
-        return samples.reduce(0, +) / Double(samples.count)
-    }
+    var minimumMilliseconds: Double { samples.min()! }
+    var maximumMilliseconds: Double { samples.max()! }
+    var meanMilliseconds: Double { samples.reduce(0, +) / Double(samples.count) }
     var p50Milliseconds: Double { percentile(0.50) }
     var p95Milliseconds: Double { percentile(0.95) }
 
     private func percentile(_ value: Double) -> Double {
-        guard !samples.isEmpty else {
-            return 0
-        }
         let sorted = samples.sorted()
         let index = Int((Double(sorted.count - 1) * value).rounded(.up))
-        return sorted[min(index, sorted.count - 1)]
+        return sorted[index]
     }
 }
 
@@ -377,21 +352,21 @@ private enum CodingUsageBenchmarkPrinter {
     ) {
         let files = scan.fingerprint.files
         let bytes = files.reduce(0) { total, file in
-            total + (file.byteCount ?? 0)
+            total + file.byteCount
         }
-        let codexFileCount = scan.codexSources.reduce(0) { total, source in
+        let codexFileCount = scan.codex.sources.reduce(0) { total, source in
             total + source.files.count
         }
         print("")
         print("coding usage benchmark")
-        print("mode \(options.mode)")
+        print("mode \(options.mode.rawValue)")
         print("iterations \(options.iterations)")
         print("warmups \(options.warmups)")
         print("history_days \(scan.scope.historyDays.count)")
         print("files.total \(files.count)")
-        print("files.claude \(scan.claudeFiles.count)")
+        print("files.claude \(scan.claude.files.count)")
         print("files.codex \(codexFileCount)")
-        print("files.pi \(scan.piFiles.count)")
+        print("files.pi \(scan.pi.files.count)")
         print("bytes \(bytes)")
         print("")
         print("metric,min_ms,mean_ms,p50_ms,p95_ms,max_ms")
@@ -427,14 +402,14 @@ private struct CodingUsageBenchmarkSink {
 
     mutating func consume(_ scan: CodingUsageScan) {
         value &+= UInt64(scan.fingerprint.files.count)
-        value &+= UInt64(scan.claudeFiles.count)
-        value &+= UInt64(scan.piFiles.count)
-        value &+= UInt64(scan.codexSources.count)
+        value &+= UInt64(scan.claude.files.count)
+        value &+= UInt64(scan.pi.files.count)
+        value &+= UInt64(scan.codex.sources.count)
     }
 
     mutating func consume(_ report: CodingUsageReport) {
         for agent in report.agents {
-            value &+= agent.totalCounts.totalTokens
+            value &+= agent.totals.totalTokens
         }
     }
 }

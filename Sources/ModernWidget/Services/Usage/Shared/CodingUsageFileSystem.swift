@@ -1,49 +1,55 @@
 import Darwin
 import Foundation
 
-struct CodingUsageFileFingerprint: Hashable, Sendable {
+struct CodingUsageFile: Hashable, Sendable {
     let path: String
-    let modifiedAt: Date?
-    let byteCount: Int?
+    let modifiedAt: Date
+    let byteCount: Int
+
+    var url: URL {
+        URL(fileURLWithPath: path, isDirectory: false)
+    }
 }
 
-/// A usage log file paired with the fingerprint captured while enumerating it, so
-/// change detection never has to stat the file a second time.
-struct CodingUsageFile: Sendable {
-    let url: URL
-    let fingerprint: CodingUsageFileFingerprint
-}
+struct CodingUsageFileSystem: Sendable {
+    let environment: [String: String]
+    let homeDirectory: URL
 
-extension CodingUsageLoader {
-    /// Enumerates `.jsonl` files under `directory`. The name walk runs on `fts(3)`
-    /// without statting anything, then the per-file mtime/size fingerprints, the bulk
-    /// of the sweep's syscalls, stat on all cores.
-    func usageFiles(in directory: URL, modifiedSince: Date) -> [CodingUsageFile] {
-        let directoryPath = directory.path
-        let candidates = jsonlPaths(under: directoryPath)
+    /// Enumerates `.jsonl` files under `directories`. Covered descendant roots are
+    /// removed before the `fts(3)` walks; names are then collected without statting,
+    /// and the per-file mtime/size reads run on all cores.
+    func usageFiles(in directories: [URL], modifiedSince: Date) -> [CodingUsageFile] {
+        let configuredPaths = directories.map { $0.standardizedFileURL.path }.uniqued(by: \.self)
+        let rootPaths = configuredPaths.filter { candidate in
+            !configuredPaths.contains { ancestor in
+                candidate != ancestor
+                    && (ancestor == "/" || candidate.hasPrefix(ancestor + "/"))
+            }
+        }
+        let candidates = rootPaths.flatMap(jsonlPaths)
 
         let files = concurrentMap(candidates) { path -> CodingUsageFile? in
-            guard let fingerprint = usageFileFingerprint(path: path) else {
+            guard let file = usageFile(path: path) else {
                 return nil
             }
-            if let modifiedAt = fingerprint.modifiedAt, modifiedAt < modifiedSince {
+            if file.modifiedAt < modifiedSince {
                 return nil
             }
-            return CodingUsageFile(
-                url: URL(fileURLWithPath: path, isDirectory: false),
-                fingerprint: fingerprint
-            )
+            return file
         }
-        return files.compactMap { $0 }.sorted { $0.fingerprint.path < $1.fingerprint.path }
+        return files.compactMap { $0 }.sorted { $0.path < $1.path }
     }
 
     /// Walks `rootPath` and returns every `.jsonl` file path under it. `FTS_NOSTAT`
     /// keeps the walk on `readdir` and `d_type` alone, so it costs one syscall per
     /// directory instead of one per entry. Symlinks are reported but not followed,
-    /// matching the fingerprint stage's `lstat`.
+    /// matching the metadata stage's `lstat`.
     private func jsonlPaths(under rootPath: String) -> [String] {
-        var argv = [strdup(rootPath), nil]
-        defer { free(argv[0]) }
+        guard let duplicatedRootPath = strdup(rootPath) else {
+            return []
+        }
+        var argv = [duplicatedRootPath, nil]
+        defer { free(duplicatedRootPath) }
         guard
             let stream = argv.withUnsafeMutableBufferPointer({
                 fts_open($0.baseAddress!, FTS_PHYSICAL | FTS_NOSTAT | FTS_NOCHDIR, nil)
@@ -75,24 +81,16 @@ extension CodingUsageLoader {
         return paths
     }
 
-    /// By default symlinks and other non-regular files are excluded, matching the
-    /// physical `fts` walk. `resolvingSymlinks` stats through a link instead, for
-    /// config files whose readers also follow it: the link's own attributes never
-    /// change when its target is edited, so only the target's fingerprint can
-    /// detect the edit.
-    func usageFileFingerprint(
-        path: String, resolvingSymlinks: Bool = false
-    ) -> CodingUsageFileFingerprint? {
+    private func usageFile(path: String) -> CodingUsageFile? {
         var status = stat()
-        let statted = resolvingSymlinks ? stat(path, &status) : lstat(path, &status)
-        guard statted == 0, (status.st_mode & S_IFMT) == S_IFREG else {
+        guard lstat(path, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else {
             return nil
         }
         let modifiedAt = Date(
             timeIntervalSince1970: TimeInterval(status.st_mtimespec.tv_sec)
                 + TimeInterval(status.st_mtimespec.tv_nsec) / 1_000_000_000
         )
-        return CodingUsageFileFingerprint(
+        return CodingUsageFile(
             path: path,
             modifiedAt: modifiedAt,
             byteCount: Int(status.st_size)

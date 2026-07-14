@@ -42,7 +42,7 @@ struct CodingUsageTodayTotalSection: View {
     private func dateTokenGroup(summary: CodingUsageTodaySummary) -> some View {
         VStack(alignment: .trailing, spacing: 2) {
             Text(summary.date, format: .codingUsageDay)
-            Text(summary.counts.totalTokens, format: .codingUsageTokens)
+            Text(summary.totals.totalTokens, format: .codingUsageTokens)
         }
         .font(.caption.monospacedDigit().weight(.semibold))
         .foregroundStyle(.secondary)
@@ -79,17 +79,17 @@ struct CodingUsageTodayTotalSection: View {
         private static func replayStartSummary(for summary: CodingUsageTodaySummary)
             -> CodingUsageTodaySummary
         {
-            var counts = summary.counts
-            let targetCostUSD = max(summary.counts.costUSD, 0.15)
-            counts.costUSD = max(targetCostUSD * 0.35, 0.01)
-            counts.totalTokens = max(summary.counts.totalTokens / 3, 1)
+            var totals = summary.totals
+            let targetCostUSD = max(summary.totals.costUSD, 0.15)
+            totals.costUSD = max(targetCostUSD * 0.35, 0.01)
+            totals.totalTokens = max(summary.totals.totalTokens / 3, 1)
 
             return CodingUsageTodaySummary(
                 date: summary.date,
-                counts: counts,
+                totals: totals,
                 costTrend: CodingUsageCostTrend(
-                    currentCostUSD: counts.costUSD,
-                    previousCostUSD: counts.costUSD * 2
+                    currentCostUSD: totals.costUSD,
+                    previousCostUSD: totals.costUSD * 2
                 )
             )
         }
@@ -131,21 +131,21 @@ private struct CodingUsageCostTrendGroup: View {
                 .padding(-costTextOverdraw)
         }
         .accessibilityRepresentation {
-            Text(summary.counts.costUSD, format: .codingUsageCost)
+            Text(summary.totals.costUSD, format: .codingUsageCost)
         }
     }
 
     private var animatedCostText: some View {
-        Text(summary.counts.costUSD, format: .codingUsageCost)
+        Text(summary.totals.costUSD, format: .codingUsageCost)
             .font(costFont)
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.9)
-            .contentTransition(.numericText(value: summary.counts.costUSD))
+            .contentTransition(.numericText(value: summary.totals.costUSD))
     }
 
     private var totalCostStyle: AnyShapeStyle {
-        if !summary.counts.hasUsage {
+        if !summary.totals.hasUsage {
             return AnyShapeStyle(.tertiary)
         }
         return AnyShapeStyle(

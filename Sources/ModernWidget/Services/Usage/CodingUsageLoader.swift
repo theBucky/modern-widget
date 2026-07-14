@@ -4,138 +4,139 @@ struct CodingUsageScan: Sendable {
     let scope: CodingUsageDateScope
     let installedAgents: Set<CodingUsageAgent>
     let fingerprint: CodingUsageFingerprint
-    let claudeFiles: [CodingUsageFile]
-    let codexSources: [CodexUsageSource]
-    let piFiles: [CodingUsageFile]
+    let claude: ClaudeUsageScan
+    let codex: CodexUsageScan
+    let pi: PiUsageScan
 }
 
 struct CodingUsageFingerprint: Equatable, Sendable {
     let agents: [CodingUsageAgent]
     let historyStart: Date
     let historyEnd: Date
-    let files: [CodingUsageFileFingerprint]
+    let files: [CodingUsageFile]
 }
 
-private enum CodingUsageAgentSweep: Sendable {
-    case claude([CodingUsageFile])
-    case codex([CodexUsageSource])
-    case pi([CodingUsageFile])
+private enum CodingUsageProviderScan: Sendable {
+    case claude(ClaudeUsageScan)
+    case codex(CodexUsageScan)
+    case pi(PiUsageScan)
 }
 
 struct CodingUsageLoader: Sendable {
-    let environment: [String: String]
-    let homeDirectory: URL
-    let parseCache: CodingUsageParseCache
+    private let claude: ClaudeUsageLoader
+    private let codex: CodexUsageLoader
+    private let pi: PiUsageLoader
 
     init(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) {
-        self.environment = environment
-        self.homeDirectory = homeDirectory
-        self.parseCache = CodingUsageParseCache()
+        let fileSystem = CodingUsageFileSystem(
+            environment: environment,
+            homeDirectory: homeDirectory
+        )
+        self.claude = ClaudeUsageLoader(fileSystem: fileSystem)
+        self.codex = CodexUsageLoader(fileSystem: fileSystem)
+        self.pi = PiUsageLoader(fileSystem: fileSystem)
     }
 
     func installedAgents() -> Set<CodingUsageAgent> {
-        installedAgents(
-            claudeDirectories: claudeConfigDirectories(),
-            codexHomes: codexHomeDirectories(),
-            piDirectories: piUsageDirectories()
-        )
-    }
-
-    private func installedAgents(
-        claudeDirectories: [URL],
-        codexHomes: [URL],
-        piDirectories: [URL]
-    ) -> Set<CodingUsageAgent> {
-        var installed: Set<CodingUsageAgent> = []
-        if !claudeDirectories.isEmpty {
-            installed.insert(.claude)
+        var agents: Set<CodingUsageAgent> = []
+        if claude.isInstalled() {
+            agents.insert(.claude)
         }
-        if !codexHomes.isEmpty {
-            installed.insert(.codex)
+        if codex.isInstalled() {
+            agents.insert(.codex)
         }
-        if !piDirectories.isEmpty {
-            installed.insert(.pi)
+        if pi.isInstalled() {
+            agents.insert(.pi)
         }
-        return installed
+        return agents
     }
 
     func usageScan(
         scope: CodingUsageDateScope,
         enabledAgents: Set<CodingUsageAgent> = Set(CodingUsageAgent.allCases)
     ) -> CodingUsageScan {
-        let claudeDirectories = claudeConfigDirectories()
-        let codexHomes = codexHomeDirectories()
-        let piDirectories = piUsageDirectories()
-        let installedAgents = installedAgents(
-            claudeDirectories: claudeDirectories,
-            codexHomes: codexHomes,
-            piDirectories: piDirectories
-        )
-        let activeAgents = enabledAgents.intersection(installedAgents)
-        // Each sweep stats thousands of files; scanning the agents together bounds
-        // the wall time by the slowest sweep instead of the sum.
-        let sweeps: [@Sendable () -> CodingUsageAgentSweep] = [
+        let scans: [@Sendable () -> CodingUsageProviderScan] = [
             {
                 .claude(
-                    activeAgents.contains(.claude)
-                        ? self.claudeUsageFiles(in: claudeDirectories, scope: scope) : [])
+                    claude.scan(scope: scope, enabled: enabledAgents.contains(.claude))
+                )
             },
             {
                 .codex(
-                    activeAgents.contains(.codex)
-                        ? self.codexUsageSources(homes: codexHomes, scope: scope) : [])
+                    codex.scan(scope: scope, enabled: enabledAgents.contains(.codex))
+                )
             },
             {
-                .pi(
-                    activeAgents.contains(.pi)
-                        ? self.piUsageFiles(in: piDirectories, scope: scope) : [])
+                .pi(pi.scan(scope: scope, enabled: enabledAgents.contains(.pi)))
             },
         ]
-        var claudeFiles: [CodingUsageFile] = []
-        var codexSources: [CodexUsageSource] = []
-        var piFiles: [CodingUsageFile] = []
-        for sweep in concurrentMap(sweeps, { $0() }) {
-            switch sweep {
-            case let .claude(files):
-                claudeFiles = files
-            case let .codex(sources):
-                codexSources = sources
-            case let .pi(files):
-                piFiles = files
+
+        var claudeScan = ClaudeUsageScan(isInstalled: false, files: [])
+        var codexScan = CodexUsageScan(isInstalled: false, sources: [])
+        var piScan = PiUsageScan(isInstalled: false, files: [])
+        for scan in concurrentMap(scans, { $0() }) {
+            switch scan {
+            case let .claude(value):
+                claudeScan = value
+            case let .codex(value):
+                codexScan = value
+            case let .pi(value):
+                piScan = value
             }
         }
-        let codexConfigFingerprints =
-            activeAgents.contains(.codex) ? codexFingerprintFiles(homes: codexHomes) : []
+
+        var installedAgents: Set<CodingUsageAgent> = []
+        if claudeScan.isInstalled {
+            installedAgents.insert(.claude)
+        }
+        if codexScan.isInstalled {
+            installedAgents.insert(.codex)
+        }
+        if piScan.isInstalled {
+            installedAgents.insert(.pi)
+        }
+        let activeAgents = enabledAgents.intersection(installedAgents)
         let files =
-            ((claudeFiles + codexSources.flatMap(\.files) + piFiles).map(\.fingerprint)
-            + codexConfigFingerprints)
+            (claudeScan.files + codexScan.sources.flatMap(\.files) + piScan.files)
             .uniqued(by: \.path)
             .sorted { $0.path < $1.path }
-        let fingerprint = CodingUsageFingerprint(
-            agents: CodingUsageAgent.ordered(activeAgents),
-            historyStart: scope.history.start,
-            historyEnd: scope.history.end,
-            files: files
-        )
 
         return CodingUsageScan(
             scope: scope,
             installedAgents: installedAgents,
-            fingerprint: fingerprint,
-            claudeFiles: claudeFiles,
-            codexSources: codexSources,
-            piFiles: piFiles
+            fingerprint: CodingUsageFingerprint(
+                agents: CodingUsageAgent.ordered(activeAgents),
+                historyStart: scope.history.start,
+                historyEnd: scope.history.end,
+                files: files
+            ),
+            claude: claudeScan,
+            codex: codexScan,
+            pi: piScan
         )
     }
 
     func loadReport(scan: CodingUsageScan) -> CodingUsageReport {
         var accumulator = CodingUsageAccumulator(scope: scan.scope)
-        loadClaudeUsage(files: scan.claudeFiles, scope: scan.scope, into: &accumulator)
-        loadCodexUsage(sources: scan.codexSources, into: &accumulator)
-        loadPiUsage(files: scan.piFiles, into: &accumulator)
+        for agent in scan.fingerprint.agents {
+            switch agent {
+            case .claude:
+                claude.load(scan.claude, scope: scan.scope) {
+                    accumulator.add($0, for: agent)
+                }
+            case .codex:
+                codex.load(scan.codex) {
+                    accumulator.add($0, for: agent)
+                }
+            case .pi:
+                pi.load(scan.pi) {
+                    accumulator.add($0, for: agent)
+                }
+            }
+        }
 
         return CodingUsageReport(
             state: .loaded(generatedAt: scan.scope.now),
@@ -144,35 +145,33 @@ struct CodingUsageLoader: Sendable {
     }
 }
 
-struct CodingUsageAccumulator {
+private struct CodingUsageAccumulator {
     private let scope: CodingUsageDateScope
-    private var dailyCounts: [CodingUsageAgent: [CodingTokenCounts]] = [:]
+    private var dailyTotals: [CodingUsageAgent: [CodingUsageTotals]] = [:]
 
     init(scope: CodingUsageDateScope) {
         self.scope = scope
     }
 
-    mutating func add(
-        _ agent: CodingUsageAgent, counts tokenCounts: CodingTokenCounts, at date: Date
-    ) {
-        guard let dayIndex = scope.historyDayIndex(containing: date) else {
+    mutating func add(_ event: CodingUsageEvent, for agent: CodingUsageAgent) {
+        guard let dayIndex = scope.historyDayIndex(containing: event.timestamp) else {
             return
         }
         let dayCount = scope.historyDays.count
-        dailyCounts[
+        dailyTotals[
             agent,
-            default: Array(repeating: CodingTokenCounts(), count: dayCount),
-        ][dayIndex].add(tokenCounts)
+            default: Array(repeating: CodingUsageTotals(), count: dayCount),
+        ][dayIndex].add(event.totals)
     }
 
     func agentSummaries(for agents: [CodingUsageAgent]) -> [CodingUsageAgentSummary] {
         agents.map { agent in
             CodingUsageAgentSummary(
                 agent: agent,
-                dailyCounts: scope.historyDays.enumerated().map { index, day in
+                days: scope.historyDays.enumerated().map { index, day in
                     CodingUsageDaySummary(
                         date: day,
-                        counts: dailyCounts[agent]?[index] ?? CodingTokenCounts()
+                        totals: dailyTotals[agent]?[index] ?? CodingUsageTotals()
                     )
                 }
             )

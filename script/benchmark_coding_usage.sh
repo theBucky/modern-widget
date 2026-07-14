@@ -8,6 +8,7 @@ fixture_files="90"
 fixture_lines="400"
 max_scan_p95_ms=""
 max_load_p95_ms=""
+max_cached_load_p95_ms=""
 max_startup_p95_ms=""
 max_refresh_p95_ms=""
 
@@ -23,6 +24,7 @@ options:
   --fixture-lines n                   lines per fixture file, default 400
   --max-scan-p95-ms n                 fail if scan p95 exceeds n ms
   --max-load-p95-ms n                 fail if load p95 exceeds n ms
+  --max-cached-load-p95-ms n          fail if cached load p95 exceeds n ms
   --max-startup-p95-ms n              fail if startup p95 exceeds n ms
   --max-refresh-p95-ms n              fail if no-change refresh p95 exceeds n ms
 USAGE
@@ -56,6 +58,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --max-load-p95-ms)
             max_load_p95_ms="${2:?missing --max-load-p95-ms value}"
+            shift 2
+            ;;
+        --max-cached-load-p95-ms)
+            max_cached_load_p95_ms="${2:?missing --max-cached-load-p95-ms value}"
             shift 2
             ;;
         --max-startup-p95-ms)
@@ -95,6 +101,7 @@ CODING_USAGE_BENCHMARK_FIXTURE_FILES="$fixture_files" \
 CODING_USAGE_BENCHMARK_FIXTURE_LINES="$fixture_lines" \
 CODING_USAGE_BENCHMARK_MAX_SCAN_P95_MS="$max_scan_p95_ms" \
 CODING_USAGE_BENCHMARK_MAX_LOAD_P95_MS="$max_load_p95_ms" \
+CODING_USAGE_BENCHMARK_MAX_CACHED_LOAD_P95_MS="$max_cached_load_p95_ms" \
 CODING_USAGE_BENCHMARK_MAX_STARTUP_P95_MS="$max_startup_p95_ms" \
 CODING_USAGE_BENCHMARK_MAX_REFRESH_P95_MS="$max_refresh_p95_ms" \
 swift test --filter CodingUsageBenchmarkTests

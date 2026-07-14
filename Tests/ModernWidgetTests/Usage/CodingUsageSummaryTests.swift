@@ -16,7 +16,7 @@ struct CodingUsageSummaryTests {
                 agents: [
                     CodingUsageAgentSummary(
                         agent: .claude,
-                        dailyCounts: [
+                        days: [
                             day(2026, 6, 1, 1),
                             day(2026, 6, 17, 2),
                             day(2026, 6, 18, 3),
@@ -31,9 +31,9 @@ struct CodingUsageSummaryTests {
         let totals = try #require(presentation.sections.first?.periodTotals)
 
         #expect(totals.map(\.period) == [.today, .yesterday, .last7Days, .last30Days])
-        #expect(totals.map(\.counts.costUSD) == [3, 2, 5, 6])
+        #expect(totals.map(\.totals.costUSD) == [3, 2, 5, 6])
         #expect(
-            totals.map(\.counts.totalTokens) == [
+            totals.map(\.totals.totalTokens) == [
                 3_000_000_000,
                 2_000_000_000,
                 5_000_000_000,
@@ -51,15 +51,15 @@ struct CodingUsageSummaryTests {
                 agents: [
                     CodingUsageAgentSummary(
                         agent: .claude,
-                        dailyCounts: [day(2026, 6, 18, 1), day(2026, 6, 17, 9)]
+                        days: [day(2026, 6, 18, 1), day(2026, 6, 17, 9)]
                     ),
                     CodingUsageAgentSummary(
                         agent: .codex,
-                        dailyCounts: [day(2026, 6, 18, 2)]
+                        days: [day(2026, 6, 18, 2)]
                     ),
                     CodingUsageAgentSummary(
                         agent: .pi,
-                        dailyCounts: [day(2026, 6, 18, 3)]
+                        days: [day(2026, 6, 18, 3)]
                     ),
                 ]
             ),
@@ -67,10 +67,10 @@ struct CodingUsageSummaryTests {
             activeAgents: Set(CodingUsageAgent.allCases)
         )
 
-        let counts = presentation.today.counts
+        let totals = presentation.today.totals
 
-        #expect(counts.costUSD == 6)
-        #expect(counts.totalTokens == 6_000_000_000)
+        #expect(totals.costUSD == 6)
+        #expect(totals.totalTokens == 6_000_000_000)
     }
 
     @Test("summarizes today's cost trend across agents")
@@ -83,13 +83,13 @@ struct CodingUsageSummaryTests {
                 agents: [
                     CodingUsageAgentSummary(
                         agent: .claude,
-                        dailyCounts: [day(2026, 6, 17, 1), day(2026, 6, 18, 2)]
+                        days: [day(2026, 6, 17, 1), day(2026, 6, 18, 2)]
                     ),
                     CodingUsageAgentSummary(
                         agent: .codex,
-                        dailyCounts: [day(2026, 6, 17, 3), day(2026, 6, 18, 4)]
+                        days: [day(2026, 6, 17, 3), day(2026, 6, 18, 4)]
                     ),
-                    CodingUsageAgentSummary(agent: .pi, dailyCounts: []),
+                    CodingUsageAgentSummary(agent: .pi, days: []),
                 ]
             ),
             scope: CodingUsageDateScope(now: now, calendar: calendar),
@@ -110,8 +110,8 @@ struct CodingUsageSummaryTests {
             report: CodingUsageReport(
                 state: .loaded(generatedAt: now),
                 agents: [
-                    CodingUsageAgentSummary(agent: .claude, dailyCounts: [day(2026, 6, 18, 1)]),
-                    CodingUsageAgentSummary(agent: .codex, dailyCounts: [day(2026, 6, 18, 2)]),
+                    CodingUsageAgentSummary(agent: .claude, days: [day(2026, 6, 18, 1)]),
+                    CodingUsageAgentSummary(agent: .codex, days: [day(2026, 6, 18, 2)]),
                 ]
             ),
             scope: scope,
@@ -123,9 +123,9 @@ struct CodingUsageSummaryTests {
 
         #expect(!presentation.isLoading)
         #expect(presentation.sections.map(\.agent) == [.claude, .pi])
-        #expect(claude.periodTotals.last?.counts.costUSD == 1)
+        #expect(claude.periodTotals.last?.totals.costUSD == 1)
         #expect(pi.chartDays.map(\.date) == scope.historyDays)
-        #expect(pi.periodTotals.allSatisfy { !$0.counts.hasUsage })
+        #expect(pi.periodTotals.allSatisfy { !$0.totals.hasUsage })
     }
 
     @Test("formats small costs with four decimals")
@@ -219,19 +219,19 @@ struct CodingUsageSummaryTests {
         #expect(report.state == .loading)
         #expect(report.agents.map(\.agent) == [.codex, .pi])
         for summary in report.agents {
-            #expect(summary.dailyCounts.count == 30)
-            #expect(summary.dailyCounts.first?.date == date(2026, 5, 20))
-            #expect(summary.dailyCounts.last?.date == date(2026, 6, 18))
-            #expect(summary.dailyCounts.allSatisfy { !$0.counts.hasUsage })
+            #expect(summary.days.count == 30)
+            #expect(summary.days.first?.date == date(2026, 5, 20))
+            #expect(summary.days.last?.date == date(2026, 6, 18))
+            #expect(summary.days.allSatisfy { !$0.totals.hasUsage })
         }
     }
 
     @Test("token only counts are usage but not cost")
     func tokenOnlyCountsAreUsageButNotCost() {
-        let counts = CodingTokenCounts(totalTokens: 10, costUSD: 0)
+        let totals = CodingUsageTotals(totalTokens: 10, costUSD: 0)
 
-        #expect(counts.hasUsage)
-        #expect(!counts.hasCost)
+        #expect(totals.hasUsage)
+        #expect(!totals.hasCost)
     }
 
     private func day(_ year: Int, _ month: Int, _ day: Int, _ costUSD: Double)
@@ -239,7 +239,7 @@ struct CodingUsageSummaryTests {
     {
         CodingUsageDaySummary(
             date: date(year, month, day),
-            counts: CodingTokenCounts(
+            totals: CodingUsageTotals(
                 totalTokens: UInt64(costUSD * 1_000_000_000), costUSD: costUSD)
         )
     }
