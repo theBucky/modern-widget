@@ -284,6 +284,75 @@ struct CodexUsageLoaderTests {
         #expect(totals.totalTokens == 720)
     }
 
+    @Test("resolves fork parents with a scalar session source")
+    func resolvesScalarSessionSource() throws {
+        let home = try makeFixtureRoot("CodexUsageScalarSessionSource")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let parent = [
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"session_meta","payload":{"id":"parent","source":"cli"}}"#,
+            turnContext(
+                at: "2026-06-18T00:59:00.100Z",
+                id: "shared-turn",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T00:59:01.000Z", input: 100, cached: 0, output: 20),
+        ].joined(separator: "\n")
+        let child = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+            turnContext(
+                at: "2026-06-18T01:00:00.010Z",
+                id: "shared-turn",
+                model: "unsupported"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.020Z", input: 100, cached: 0, output: 20),
+            turnContext(
+                at: "2026-06-18T01:00:00.100Z",
+                id: "child-turn",
+                model: "gpt-5.3-codex"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.200Z", input: 200, cached: 0, output: 40),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(parent, to: ".codex/sessions/parent.jsonl", in: home)
+        try writeCodingUsageFixture(child, to: ".codex/sessions/child.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 120)
+    }
+
+    @Test("inherits the model from replayed fork snapshots")
+    func inheritsForkReplayModel() throws {
+        let home = try makeFixtureRoot("CodexUsageForkReplayModel")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let parent = [
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
+            tokenCount(
+                at: "2026-06-18T00:59:01.000Z",
+                input: 100,
+                cached: 0,
+                output: 20,
+                model: "gpt-5.3-codex"
+            ),
+        ].joined(separator: "\n")
+        let child = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+            tokenCount(
+                at: "2026-06-18T01:00:00.020Z",
+                input: 100,
+                cached: 0,
+                output: 20,
+                model: "gpt-5.3-codex"
+            ),
+            tokenCount(at: "2026-06-18T01:00:00.200Z", input: 200, cached: 0, output: 40),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(parent, to: ".codex/sessions/parent.jsonl", in: home)
+        try writeCodingUsageFixture(child, to: ".codex/sessions/child.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 240)
+    }
+
     @Test("active sessions take precedence over archived copies")
     func activeSessionsTakePrecedence() throws {
         let home = try makeFixtureRoot("CodexUsageArchiveDedupe")
@@ -347,13 +416,30 @@ struct CodexUsageLoaderTests {
         #expect(totals.totalTokens == 120)
     }
 
-    @Test("rejects malformed token fields")
+    @Test("rejects malformed or incomplete token fields")
     func rejectsMalformedUsage() throws {
         let home = try makeFixtureRoot("CodexUsageMalformed")
         defer { try? FileManager.default.removeItem(at: home) }
-        let line =
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":"100","cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"}}}"#
-        try writeCodingUsageFixture(line, to: ".codex/sessions/session.jsonl", in: home)
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":"100","cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20},"model":"gpt-5.3-codex"}}}"#,
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(!totals.hasUsage)
+    }
+
+    @Test("rejects malformed structure outside consumed fields")
+    func rejectsMalformedDocumentStructure() throws {
+        let home = try makeFixtureRoot("CodexUsageMalformedStructure")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"},"extra":}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"},"extra":{"nested":1]}}"#,
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
         let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 

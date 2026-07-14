@@ -341,9 +341,9 @@ private func parseCodexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
         return nil
     }
 
-    var inputTokens: UInt64 = 0
-    var cachedInputTokens: UInt64 = 0
-    var outputTokens: UInt64 = 0
+    var inputTokens: UInt64?
+    var cachedInputTokens: UInt64?
+    var outputTokens: UInt64?
     var isValid = true
     while let key = scanner.nextKey() {
         if key == "input_tokens" {
@@ -368,7 +368,7 @@ private func parseCodexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
             scanner.skipValue()
         }
     }
-    guard isValid else {
+    guard isValid, let inputTokens, let cachedInputTokens, let outputTokens else {
         return nil
     }
     return CodexRawUsage(
@@ -626,6 +626,9 @@ private struct CodexSessionState {
         at timestamp: Date,
         emit: (CodexUsageRecord) -> Void
     ) {
+        if let model = snapshot.model {
+            currentModel = model
+        }
         if inheritedTokenCount > 0 {
             inheritedTokenCount -= 1
             updatePreviousTotals(from: snapshot)
@@ -639,9 +642,6 @@ private struct CodexSessionState {
         at timestamp: Date,
         emit: (CodexUsageRecord) -> Void
     ) {
-        if let model = snapshot.model {
-            currentModel = model
-        }
         let usage = snapshot.totalUsage?.subtracting(previousTotals) ?? snapshot.lastUsage
         updatePreviousTotals(from: snapshot)
         guard let usage, !usage.isEmpty else {
