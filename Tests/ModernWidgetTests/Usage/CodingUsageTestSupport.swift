@@ -18,10 +18,9 @@ func codingUsageScope(
 
 func loadCodingUsage(
     from home: URL,
-    environment: [String: String] = [:],
     scope: CodingUsageDateScope = codingUsageScope()
 ) -> CodingUsageReport {
-    let loader = CodingUsageLoader(environment: environment, homeDirectory: home)
+    let loader = CodingUsageLoader(homeDirectory: home)
     return loader.loadReport(scan: loader.usageScan(scope: scope))
 }
 

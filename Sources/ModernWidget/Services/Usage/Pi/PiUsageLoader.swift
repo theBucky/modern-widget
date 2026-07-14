@@ -21,16 +21,16 @@ struct PiUsageLoader: Sendable {
     }
 
     func isInstalled() -> Bool {
-        !usageDirectories().isEmpty
+        fileSystem.isDirectory(sessionsDirectory)
     }
 
     func scan(scope: CodingUsageDateScope, enabled: Bool) -> PiUsageScan {
-        let directories = usageDirectories()
+        let isInstalled = fileSystem.isDirectory(sessionsDirectory)
         let files =
-            enabled
-            ? fileSystem.usageFiles(in: directories, modifiedSince: scope.history.start)
+            enabled && isInstalled
+            ? fileSystem.usageFiles(in: sessionsDirectory, modifiedSince: scope.history.start)
             : []
-        return PiUsageScan(isInstalled: !directories.isEmpty, files: files)
+        return PiUsageScan(isInstalled: isInstalled, files: files)
     }
 
     func load(_ scan: PiUsageScan, visit: (CodingUsageEvent) -> Void) {
@@ -59,11 +59,8 @@ struct PiUsageLoader: Sendable {
         }
     }
 
-    private func usageDirectories() -> [URL] {
-        fileSystem.configuredDirectories(environmentKey: "PI_AGENT_DIR") {
-            [fileSystem.homeDirectory.appendingPathComponent(".pi/agent/sessions")]
-        }
-        .filter(fileSystem.isDirectory)
+    private var sessionsDirectory: URL {
+        fileSystem.homeDirectory.appendingPathComponent(".pi/agent/sessions")
     }
 }
 
@@ -87,7 +84,7 @@ private func parsePiEvent(_ buffer: UnsafeRawBufferPointer) -> CodingUsageEvent?
         }
     }
 
-    guard isMessage, let timestamp, let message,
+    guard scanner.finishDocument(), isMessage, let timestamp, let message,
         message.isAssistant, message.hasUsage,
         let totalTokens = message.totalTokens,
         let totalCostUSD = message.totalCostUSD,

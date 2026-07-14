@@ -4,7 +4,10 @@ import Foundation
 struct CodingUsageFile: Hashable, Sendable {
     let path: String
     let modifiedAt: Date
+    let changedAt: Date
     let byteCount: Int
+    let deviceID: UInt64
+    let fileID: UInt64
 
     var url: URL {
         URL(fileURLWithPath: path, isDirectory: false)
@@ -12,21 +15,12 @@ struct CodingUsageFile: Hashable, Sendable {
 }
 
 struct CodingUsageFileSystem: Sendable {
-    let environment: [String: String]
     let homeDirectory: URL
 
-    /// Enumerates `.jsonl` files under `directories`. Covered descendant roots are
-    /// removed before the `fts(3)` walks; names are then collected without statting,
-    /// and the per-file mtime/size reads run on all cores.
-    func usageFiles(in directories: [URL], modifiedSince: Date) -> [CodingUsageFile] {
-        let configuredPaths = directories.map { $0.standardizedFileURL.path }.uniqued(by: \.self)
-        let rootPaths = configuredPaths.filter { candidate in
-            !configuredPaths.contains { ancestor in
-                candidate != ancestor
-                    && (ancestor == "/" || candidate.hasPrefix(ancestor + "/"))
-            }
-        }
-        let candidates = rootPaths.flatMap(jsonlPaths)
+    /// Enumerates `.jsonl` files under `directory`. Names are collected without
+    /// statting, then the per-file metadata reads run on all cores.
+    func usageFiles(in directory: URL, modifiedSince: Date) -> [CodingUsageFile] {
+        let candidates = jsonlPaths(under: directory.standardizedFileURL.path)
 
         let files = concurrentMap(candidates) { path -> CodingUsageFile? in
             guard let file = usageFile(path: path) else {
@@ -90,51 +84,24 @@ struct CodingUsageFileSystem: Sendable {
             timeIntervalSince1970: TimeInterval(status.st_mtimespec.tv_sec)
                 + TimeInterval(status.st_mtimespec.tv_nsec) / 1_000_000_000
         )
+        let changedAt = Date(
+            timeIntervalSince1970: TimeInterval(status.st_ctimespec.tv_sec)
+                + TimeInterval(status.st_ctimespec.tv_nsec) / 1_000_000_000
+        )
         return CodingUsageFile(
             path: path,
             modifiedAt: modifiedAt,
-            byteCount: Int(status.st_size)
+            changedAt: changedAt,
+            byteCount: Int(status.st_size),
+            deviceID: UInt64(status.st_dev),
+            fileID: UInt64(status.st_ino)
         )
-    }
-
-    /// `normalize` must return a standardized URL; the default and every caller do.
-    func configuredDirectories(
-        environmentKey: String,
-        defaults: () -> [URL],
-        normalize: (URL) -> URL = { $0.standardizedFileURL }
-    ) -> [URL] {
-        if let rawPaths = environment[environmentKey] {
-            let configured =
-                rawPaths
-                .split(separator: ",")
-                .compactMap { token in
-                    let path = token.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return path.isEmpty ? nil : normalize(expandHomePath(path))
-                }
-                .uniqued(by: \.path)
-
-            if !configured.isEmpty {
-                return configured
-            }
-        }
-
-        return defaults().map(normalize).uniqued(by: \.path)
     }
 
     func isDirectory(_ url: URL) -> Bool {
         var isDirectory: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
             && isDirectory.boolValue
-    }
-
-    func expandHomePath(_ rawPath: String) -> URL {
-        if rawPath == "~" {
-            return homeDirectory
-        }
-        if rawPath.hasPrefix("~/") {
-            return homeDirectory.appendingPathComponent(String(rawPath.dropFirst(2)))
-        }
-        return URL(fileURLWithPath: rawPath)
     }
 
     func relativePath(_ url: URL, from base: URL) -> String {

@@ -33,7 +33,7 @@ func forEachJSONLine(
     }
 }
 
-/// Maps independent files on all cores while preserving input order.
+/// Maps independent elements on all cores while preserving input order.
 func concurrentMap<Element: Sendable, Transformed: Sendable>(
     _ elements: [Element],
     _ transform: @Sendable (Element) -> Transformed

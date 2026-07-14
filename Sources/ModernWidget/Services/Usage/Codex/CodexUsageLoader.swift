@@ -2,28 +2,12 @@ import Foundation
 
 struct CodexUsageSource: Sendable {
     let directory: URL
-    let home: URL
     let files: [CodingUsageFile]
 }
 
 struct CodexUsageScan: Sendable {
     let isInstalled: Bool
     let sources: [CodexUsageSource]
-}
-
-private struct CodexUsageFileKey: Hashable {
-    let home: String
-    let relativePath: String
-}
-
-private struct CodexScopedFile {
-    let home: String
-    let file: CodingUsageFile
-}
-
-private struct CodexSessionKey: Hashable {
-    let home: String
-    let idHash: UInt64
 }
 
 private struct CodexSessionFile {
@@ -36,15 +20,10 @@ private struct CodexResolvedFork: Sendable {
     let records: [CodexUsageRecord]
 }
 
-private struct CodexUsageRecord: Hashable, Sendable {
+private struct CodexUsageRecord: Sendable {
     let timestamp: Date
     let model: String?
     let usage: CodexRawUsage
-}
-
-private struct CodexScopedRecordKey: Hashable {
-    let home: String
-    let record: CodexUsageRecord
 }
 
 struct CodexRawUsage: Hashable, Sendable {
@@ -87,70 +66,62 @@ struct CodexUsageLoader: Sendable {
     }
 
     func isInstalled() -> Bool {
-        !homeDirectories().isEmpty
+        fileSystem.isDirectory(homeDirectory)
     }
 
     func scan(scope: CodingUsageDateScope, enabled: Bool) -> CodexUsageScan {
-        let homes = homeDirectories()
-        let sources = enabled ? usageSources(homes: homes, scope: scope) : []
-        return CodexUsageScan(isInstalled: !homes.isEmpty, sources: sources)
+        let isInstalled = fileSystem.isDirectory(homeDirectory)
+        let sources = enabled && isInstalled ? usageSources(scope: scope) : []
+        return CodexUsageScan(isInstalled: isInstalled, sources: sources)
     }
 
     func load(_ scan: CodexUsageScan, visit: (CodingUsageEvent) -> Void) {
-        let files = scopedFiles(in: scan)
+        let files = usageFiles(in: scan)
         let cachedHistories = historyCache.snapshot()
-        let histories = concurrentMap(files) { scopedFile in
-            cachedHistories[scopedFile.file] ?? parseCodexFile(scopedFile.file)
+        let histories = concurrentMap(files) { file in
+            cachedHistories[file] ?? parseCodexFile(file)
         }
 
         var historiesByFile: [CodingUsageFile: CodexFileHistory] = [:]
         historiesByFile.reserveCapacity(files.count)
-        for (scopedFile, history) in zip(files, histories) {
-            historiesByFile[scopedFile.file] = history
+        for (file, history) in zip(files, histories) {
+            historiesByFile[file] = history
         }
         historyCache.replace(with: historiesByFile)
 
         let parentKeys = Set(
-            zip(files, histories).compactMap { scopedFile, history in
-                history.header?.forkParentID.map {
-                    CodexSessionKey(home: scopedFile.home, idHash: $0)
-                }
-            }
+            histories.compactMap { $0.header?.forkParentID }
         )
-        var filesBySession: [CodexSessionKey: CodexSessionFile] = [:]
+        var filesBySession: [UInt64: CodexSessionFile] = [:]
         filesBySession.reserveCapacity(parentKeys.count)
-        for (scopedFile, history) in zip(files, histories) {
+        for (file, history) in zip(files, histories) {
             guard let header = history.header else {
                 continue
             }
-            let key = CodexSessionKey(home: scopedFile.home, idHash: header.idHash)
-            guard parentKeys.contains(key) else {
+            guard parentKeys.contains(header.idHash) else {
                 continue
             }
-            filesBySession[key] = CodexSessionFile(
-                file: scopedFile.file,
+            filesBySession[header.idHash] = CodexSessionFile(
+                file: file,
                 history: history
             )
         }
 
         let cachedForks = forkCache.snapshot()
         var resolvedForks: [CodingUsageFile: CodexResolvedFork] = [:]
-        var seenRecords: Set<CodexScopedRecordKey> = []
         var pricing = CodexUsageCostResolver()
-        for (scopedFile, history) in zip(files, histories) {
-            let parent = history.header?.forkParentID.flatMap {
-                filesBySession[CodexSessionKey(home: scopedFile.home, idHash: $0)]
-            }
+        for (file, history) in zip(files, histories) {
+            let parent = history.header?.forkParentID.flatMap { filesBySession[$0] }
             let records: [CodexUsageRecord]
             if history.isFork {
-                if let cached = cachedForks[scopedFile.file],
+                if let cached = cachedForks[file],
                     cached.parentFile == parent?.file
                 {
                     records = cached.records
                 } else {
                     records = history.records(inheriting: parent?.history)
                 }
-                resolvedForks[scopedFile.file] = CodexResolvedFork(
+                resolvedForks[file] = CodexResolvedFork(
                     parentFile: parent?.file,
                     records: records
                 )
@@ -160,9 +131,6 @@ struct CodexUsageLoader: Sendable {
 
             for record in records {
                 guard
-                    seenRecords.insert(
-                        CodexScopedRecordKey(home: scopedFile.home, record: record)
-                    ).inserted,
                     let totals = pricing.totals(model: record.model, usage: record.usage)
                 else {
                     continue
@@ -173,59 +141,46 @@ struct CodexUsageLoader: Sendable {
         forkCache.replace(with: resolvedForks)
     }
 
-    private func scopedFiles(in scan: CodexUsageScan) -> [CodexScopedFile] {
-        var seen: Set<CodexUsageFileKey> = []
+    private func usageFiles(in scan: CodexUsageScan) -> [CodingUsageFile] {
+        var seenRelativePaths: Set<String> = []
         return scan.sources.flatMap { source in
             source.files.compactMap { file in
-                let home = source.home.path
-                let key = CodexUsageFileKey(
-                    home: home,
-                    relativePath: fileSystem.relativePath(file.url, from: source.directory)
-                )
-                guard seen.insert(key).inserted else {
+                let relativePath = fileSystem.relativePath(file.url, from: source.directory)
+                guard seenRelativePaths.insert(relativePath).inserted else {
                     return nil
                 }
-                return CodexScopedFile(home: home, file: file)
+                return file
             }
         }
     }
 
-    private func usageSources(
-        homes: [URL],
-        scope: CodingUsageDateScope
-    ) -> [CodexUsageSource] {
-        homes.flatMap { home in
-            let sessions = home.appendingPathComponent("sessions")
-            let archivedSessions = home.appendingPathComponent("archived_sessions")
-            var directories: [URL] = []
-            if fileSystem.isDirectory(sessions) {
-                directories.append(sessions)
-            }
-            if fileSystem.isDirectory(archivedSessions) {
-                directories.append(archivedSessions)
-            }
-            if directories.isEmpty {
-                directories.append(home)
-            }
+    private func usageSources(scope: CodingUsageDateScope) -> [CodexUsageSource] {
+        let sessions = homeDirectory.appendingPathComponent("sessions")
+        let archivedSessions = homeDirectory.appendingPathComponent("archived_sessions")
+        var directories: [URL] = []
+        if fileSystem.isDirectory(sessions) {
+            directories.append(sessions)
+        }
+        if fileSystem.isDirectory(archivedSessions) {
+            directories.append(archivedSessions)
+        }
+        if directories.isEmpty {
+            directories.append(homeDirectory)
+        }
 
-            return directories.map { directory in
-                CodexUsageSource(
-                    directory: directory,
-                    home: home,
-                    files: fileSystem.usageFiles(
-                        in: [directory],
-                        modifiedSince: scope.history.start
-                    )
+        return directories.map { directory in
+            CodexUsageSource(
+                directory: directory,
+                files: fileSystem.usageFiles(
+                    in: directory,
+                    modifiedSince: scope.history.start
                 )
-            }
+            )
         }
     }
 
-    private func homeDirectories() -> [URL] {
-        fileSystem.configuredDirectories(environmentKey: "CODEX_HOME") {
-            [fileSystem.homeDirectory.appendingPathComponent(".codex")]
-        }
-        .filter(fileSystem.isDirectory)
+    private var homeDirectory: URL {
+        fileSystem.homeDirectory.appendingPathComponent(".codex")
     }
 }
 
@@ -265,50 +220,32 @@ private func parseCodexLine(_ buffer: UnsafeRawBufferPointer) -> CodexLine? {
         } else if key == "timestamp" {
             fields.timestamp = scanner.readStringValue()
         } else if key == "payload" {
-            switch parseCodexPayload(&scanner, into: &fields) {
-            case .relevant:
-                break
-            case .irrelevant:
-                return nil
-            case .complete:
-                return fields.line
-            }
+            parseCodexPayload(&scanner, into: &fields)
         } else {
             scanner.skipValue()
         }
     }
+    guard scanner.finishDocument() else {
+        return nil
+    }
     return fields.line
-}
-
-private enum CodexPayloadScanResult {
-    case relevant
-    case irrelevant
-    case complete
 }
 
 private func parseCodexPayload(
     _ scanner: inout JSONScanner,
     into fields: inout CodexLineFields
-) -> CodexPayloadScanResult {
+) {
     guard scanner.beginObject() else {
-        return .relevant
+        return
     }
 
     while let key = scanner.nextKey() {
         if key == "type" {
             fields.isTokenCount = scanner.readStringEquals("token_count")
-            if !fields.isTokenCount, fields.type == .eventMessage {
-                return .irrelevant
-            }
         } else if key == "info" {
             parseCodexInfo(&scanner, into: &fields)
         } else if key == "model" {
             fields.payloadModel = nonEmptyString(scanner.readString())
-            if fields.type == .turnContext,
-                fields.turnIDHash != nil, fields.payloadModel != nil
-            {
-                return .complete
-            }
         } else if key == "id" {
             fields.sessionIDHash = nonEmptyHash(scanner.readStringValue()) ?? fields.sessionIDHash
         } else if key == "source" {
@@ -319,20 +256,10 @@ private func parseCodexPayload(
                 nonEmptyHash(scanner.readStringValue()) ?? fields.forkParentIDHash
         } else if key == "turn_id" {
             fields.turnIDHash = scanner.readStringValue()?.fnv1a64 ?? fields.turnIDHash
-            if fields.type == .turnContext, fields.payloadModel != nil {
-                return .complete
-            }
         } else {
             scanner.skipValue()
         }
-
-        if fields.type == .sessionMeta,
-            fields.sessionIDHash != nil, fields.forkParentIDHash != nil
-        {
-            return .complete
-        }
     }
-    return .relevant
 }
 
 private func parseCodexForkParent(_ scanner: inout JSONScanner) -> UInt64? {
@@ -390,9 +317,17 @@ private func parseCodexInfo(_ scanner: inout JSONScanner, into fields: inout Cod
 
     while let key = scanner.nextKey() {
         if key == "last_token_usage" {
-            fields.lastUsage = parseCodexUsage(&scanner)
+            if let usage = parseCodexUsage(&scanner) {
+                fields.lastUsage = usage
+            } else {
+                fields.hasMalformedUsage = true
+            }
         } else if key == "total_token_usage" {
-            fields.totalUsage = parseCodexUsage(&scanner)
+            if let usage = parseCodexUsage(&scanner) {
+                fields.totalUsage = usage
+            } else {
+                fields.hasMalformedUsage = true
+            }
         } else if key == "model" {
             fields.infoModel = nonEmptyString(scanner.readString())
         } else {
@@ -409,16 +344,32 @@ private func parseCodexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
     var inputTokens: UInt64 = 0
     var cachedInputTokens: UInt64 = 0
     var outputTokens: UInt64 = 0
+    var isValid = true
     while let key = scanner.nextKey() {
         if key == "input_tokens" {
-            inputTokens = scanner.readUInt64() ?? 0
+            if let value = scanner.readUInt64() {
+                inputTokens = value
+            } else {
+                isValid = false
+            }
         } else if key == "cached_input_tokens" {
-            cachedInputTokens = scanner.readUInt64() ?? 0
+            if let value = scanner.readUInt64() {
+                cachedInputTokens = value
+            } else {
+                isValid = false
+            }
         } else if key == "output_tokens" {
-            outputTokens = scanner.readUInt64() ?? 0
+            if let value = scanner.readUInt64() {
+                outputTokens = value
+            } else {
+                isValid = false
+            }
         } else {
             scanner.skipValue()
         }
+    }
+    guard isValid else {
+        return nil
     }
     return CodexRawUsage(
         inputTokens: inputTokens,
@@ -474,6 +425,7 @@ private struct CodexLineFields {
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
     var infoModel: String?
+    var hasMalformedUsage = false
 
     var line: CodexLine? {
         switch type {
@@ -493,7 +445,9 @@ private struct CodexLineFields {
             }
             return .turnContext(idHash: turnIDHash, model: payloadModel)
         case .eventMessage:
-            guard isTokenCount, let timestamp = timestamp.flatMap(LogTimestamp.parse) else {
+            guard isTokenCount, !hasMalformedUsage,
+                let timestamp = timestamp.flatMap(LogTimestamp.parse)
+            else {
                 return nil
             }
             return .tokenCount(
@@ -685,15 +639,15 @@ private struct CodexSessionState {
         at timestamp: Date,
         emit: (CodexUsageRecord) -> Void
     ) {
+        if let model = snapshot.model {
+            currentModel = model
+        }
         let usage = snapshot.totalUsage?.subtracting(previousTotals) ?? snapshot.lastUsage
         updatePreviousTotals(from: snapshot)
         guard let usage, !usage.isEmpty else {
             return
         }
 
-        if let model = snapshot.model {
-            currentModel = model
-        }
         emit(CodexUsageRecord(timestamp: timestamp, model: currentModel, usage: usage))
     }
 

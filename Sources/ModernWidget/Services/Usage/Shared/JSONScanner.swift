@@ -8,12 +8,15 @@ import Foundation
 /// dominant cost, so the scanner steps over unwanted strings, arrays, and objects
 /// without allocating them.
 ///
-/// Assumes well-formed JSONL from the agent tools; malformed input yields a partial
-/// extraction that the per-agent guards reject rather than a hard error.
+/// Provider parsers finish each relevant document before accepting extracted fields;
+/// malformed input is rejected without turning scanner failures into hard errors.
 struct JSONScanner {
     private let base: UnsafePointer<UInt8>
     private let count: Int
     private var index: Int = 0
+    private var objectDepth = 0
+    private var objectNeedsSeparator: UInt64 = 0
+    private var isValid = true
 
     init?(_ buffer: UnsafeRawBufferPointer) {
         guard let base = buffer.baseAddress, !buffer.isEmpty else {
@@ -27,10 +30,14 @@ struct JSONScanner {
     /// value is not an object, so callers can descend uniformly.
     mutating func beginObject() -> Bool {
         skipWhitespace()
-        guard index < count, base[index] == .openBrace else {
+        guard index < count, base[index] == .openBrace, objectDepth < UInt64.bitWidth else {
+            isValid = false
             skipValue()
             return false
         }
+        let mask = UInt64(1) << objectDepth
+        objectNeedsSeparator &= ~mask
+        objectDepth += 1
         index += 1
         return true
     }
@@ -39,30 +46,58 @@ struct JSONScanner {
     /// `nil` once the object closes (the closing `}` is consumed). The cursor is left at
     /// the start of the member value, ready for a `read*`/`skipValue`/`beginObject` call.
     mutating func nextKey() -> JSONKey? {
+        guard objectDepth > 0 else {
+            isValid = false
+            return nil
+        }
         skipWhitespace()
-        guard index < count else { return nil }
+        guard index < count else {
+            isValid = false
+            return nil
+        }
 
         if base[index] == .closeBrace {
             index += 1
+            closeObject()
             return nil
         }
 
-        if base[index] == .comma {
+        let mask = UInt64(1) << (objectDepth - 1)
+        if objectNeedsSeparator & mask != 0 {
+            guard base[index] == .comma else {
+                isValid = false
+                return nil
+            }
             index += 1
             skipWhitespace()
             if index < count, base[index] == .closeBrace {
+                isValid = false
                 index += 1
+                closeObject()
                 return nil
             }
+        } else if base[index] == .comma {
+            isValid = false
+            return nil
         }
         guard let key = consumeStringPayload() else {
+            isValid = false
             return nil
         }
         skipWhitespace()
-        if index < count, base[index] == .colon {
-            index += 1
+        guard index < count, base[index] == .colon else {
+            isValid = false
+            return nil
         }
+        index += 1
+        objectNeedsSeparator |= mask
         return JSONKey(start: key.start, count: key.count)
+    }
+
+    /// Returns `true` only after every entered object closed and no trailing bytes remain.
+    mutating func finishDocument() -> Bool {
+        skipWhitespace()
+        return isValid && objectDepth == 0 && index == count
     }
 
     /// Reads an unsigned integer. Returns `nil` for fractional, negative, overflowing,
@@ -92,25 +127,15 @@ struct JSONScanner {
         return overflow ? nil : value
     }
 
-    /// Reads a finite JSON number. JSON delimiters terminate `strtod` before it can
-    /// leave the borrowed line buffer, avoiding a String allocation per currency value.
+    /// Reads a finite JSON number using Swift's locale-independent parser.
     mutating func readDouble() -> Double? {
         skipWhitespace()
         let scalar = consumeScalar()
         guard scalar.count > 0 else {
             return nil
         }
-        if index == count {
-            let bytes = UnsafeBufferPointer(start: scalar.start, count: scalar.count)
-            guard let value = Double(String(decoding: bytes, as: UTF8.self)), value.isFinite else {
-                return nil
-            }
-            return value
-        }
-        let start = UnsafeRawPointer(scalar.start).assumingMemoryBound(to: CChar.self)
-        var end: UnsafeMutablePointer<CChar>?
-        let value = strtod(start, &end)
-        guard let end, end == start + scalar.count, value.isFinite else {
+        let bytes = UnsafeBufferPointer(start: scalar.start, count: scalar.count)
+        guard let value = Double(String(decoding: bytes, as: UTF8.self)), value.isFinite else {
             return nil
         }
         return value
@@ -173,6 +198,11 @@ struct JSONScanner {
         }
     }
 
+    private mutating func closeObject() {
+        objectDepth -= 1
+        objectNeedsSeparator &= ~(UInt64(1) << objectDepth)
+    }
+
     private mutating func readBareScalar(equals literal: StaticString) -> Bool {
         let scalar = consumeScalar()
         let scalarCount = scalar.count
@@ -201,6 +231,11 @@ struct JSONScanner {
         while cursor < count {
             let byte = base[cursor]
             if byte == .backslash {
+                guard cursor + 1 < count else {
+                    isValid = false
+                    index = count
+                    return nil
+                }
                 hasEscape = true
                 cursor += 2
                 continue
@@ -217,8 +252,9 @@ struct JSONScanner {
             cursor += 1
         }
 
+        isValid = false
         index = count
-        return JSONStringValue(start: base + start, count: count - start, hasEscape: hasEscape)
+        return nil
     }
 
     /// Skips a quoted string on the discard path without materializing its payload,
@@ -246,6 +282,7 @@ struct JSONScanner {
             }
             cursor = quoteIndex + 1
         }
+        isValid = false
         index = count
     }
 
@@ -271,6 +308,7 @@ struct JSONScanner {
                 index += 1
             }
         }
+        isValid = false
     }
 }
 

@@ -16,7 +16,7 @@ struct CodingUsageDiscoveryTests {
             )
         }
 
-        let installed = CodingUsageLoader(environment: [:], homeDirectory: home).installedAgents()
+        let installed = CodingUsageLoader(homeDirectory: home).installedAgents()
 
         #expect(installed == Set(CodingUsageAgent.allCases))
     }
@@ -33,7 +33,7 @@ struct CodingUsageDiscoveryTests {
         try writeCodingUsageFixture("{}", to: ".codex/sessions/session.jsonl", in: home)
         try writeCodingUsageFixture("{}", to: ".pi/agent/sessions/p/session.jsonl", in: home)
 
-        let scan = CodingUsageLoader(environment: [:], homeDirectory: home).usageScan(
+        let scan = CodingUsageLoader(homeDirectory: home).usageScan(
             scope: codingUsageScope(),
             enabledAgents: [.codex]
         )
@@ -56,64 +56,12 @@ struct CodingUsageDiscoveryTests {
             modifiedAt: date(2026, 5, 1)
         )
 
-        let scan = CodingUsageLoader(environment: [:], homeDirectory: home).usageScan(
+        let scan = CodingUsageLoader(homeDirectory: home).usageScan(
             scope: codingUsageScope()
         )
 
         #expect(scan.pi.files.isEmpty)
         #expect(scan.fingerprint.files.isEmpty)
-    }
-
-    @Test("environment overrides accept a Claude projects directory")
-    func acceptsClaudeProjectsOverride() throws {
-        let home = try makeFixtureRoot("CodingUsageClaudeOverrideHome")
-        let custom = try makeFixtureRoot("CodingUsageClaudeOverrideData")
-        defer {
-            try? FileManager.default.removeItem(at: home)
-            try? FileManager.default.removeItem(at: custom)
-        }
-        let projects = custom.appendingPathComponent("projects")
-        try FileManager.default.createDirectory(at: projects, withIntermediateDirectories: true)
-
-        let loader = CodingUsageLoader(
-            environment: ["CLAUDE_CONFIG_DIR": projects.path],
-            homeDirectory: home
-        )
-
-        #expect(loader.installedAgents() == [.claude])
-    }
-
-    @Test("loads files under overlapping configured roots once")
-    func deduplicatesOverlappingRoots() throws {
-        let home = try makeFixtureRoot("CodingUsageOverlappingRoots")
-        defer { try? FileManager.default.removeItem(at: home) }
-
-        let claudeConfig = home.appendingPathComponent("claude")
-        let nestedClaudeConfig = claudeConfig.appendingPathComponent("projects/p")
-        try writeCodingUsageFixture(
-            #"{"timestamp":"2026-06-18T02:00:00.000Z","message":{"id":"msg","model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":20}}}"#,
-            to: "projects/session.jsonl",
-            in: nestedClaudeConfig
-        )
-
-        let piSessions = home.appendingPathComponent("pi-sessions")
-        let nestedPiSessions = piSessions.appendingPathComponent("p")
-        try writeCodingUsageFixture(
-            piFixture(tokens: 100),
-            to: "session.jsonl",
-            in: nestedPiSessions
-        )
-
-        let report = loadCodingUsage(
-            from: home,
-            environment: [
-                "CLAUDE_CONFIG_DIR": "\(claudeConfig.path),\(nestedClaudeConfig.path)",
-                "PI_AGENT_DIR": "\(piSessions.path),\(nestedPiSessions.path)",
-            ]
-        )
-
-        #expect(codingUsageTotals(in: report, for: .claude).totalTokens == 120)
-        #expect(codingUsageTotals(in: report, for: .pi).totalTokens == 100)
     }
 
     @Test("file changes alter the refresh fingerprint")
@@ -122,7 +70,7 @@ struct CodingUsageDiscoveryTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let path = ".pi/agent/sessions/p/session.jsonl"
         try writeCodingUsageFixture("{}", to: path, in: home)
-        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let loader = CodingUsageLoader(homeDirectory: home)
         let before = loader.usageScan(scope: codingUsageScope()).fingerprint
         try writeCodingUsageFixture(
             "{\"changed\":true}",
@@ -142,7 +90,7 @@ struct CodingUsageDiscoveryTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let path = ".pi/agent/sessions/p/session.jsonl"
         try writeCodingUsageFixture(piFixture(tokens: 100), to: path, in: home)
-        let loader = CodingUsageLoader(environment: [:], homeDirectory: home)
+        let loader = CodingUsageLoader(homeDirectory: home)
         let scope = codingUsageScope()
         let first = loader.loadReport(scan: loader.usageScan(scope: scope))
         try writeCodingUsageFixture(
@@ -158,6 +106,37 @@ struct CodingUsageDiscoveryTests {
         #expect(codingUsageTotals(in: first, for: .pi).totalTokens == 100)
         #expect(codingUsageTotals(in: changed, for: .pi).totalTokens == 250)
         #expect(!codingUsageTotals(in: deleted, for: .pi).hasUsage)
+    }
+
+    @Test("same-size rewrites with a preserved mtime invalidate parsed records")
+    func refreshesInPlaceRewrites() throws {
+        let home = try makeFixtureRoot("CodingUsageInPlaceRewrite")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let relativePath = ".pi/agent/sessions/p/session.jsonl"
+        let modifiedAt = date(2026, 6, 18, 12)
+        try writeCodingUsageFixture(
+            piFixture(tokens: 100),
+            to: relativePath,
+            in: home,
+            modifiedAt: modifiedAt
+        )
+        let loader = CodingUsageLoader(homeDirectory: home)
+        let scope = codingUsageScope()
+        let firstScan = loader.usageScan(scope: scope)
+        let first = loader.loadReport(scan: firstScan)
+
+        let file = home.appendingPathComponent(relativePath)
+        try piFixture(tokens: 250).write(to: file, atomically: false, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: modifiedAt],
+            ofItemAtPath: file.path
+        )
+        let secondScan = loader.usageScan(scope: scope)
+        let second = loader.loadReport(scan: secondScan)
+
+        #expect(firstScan.fingerprint != secondScan.fingerprint)
+        #expect(codingUsageTotals(in: first, for: .pi).totalTokens == 100)
+        #expect(codingUsageTotals(in: second, for: .pi).totalTokens == 250)
     }
 }
 

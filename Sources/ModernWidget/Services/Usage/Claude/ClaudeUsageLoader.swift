@@ -18,9 +18,13 @@ private struct ClaudeDedupeKey: Hashable {
 }
 
 private struct ClaudeMessageFields {
+    var isAssistant = false
     var idHash: UInt64?
     var model: String?
-    var hasUsage = false
+    var usage: ClaudeUsageFields?
+}
+
+private struct ClaudeUsageFields {
     var inputTokens: UInt64 = 0
     var outputTokens: UInt64 = 0
     var cacheReadTokens: UInt64 = 0
@@ -48,20 +52,19 @@ struct ClaudeUsageLoader: Sendable {
     }
 
     func isInstalled() -> Bool {
-        !configDirectories().isEmpty
+        fileSystem.isDirectory(projectsDirectory)
     }
 
     func scan(scope: CodingUsageDateScope, enabled: Bool) -> ClaudeUsageScan {
-        let directories = configDirectories()
-        let projectDirectories = directories.map { $0.appendingPathComponent("projects") }
+        let isInstalled = fileSystem.isDirectory(projectsDirectory)
         let files =
-            enabled
+            enabled && isInstalled
             ? fileSystem.usageFiles(
-                in: projectDirectories,
+                in: projectsDirectory,
                 modifiedSince: scope.history.start
             )
             : []
-        return ClaudeUsageScan(isInstalled: !directories.isEmpty, files: files)
+        return ClaudeUsageScan(isInstalled: isInstalled, files: files)
     }
 
     func load(
@@ -101,30 +104,8 @@ struct ClaudeUsageLoader: Sendable {
         }
     }
 
-    private func configDirectories() -> [URL] {
-        let directories = fileSystem.configuredDirectories(
-            environmentKey: "CLAUDE_CONFIG_DIR",
-            defaults: {
-                let xdgConfigHome =
-                    fileSystem.environment["XDG_CONFIG_HOME"].map(fileSystem.expandHomePath)
-                    ?? fileSystem.homeDirectory.appendingPathComponent(".config")
-                return [
-                    xdgConfigHome.appendingPathComponent("claude"),
-                    fileSystem.homeDirectory.appendingPathComponent(".claude"),
-                ]
-            },
-            normalize: normalizeConfigPath
-        )
-        return directories.filter {
-            fileSystem.isDirectory($0.appendingPathComponent("projects"))
-        }
-    }
-
-    private func normalizeConfigPath(_ url: URL) -> URL {
-        if url.lastPathComponent == "projects", fileSystem.isDirectory(url) {
-            return url.deletingLastPathComponent().standardizedFileURL
-        }
-        return url.standardizedFileURL
+    private var projectsDirectory: URL {
+        fileSystem.homeDirectory.appendingPathComponent(".claude/projects")
     }
 
     private func deduplicate<Entries: Sequence>(_ entries: Entries) -> [ClaudeUsageEntry]
@@ -204,17 +185,19 @@ private func parseEntry(
         }
     }
 
-    guard let timestamp, let message, message.hasUsage else {
+    guard scanner.finishDocument(), let timestamp, let message,
+        message.isAssistant, let fields = message.usage
+    else {
         return nil
     }
 
     let usage = ClaudeBillableUsage(
-        inputTokens: message.inputTokens,
-        outputTokens: message.outputTokens,
-        cacheWrite5mTokens: message.resolvedCacheWrite5mTokens,
-        cacheWrite1hTokens: message.resolvedCacheWrite1hTokens,
-        cacheReadTokens: message.cacheReadTokens,
-        usesUSDataResidency: message.usesUSDataResidency
+        inputTokens: fields.inputTokens,
+        outputTokens: fields.outputTokens,
+        cacheWrite5mTokens: fields.resolvedCacheWrite5mTokens,
+        cacheWrite1hTokens: fields.resolvedCacheWrite1hTokens,
+        cacheReadTokens: fields.cacheReadTokens,
+        usesUSDataResidency: fields.usesUSDataResidency
     )
     guard let totals = pricing.totals(model: message.model, usage: usage) else {
         return nil
@@ -235,16 +218,14 @@ private func parseMessage(_ scanner: inout JSONScanner) -> ClaudeMessageFields? 
 
     var fields = ClaudeMessageFields()
     while let key = scanner.nextKey() {
-        if key == "id" {
+        if key == "role" {
+            fields.isAssistant = scanner.readStringEquals("assistant")
+        } else if key == "id" {
             fields.idHash = scanner.readStringValue()?.fnv1a64
         } else if key == "model" {
             fields.model = scanner.readString()
         } else if key == "usage" {
-            guard scanner.beginObject() else {
-                continue
-            }
-            fields.hasUsage = true
-            parseUsage(&scanner, into: &fields)
+            fields.usage = parseUsage(&scanner)
         } else {
             scanner.skipValue()
         }
@@ -252,41 +233,58 @@ private func parseMessage(_ scanner: inout JSONScanner) -> ClaudeMessageFields? 
     return fields
 }
 
-private func parseUsage(_ scanner: inout JSONScanner, into fields: inout ClaudeMessageFields) {
+private func parseUsage(_ scanner: inout JSONScanner) -> ClaudeUsageFields? {
+    guard scanner.beginObject() else {
+        return nil
+    }
+
+    var fields = ClaudeUsageFields()
+    var isValid = true
     while let key = scanner.nextKey() {
         if key == "input_tokens" {
-            fields.inputTokens = scanner.readUInt64() ?? 0
+            fields.inputTokens = readTokenCount(&scanner, isValid: &isValid)
         } else if key == "output_tokens" {
-            fields.outputTokens = scanner.readUInt64() ?? 0
+            fields.outputTokens = readTokenCount(&scanner, isValid: &isValid)
         } else if key == "cache_read_input_tokens" {
-            fields.cacheReadTokens = scanner.readUInt64() ?? 0
+            fields.cacheReadTokens = readTokenCount(&scanner, isValid: &isValid)
         } else if key == "cache_creation_input_tokens" {
-            fields.flatCacheWriteTokens = scanner.readUInt64() ?? 0
+            fields.flatCacheWriteTokens = readTokenCount(&scanner, isValid: &isValid)
         } else if key == "cache_creation" {
-            parseCacheWrites(&scanner, into: &fields)
+            isValid = parseCacheWrites(&scanner, into: &fields) && isValid
         } else if key == "inference_geo" {
             fields.usesUSDataResidency = scanner.readStringEquals("us")
         } else {
             scanner.skipValue()
         }
     }
+    return isValid ? fields : nil
 }
 
 private func parseCacheWrites(
     _ scanner: inout JSONScanner,
-    into fields: inout ClaudeMessageFields
-) {
+    into fields: inout ClaudeUsageFields
+) -> Bool {
     guard scanner.beginObject() else {
-        return
+        return false
     }
     fields.hasStructuredCacheWrites = true
+    var isValid = true
     while let key = scanner.nextKey() {
         if key == "ephemeral_5m_input_tokens" {
-            fields.cacheWrite5mTokens = scanner.readUInt64() ?? 0
+            fields.cacheWrite5mTokens = readTokenCount(&scanner, isValid: &isValid)
         } else if key == "ephemeral_1h_input_tokens" {
-            fields.cacheWrite1hTokens = scanner.readUInt64() ?? 0
+            fields.cacheWrite1hTokens = readTokenCount(&scanner, isValid: &isValid)
         } else {
             scanner.skipValue()
         }
     }
+    return isValid
+}
+
+private func readTokenCount(_ scanner: inout JSONScanner, isValid: inout Bool) -> UInt64 {
+    guard let value = scanner.readUInt64() else {
+        isValid = false
+        return 0
+    }
+    return value
 }

@@ -18,10 +18,7 @@ struct CodingUsageBenchmarkTests {
         let context = try CodingUsageBenchmarkContext(options: options)
         defer { context.cleanUp() }
 
-        let loader = CodingUsageLoader(
-            environment: context.environment,
-            homeDirectory: context.homeDirectory
-        )
+        let loader = CodingUsageLoader(homeDirectory: context.homeDirectory)
         let referenceScan = loader.usageScan(scope: context.scope)
         var sink = CodingUsageBenchmarkSink()
         sink.consume(referenceScan)
@@ -45,10 +42,7 @@ struct CodingUsageBenchmarkTests {
             options: options,
             maxP95Milliseconds: options.maxLoadP95Milliseconds
         ) {
-            let coldLoader = CodingUsageLoader(
-                environment: context.environment,
-                homeDirectory: context.homeDirectory
-            )
+            let coldLoader = CodingUsageLoader(homeDirectory: context.homeDirectory)
             let report = coldLoader.loadReport(scan: referenceScan)
             sink.consume(report)
         }
@@ -68,10 +62,7 @@ struct CodingUsageBenchmarkTests {
             options: options,
             maxP95Milliseconds: options.maxStartupP95Milliseconds
         ) {
-            let coldLoader = CodingUsageLoader(
-                environment: context.environment,
-                homeDirectory: context.homeDirectory
-            )
+            let coldLoader = CodingUsageLoader(homeDirectory: context.homeDirectory)
             let scan = coldLoader.usageScan(scope: context.scope)
             let report = coldLoader.loadReport(scan: scan)
             sink.consume(scan)
@@ -162,7 +153,6 @@ private struct CodingUsageBenchmarkOptions {
 }
 
 private struct CodingUsageBenchmarkContext {
-    let environment: [String: String]
     let homeDirectory: URL
     let scope: CodingUsageDateScope
 
@@ -171,7 +161,6 @@ private struct CodingUsageBenchmarkContext {
     init(options: CodingUsageBenchmarkOptions) throws {
         switch options.mode {
         case .real:
-            environment = ProcessInfo.processInfo.environment
             homeDirectory = FileManager.default.homeDirectoryForCurrentUser
             scope = CodingUsageDateScope()
             temporaryRoot = nil
@@ -191,7 +180,6 @@ private struct CodingUsageBenchmarkContext {
                 lines: options.fixtureLines
             )
 
-            environment = [:]
             homeDirectory = root
             scope = benchmarkScope
             temporaryRoot = root
@@ -249,7 +237,7 @@ private enum CodingUsageBenchmarkFixture {
         case .claude:
             return
                 #"{"timestamp":""# + timestamp
-                + #"","version":"1.2.3","sessionId":"session-\#(index)","requestId":"req-\#(index)-\#(line)","message":{"id":"msg-\#(index)-\#(line)","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}}"#
+                + #"","version":"1.2.3","sessionId":"session-\#(index)","requestId":"req-\#(index)-\#(line)","message":{"role":"assistant","id":"msg-\#(index)-\#(line)","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}}"#
                 + "\n"
         case .codex:
             return

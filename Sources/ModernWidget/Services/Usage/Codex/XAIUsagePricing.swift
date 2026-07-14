@@ -3,7 +3,7 @@ enum XAIUsagePricing {
         model rawModel: String,
         usage: CodexRawUsage
     ) -> CodingUsageTotals? {
-        guard normalize(rawModel) == model.name else {
+        guard model.names.contains(normalize(rawModel)) else {
             return nil
         }
 
@@ -33,7 +33,7 @@ enum XAIUsagePricing {
     }
 
     private struct Model {
-        let name: String
+        let names: Set<String>
         let standardRates: Rates
         let longContext: LongContext
 
@@ -43,7 +43,7 @@ enum XAIUsagePricing {
     }
 
     private static let model = Model(
-        name: "grok-4.5",
+        names: ["grok-4.5", "grok-4.5-latest", "grok-build-latest"],
         standardRates: Rates(input: 2, output: 6, cacheRead: 0.5, cacheWrite: 0),
         longContext: LongContext(
             threshold: 200_000,

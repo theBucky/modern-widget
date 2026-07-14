@@ -27,14 +27,8 @@ struct CodingUsageLoader: Sendable {
     private let codex: CodexUsageLoader
     private let pi: PiUsageLoader
 
-    init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
-    ) {
-        let fileSystem = CodingUsageFileSystem(
-            environment: environment,
-            homeDirectory: homeDirectory
-        )
+    init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        let fileSystem = CodingUsageFileSystem(homeDirectory: homeDirectory)
         self.claude = ClaudeUsageLoader(fileSystem: fileSystem)
         self.codex = CodexUsageLoader(fileSystem: fileSystem)
         self.pi = PiUsageLoader(fileSystem: fileSystem)

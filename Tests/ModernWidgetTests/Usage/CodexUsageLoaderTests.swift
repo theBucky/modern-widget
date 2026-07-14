@@ -17,6 +17,8 @@ struct CodexUsageLoaderTests {
             ("gpt-5.6-terra", 2.5),
             ("gpt-5.6-luna", 1),
             ("grok-4.5", 2),
+            ("grok-4.5-latest", 2),
+            ("grok-build-latest", 2),
         ]
 
         for expectation in cases {
@@ -303,6 +305,59 @@ struct CodexUsageLoaderTests {
         let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 
         #expect(totals.totalTokens == 120)
+    }
+
+    @Test("counts identical usage emitted by independent sessions")
+    func countsIndependentIdenticalRecords() throws {
+        let home = try makeFixtureRoot("CodexUsageIndependentSessions")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let line = tokenCount(
+            at: "2026-06-18T01:00:00.000Z",
+            input: 100,
+            cached: 0,
+            output: 20,
+            model: "gpt-5.3-codex"
+        )
+        try writeCodingUsageFixture(line, to: ".codex/sessions/a.jsonl", in: home)
+        try writeCodingUsageFixture(line, to: ".codex/sessions/b.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 240)
+    }
+
+    @Test("retains model context from an empty cumulative snapshot")
+    func retainsModelFromEmptySnapshot() throws {
+        let home = try makeFixtureRoot("CodexUsageEmptySnapshotModel")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let log = [
+            tokenCount(
+                at: "2026-06-18T01:00:00.000Z",
+                input: 0,
+                cached: 0,
+                output: 0,
+                model: "gpt-5.3-codex"
+            ),
+            tokenCount(at: "2026-06-18T01:01:00.000Z", input: 100, cached: 0, output: 20),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 120)
+    }
+
+    @Test("rejects malformed token fields")
+    func rejectsMalformedUsage() throws {
+        let home = try makeFixtureRoot("CodexUsageMalformed")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let line =
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":"100","cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"}}}"#
+        try writeCodingUsageFixture(line, to: ".codex/sessions/session.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(!totals.hasUsage)
     }
 }
 
