@@ -39,11 +39,13 @@ struct PiUsageLoader: Sendable {
                 return cached
             }
 
+            let usageNeedle = JSONLineNeedle(#""usage""#)
             var records: [CodingUsageEvent] = []
             forEachJSONLine(in: file) { line in
-                if let event = parsePiEvent(line) {
-                    records.append(event)
+                guard line.contains(usageNeedle), let event = parsePiEvent(line) else {
+                    return
                 }
+                records.append(event)
             }
             return records
         }
