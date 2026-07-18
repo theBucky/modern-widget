@@ -16,12 +16,6 @@ struct CodingUsageFingerprint: Equatable, Sendable {
     let files: [CodingUsageFile]
 }
 
-private enum CodingUsageProviderScan: Sendable {
-    case claude(ClaudeUsageScan)
-    case codex(CodexUsageScan)
-    case pi(PiUsageScan)
-}
-
 struct CodingUsageLoader: Sendable {
     private let claude: ClaudeUsageLoader
     private let codex: CodexUsageLoader
@@ -52,36 +46,10 @@ struct CodingUsageLoader: Sendable {
         scope: CodingUsageDateScope,
         enabledAgents: Set<CodingUsageAgent> = Set(CodingUsageAgent.allCases)
     ) -> CodingUsageScan {
-        let scans = concurrentMap(CodingUsageAgent.allCases) { agent in
-            switch agent {
-            case .claude:
-                return CodingUsageProviderScan.claude(
-                    claude.scan(scope: scope, enabled: enabledAgents.contains(agent))
-                )
-            case .codex:
-                return CodingUsageProviderScan.codex(
-                    codex.scan(scope: scope, enabled: enabledAgents.contains(agent))
-                )
-            case .pi:
-                return CodingUsageProviderScan.pi(
-                    pi.scan(scope: scope, enabled: enabledAgents.contains(agent))
-                )
-            }
-        }
-
-        var claudeScan = ClaudeUsageScan(isInstalled: false, files: [])
-        var codexScan = CodexUsageScan(isInstalled: false, files: [], parentCandidates: [])
-        var piScan = PiUsageScan(isInstalled: false, files: [])
-        for scan in scans {
-            switch scan {
-            case let .claude(value):
-                claudeScan = value
-            case let .codex(value):
-                codexScan = value
-            case let .pi(value):
-                piScan = value
-            }
-        }
+        // Each scan parallelizes its own stat storm, so the walks run back to back.
+        let claudeScan = claude.scan(scope: scope, enabled: enabledAgents.contains(.claude))
+        let codexScan = codex.scan(scope: scope, enabled: enabledAgents.contains(.codex))
+        let piScan = pi.scan(scope: scope, enabled: enabledAgents.contains(.pi))
 
         var installedAgents: Set<CodingUsageAgent> = []
         if claudeScan.isInstalled {
