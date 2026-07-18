@@ -25,15 +25,23 @@ private struct CodexUsageRecord: Sendable {
 struct CodexRawUsage: Hashable, Sendable {
     let inputTokens: UInt64
     let cachedInputTokens: UInt64
+    let cacheWriteInputTokens: UInt64
     let outputTokens: UInt64
 
+    /// Cached and cache-write tokens count subsets of `input_tokens`, so both
+    /// clamp within it and `input_tokens + output_tokens` stays the total.
     init(
         inputTokens: UInt64,
         cachedInputTokens: UInt64,
+        cacheWriteInputTokens: UInt64 = 0,
         outputTokens: UInt64
     ) {
         self.inputTokens = inputTokens
         self.cachedInputTokens = min(cachedInputTokens, inputTokens)
+        self.cacheWriteInputTokens = min(
+            cacheWriteInputTokens,
+            inputTokens - self.cachedInputTokens
+        )
         self.outputTokens = outputTokens
     }
 
@@ -47,6 +55,9 @@ struct CodexRawUsage: Hashable, Sendable {
             cachedInputTokens: cachedInputTokens.saturatingSubtract(
                 previous?.cachedInputTokens ?? 0
             ),
+            cacheWriteInputTokens: cacheWriteInputTokens.saturatingSubtract(
+                previous?.cacheWriteInputTokens ?? 0
+            ),
             outputTokens: outputTokens.saturatingSubtract(previous?.outputTokens ?? 0)
         )
     }
@@ -55,6 +66,9 @@ struct CodexRawUsage: Hashable, Sendable {
         Self(
             inputTokens: inputTokens.saturatingAdd(other.inputTokens),
             cachedInputTokens: cachedInputTokens.saturatingAdd(other.cachedInputTokens),
+            cacheWriteInputTokens: cacheWriteInputTokens.saturatingAdd(
+                other.cacheWriteInputTokens
+            ),
             outputTokens: outputTokens.saturatingAdd(other.outputTokens)
         )
     }
@@ -124,7 +138,7 @@ struct CodexUsageLoader: Sendable {
 
         let cachedForks = forkCache.snapshot()
         var resolvedForks: [CodingUsageFile: CodexResolvedFork] = [:]
-        var pricing = CodexUsageCostResolver()
+        var pricing = CodexUsagePricing.Resolver()
         for (file, history) in zip(scan.files, histories) {
             let parent = history.header?.forkParentID.flatMap { filesBySession[$0] }
             let records: [CodexUsageRecord]
@@ -354,8 +368,6 @@ private func parseCodexInfo(_ scanner: inout JSONScanner, into fields: inout Cod
             } else {
                 fields.hasMalformedUsage = true
             }
-        } else if key == "model" {
-            fields.infoModel = nonEmptyString(scanner.readString())
         } else {
             scanner.skipValue()
         }
@@ -369,6 +381,7 @@ private func parseCodexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
 
     var inputTokens: UInt64?
     var cachedInputTokens: UInt64?
+    var cacheWriteInputTokens: UInt64 = 0
     var outputTokens: UInt64?
     var isValid = true
     while let key = scanner.nextKey() {
@@ -381,6 +394,13 @@ private func parseCodexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
         } else if key == "cached_input_tokens" {
             if let value = scanner.readUInt64() {
                 cachedInputTokens = value
+            } else {
+                isValid = false
+            }
+        } else if key == "cache_write_input_tokens" {
+            // Absent before mid-2026 rollouts; serde default is zero.
+            if let value = scanner.readUInt64() {
+                cacheWriteInputTokens = value
             } else {
                 isValid = false
             }
@@ -400,6 +420,7 @@ private func parseCodexUsage(_ scanner: inout JSONScanner) -> CodexRawUsage? {
     return CodexRawUsage(
         inputTokens: inputTokens,
         cachedInputTokens: cachedInputTokens,
+        cacheWriteInputTokens: cacheWriteInputTokens,
         outputTokens: outputTokens
     )
 }
@@ -435,7 +456,6 @@ private enum CodexLine: Sendable {
 }
 
 private struct CodexTokenSnapshot: Hashable, Sendable {
-    let model: String?
     let lastUsage: CodexRawUsage?
     let totalUsage: CodexRawUsage?
 }
@@ -450,7 +470,6 @@ private struct CodexLineFields {
     var payloadModel: String?
     var lastUsage: CodexRawUsage?
     var totalUsage: CodexRawUsage?
-    var infoModel: String?
     var hasMalformedUsage = false
 
     var line: CodexLine? {
@@ -477,11 +496,7 @@ private struct CodexLineFields {
                 return nil
             }
             return .tokenCount(
-                CodexTokenSnapshot(
-                    model: payloadModel ?? infoModel,
-                    lastUsage: lastUsage,
-                    totalUsage: totalUsage
-                ),
+                CodexTokenSnapshot(lastUsage: lastUsage, totalUsage: totalUsage),
                 at: timestamp
             )
         case .other:
@@ -652,9 +667,6 @@ private struct CodexSessionState {
         at timestamp: Date,
         emit: (CodexUsageRecord) -> Void
     ) {
-        if let model = snapshot.model {
-            currentModel = model
-        }
         let usage = usage(from: snapshot)
         if inheritedTokenCount > 0 {
             inheritedTokenCount -= 1

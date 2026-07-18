@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Codex usage loader")
 struct CodexUsageLoaderTests {
-    @Test("uses separate official OpenAI and xAI input price catalogs")
+    @Test("prices every OpenAI model family in the catalog")
     func pricesSupportedModelFamilies() throws {
         let cases: [(model: String, inputCost: Double)] = [
             ("gpt-5.3-codex", 1.75),
@@ -16,22 +16,20 @@ struct CodexUsageLoaderTests {
             ("gpt-5.6-sol", 5),
             ("gpt-5.6-terra", 2.5),
             ("gpt-5.6-luna", 1),
-            ("grok-4.5", 2),
-            ("grok-4.5-latest", 2),
-            ("grok-build-latest", 2),
         ]
 
         for expectation in cases {
             let home = try makeFixtureRoot("CodexUsagePricing-\(expectation.model)")
             defer { try? FileManager.default.removeItem(at: home) }
-            let line = tokenCount(
-                at: "2026-06-18T01:00:00.000Z",
-                input: 100_000,
-                cached: 0,
-                output: 0,
-                model: expectation.model
-            )
-            try writeCodingUsageFixture(line, to: ".codex/sessions/session.jsonl", in: home)
+            let log = [
+                turnContext(
+                    at: "2026-06-18T00:59:59.000Z",
+                    id: "turn-1",
+                    model: expectation.model
+                ),
+                tokenCount(at: "2026-06-18T01:00:00.000Z", input: 100_000, cached: 0, output: 0),
+            ].joined(separator: "\n")
+            try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
             let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 
@@ -65,13 +63,13 @@ struct CodexUsageLoaderTests {
         let home = try makeFixtureRoot("CodexUsageLastUsage")
         defer { try? FileManager.default.removeItem(at: home) }
         let line =
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120},"model":"gpt-5.3-codex"}}}"#
-        try writeCodingUsageFixture(
-            [line, line.replacingOccurrences(of: "01:00:00", with: "01:01:00")]
-                .joined(separator: "\n"),
-            to: ".codex/sessions/session.jsonl",
-            in: home
-        )
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}"#
+        let log = [
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"turn_context","payload":{"model":"gpt-5.3-codex"}}"#,
+            line,
+            line.replacingOccurrences(of: "01:00:00", with: "01:01:00"),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
         let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 
@@ -84,13 +82,8 @@ struct CodexUsageLoaderTests {
         let home = try makeFixtureRoot("CodexUsageMixedCumulativeFallback")
         defer { try? FileManager.default.removeItem(at: home) }
         let log = [
-            tokenCount(
-                at: "2026-06-18T01:00:00.000Z",
-                input: 100,
-                cached: 0,
-                output: 0,
-                model: "gpt-5.3-codex"
-            ),
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"turn_context","payload":{"model":"gpt-5.3-codex"}}"#,
+            tokenCount(at: "2026-06-18T01:00:00.000Z", input: 100, cached: 0, output: 0),
             #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":0}}}}"#,
             tokenCount(at: "2026-06-18T01:02:00.000Z", input: 120, cached: 0, output: 0),
         ].joined(separator: "\n")
@@ -106,13 +99,8 @@ struct CodexUsageLoaderTests {
         let home = try makeFixtureRoot("CodexUsageCumulativeReset")
         defer { try? FileManager.default.removeItem(at: home) }
         let log = [
-            tokenCount(
-                at: "2026-06-18T01:00:00.000Z",
-                input: 100,
-                cached: 10,
-                output: 20,
-                model: "gpt-5.3-codex"
-            ),
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"turn_context","payload":{"model":"gpt-5.3-codex"}}"#,
+            tokenCount(at: "2026-06-18T01:00:00.000Z", input: 100, cached: 10, output: 20),
             tokenCount(at: "2026-06-18T01:01:00.000Z", input: 0, cached: 0, output: 0),
             tokenCount(at: "2026-06-18T01:02:00.000Z", input: 40, cached: 0, output: 10),
         ].joined(separator: "\n")
@@ -139,6 +127,28 @@ struct CodexUsageLoaderTests {
         #expect(abs(totals.costUSD - 0.0092) < 0.000_000_1)
     }
 
+    @Test("prices persisted cache writes at the cache write rate")
+    func pricesCacheWrites() throws {
+        let home = try makeFixtureRoot("CodexUsageCacheWrites")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let log = [
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"gpt-5.6-sol"}}"#,
+            tokenCount(
+                at: "2026-06-18T01:01:00.000Z",
+                input: 1_000,
+                cached: 400,
+                output: 200,
+                cacheWrite: 100
+            ),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
+
+        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
+
+        #expect(totals.totalTokens == 1_200)
+        #expect(abs(totals.costUSD - 0.009_325) < 0.000_000_1)
+    }
+
     @Test("applies long-context pricing to one request")
     func pricesLongContextPerRequest() throws {
         let home = try makeFixtureRoot("CodexUsageLongContext")
@@ -158,41 +168,6 @@ struct CodexUsageLoaderTests {
 
         #expect(totals.totalTokens == 310_000)
         #expect(abs(totals.costUSD - 2.55) < 0.000_001)
-    }
-
-    @Test("uses xAI long-context pricing independently from OpenAI")
-    func pricesGrokLongContext() throws {
-        let home = try makeFixtureRoot("CodexUsageGrokLongContext")
-        defer { try? FileManager.default.removeItem(at: home) }
-        let line = tokenCount(
-            at: "2026-06-18T01:01:00.000Z",
-            input: 300_000,
-            cached: 100_000,
-            output: 100_000,
-            model: "grok-4.5"
-        )
-        try writeCodingUsageFixture(line, to: ".codex/sessions/session.jsonl", in: home)
-
-        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
-
-        #expect(totals.totalTokens == 400_000)
-        #expect(abs(totals.costUSD - 2.1) < 0.000_001)
-    }
-
-    @Test("prices Grok records with xAI rates")
-    func pricesGrokRecords() throws {
-        let home = try makeFixtureRoot("CodexUsageGrok")
-        defer { try? FileManager.default.removeItem(at: home) }
-        let log = [
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"turn_context","payload":{"model":"grok-4.5"}}"#,
-            tokenCount(at: "2026-06-18T01:01:00.000Z", input: 1_000, cached: 400, output: 200),
-        ].joined(separator: "\n")
-        try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
-
-        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
-
-        #expect(totals.totalTokens == 1_200)
-        #expect(abs(totals.costUSD - 0.0026) < 0.000_000_1)
     }
 
     @Test("omits records without a known model")
@@ -388,29 +363,27 @@ struct CodexUsageLoaderTests {
         #expect(totals.totalTokens == 120)
     }
 
-    @Test("inherits the model from replayed fork snapshots")
+    @Test("inherits the model from a replayed fork turn context")
     func inheritsForkReplayModel() throws {
         let home = try makeFixtureRoot("CodexUsageForkReplayModel")
         defer { try? FileManager.default.removeItem(at: home) }
         let parent = [
             #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"session_meta","payload":{"id":"parent"}}"#,
-            tokenCount(
-                at: "2026-06-18T00:59:01.000Z",
-                input: 100,
-                cached: 0,
-                output: 20,
+            turnContext(
+                at: "2026-06-18T00:59:00.100Z",
+                id: "shared-turn",
                 model: "gpt-5.3-codex"
             ),
+            tokenCount(at: "2026-06-18T00:59:01.000Z", input: 100, cached: 0, output: 20),
         ].joined(separator: "\n")
         let child = [
             #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
-            tokenCount(
-                at: "2026-06-18T01:00:00.020Z",
-                input: 100,
-                cached: 0,
-                output: 20,
+            turnContext(
+                at: "2026-06-18T01:00:00.010Z",
+                id: "shared-turn",
                 model: "gpt-5.3-codex"
             ),
+            tokenCount(at: "2026-06-18T01:00:00.020Z", input: 100, cached: 0, output: 20),
             tokenCount(at: "2026-06-18T01:00:00.200Z", input: 200, cached: 0, output: 40),
         ].joined(separator: "\n")
         try writeCodingUsageFixture(parent, to: ".codex/sessions/parent.jsonl", in: home)
@@ -425,13 +398,10 @@ struct CodexUsageLoaderTests {
     func activeSessionsTakePrecedence() throws {
         let home = try makeFixtureRoot("CodexUsageArchiveDedupe")
         defer { try? FileManager.default.removeItem(at: home) }
-        let log = tokenCount(
-            at: "2026-06-18T01:00:00.000Z",
-            input: 100,
-            cached: 0,
-            output: 20,
-            model: "gpt-5.3-codex"
-        )
+        let log = [
+            turnContext(at: "2026-06-18T00:59:00.000Z", id: "turn-1", model: "gpt-5.3-codex"),
+            tokenCount(at: "2026-06-18T01:00:00.000Z", input: 100, cached: 0, output: 20),
+        ].joined(separator: "\n")
         try writeCodingUsageFixture(log, to: ".codex/sessions/day/session.jsonl", in: home)
         try writeCodingUsageFixture(
             log,
@@ -448,33 +418,25 @@ struct CodexUsageLoaderTests {
     func countsIndependentIdenticalRecords() throws {
         let home = try makeFixtureRoot("CodexUsageIndependentSessions")
         defer { try? FileManager.default.removeItem(at: home) }
-        let line = tokenCount(
-            at: "2026-06-18T01:00:00.000Z",
-            input: 100,
-            cached: 0,
-            output: 20,
-            model: "gpt-5.3-codex"
-        )
-        try writeCodingUsageFixture(line, to: ".codex/sessions/a.jsonl", in: home)
-        try writeCodingUsageFixture(line, to: ".codex/sessions/b.jsonl", in: home)
+        let log = [
+            turnContext(at: "2026-06-18T00:59:00.000Z", id: "turn-1", model: "gpt-5.3-codex"),
+            tokenCount(at: "2026-06-18T01:00:00.000Z", input: 100, cached: 0, output: 20),
+        ].joined(separator: "\n")
+        try writeCodingUsageFixture(log, to: ".codex/sessions/a.jsonl", in: home)
+        try writeCodingUsageFixture(log, to: ".codex/sessions/b.jsonl", in: home)
 
         let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .codex)
 
         #expect(totals.totalTokens == 240)
     }
 
-    @Test("retains model context from an empty cumulative snapshot")
-    func retainsModelFromEmptySnapshot() throws {
-        let home = try makeFixtureRoot("CodexUsageEmptySnapshotModel")
+    @Test("prices usage that follows an empty cumulative snapshot")
+    func pricesUsageAfterEmptySnapshot() throws {
+        let home = try makeFixtureRoot("CodexUsageEmptySnapshot")
         defer { try? FileManager.default.removeItem(at: home) }
         let log = [
-            tokenCount(
-                at: "2026-06-18T01:00:00.000Z",
-                input: 0,
-                cached: 0,
-                output: 0,
-                model: "gpt-5.3-codex"
-            ),
+            turnContext(at: "2026-06-18T00:59:00.000Z", id: "turn-1", model: "gpt-5.3-codex"),
+            tokenCount(at: "2026-06-18T01:00:00.000Z", input: 0, cached: 0, output: 0),
             tokenCount(at: "2026-06-18T01:01:00.000Z", input: 100, cached: 0, output: 20),
         ].joined(separator: "\n")
         try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
@@ -489,8 +451,9 @@ struct CodexUsageLoaderTests {
         let home = try makeFixtureRoot("CodexUsageMalformed")
         defer { try? FileManager.default.removeItem(at: home) }
         let log = [
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":"100","cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"}}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20},"model":"gpt-5.3-codex"}}}"#,
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"turn_context","payload":{"model":"gpt-5.3-codex"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":"100","cached_input_tokens":0,"output_tokens":20}}}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20}}}}"#,
         ].joined(separator: "\n")
         try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
@@ -504,8 +467,9 @@ struct CodexUsageLoaderTests {
         let home = try makeFixtureRoot("CodexUsageMalformedStructure")
         defer { try? FileManager.default.removeItem(at: home) }
         let log = [
-            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"},"extra":}}"#,
-            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20},"model":"gpt-5.3-codex"},"extra":{"nested":1]}}"#,
+            #"{"timestamp":"2026-06-18T00:59:00.000Z","type":"turn_context","payload":{"model":"gpt-5.3-codex"}}"#,
+            #"{"timestamp":"2026-06-18T01:00:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20}},"extra":}}"#,
+            #"{"timestamp":"2026-06-18T01:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20}},"extra":{"nested":1]}}"#,
         ].joined(separator: "\n")
         try writeCodingUsageFixture(log, to: ".codex/sessions/session.jsonl", in: home)
 
@@ -520,11 +484,11 @@ private func tokenCount(
     input: UInt64,
     cached: UInt64,
     output: UInt64,
-    model: String? = nil
+    cacheWrite: UInt64? = nil
 ) -> String {
-    let modelField = model.map { #","model":"\#($0)""# } ?? ""
+    let cacheWriteField = cacheWrite.map { #","cache_write_input_tokens":\#($0)"# } ?? ""
     return
-        #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached),"output_tokens":\#(output),"reasoning_output_tokens":0,"total_tokens":\#(input + output)}\#(modelField)}}}"#
+        #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":\#(cached)\#(cacheWriteField),"output_tokens":\#(output),"reasoning_output_tokens":0,"total_tokens":\#(input + output)}}}}"#
 }
 
 private func turnContext(at timestamp: String, id: String, model: String) -> String {

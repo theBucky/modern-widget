@@ -1,11 +1,16 @@
-enum OpenAIUsagePricing {
+/// Prices Codex rollout usage against the official OpenAI per-token rates.
+enum CodexUsagePricing {
     struct Resolver {
         private var models: [String: Model] = [:]
 
         mutating func totals(
-            model rawModel: String,
+            model rawModel: String?,
             usage: CodexRawUsage
         ) -> CodingUsageTotals? {
+            guard let rawModel else {
+                return nil
+            }
+
             let name = normalize(rawModel)
             let model: Model
             if let cached = models[name] {
@@ -19,10 +24,12 @@ enum OpenAIUsagePricing {
             }
 
             let rates = model.rates(inputTokens: usage.inputTokens)
-            let ordinaryInput = usage.inputTokens - usage.cachedInputTokens
+            let ordinaryInput =
+                usage.inputTokens - usage.cachedInputTokens - usage.cacheWriteInputTokens
             let costPerMillion =
                 Double(ordinaryInput) * rates.input
                 + Double(usage.cachedInputTokens) * rates.cacheRead
+                + Double(usage.cacheWriteInputTokens) * rates.cacheWrite
                 + Double(usage.outputTokens) * rates.output
 
             return CodingUsageTotals(

@@ -215,6 +215,12 @@ private enum CodingUsageBenchmarkFixture {
         var text = ""
         text.reserveCapacity(lines * 260)
         let agent = CodingUsageAgent.allCases[index % CodingUsageAgent.allCases.count]
+        if agent == .codex {
+            text +=
+                #"{"timestamp":""# + timestamp(line: 0, scope: scope)
+                + #"","type":"turn_context","payload":{"turn_id":"turn-\#(index)","model":"gpt-5.3-codex"}}"#
+                + "\n"
+        }
         for line in 0..<lines {
             let timestamp = timestamp(line: line, scope: scope)
             text += lineJSON(agent: agent, index: index, line: line, timestamp: timestamp)
@@ -242,7 +248,7 @@ private enum CodingUsageBenchmarkFixture {
         case .codex:
             return
                 #"{"timestamp":""# + timestamp
-                + #"","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":150},"model":"gpt-5.3-codex"}}}"#
+                + #"","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"cached_input_tokens":40,"output_tokens":30,"reasoning_output_tokens":8,"total_tokens":150}}}}"#
                 + "\n"
         case .pi:
             return
