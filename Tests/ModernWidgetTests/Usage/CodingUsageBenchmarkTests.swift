@@ -243,7 +243,7 @@ private enum CodingUsageBenchmarkFixture {
         case .claude:
             return
                 #"{"timestamp":""# + timestamp
-                + #"","version":"1.2.3","sessionId":"session-\#(index)","requestId":"req-\#(index)-\#(line)","message":{"role":"assistant","id":"msg-\#(index)-\#(line)","model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}}"#
+                + #"","version":"1.2.3","sessionId":"session-\#(index)","requestId":"req-\#(index)-\#(line)","message":{"role":"assistant","id":"msg-\#(index)-\#(line)","model":"claude-sonnet-5","usage":{"input_tokens":100,"output_tokens":20,"cache_creation_input_tokens":10,"cache_read_input_tokens":30}}}"#
                 + "\n"
         case .codex:
             return

@@ -37,9 +37,9 @@ Claude usage is read from assistant message usage objects. The parser consumes n
 
 Five-minute and one-hour cache writes remain distinct billable quantities. The legacy flat `cache_creation_input_tokens` field is interpreted as a five-minute write only when the structured cache-creation object is absent.
 
-Official long-context prices are selected per request using all Claude input categories, including cache reads and writes. The US data-residency modifier applies only when its explicit persisted field says it was used. Historical `speed` values do not change the regular catalog price.
+The US data-residency modifier applies only when its explicit persisted field says it was used. Historical `speed` values do not change the regular catalog price.
 
-Legacy `claude-3-5-haiku`, `claude-opus-4`, `claude-opus-4-1`, and `claude-sonnet-4` records are unsupported and follow the unknown-model no-op rule. `claude-mythos-5` and `claude-fable-5` share the same complete regular price table.
+Legacy `claude-3-5-haiku`, `claude-opus-4`, `claude-opus-4-1`, `claude-opus-4-5`, `claude-sonnet-4`, `claude-sonnet-4-5`, and `claude-sonnet-4-6` records are unsupported and follow the unknown-model no-op rule. `claude-mythos-5` and `claude-fable-5` share the same complete regular price table.
 
 Claude message and request identifiers are used only for provider-specific deduplication. Non-sidechain records take precedence over replayed sidechain records.
 

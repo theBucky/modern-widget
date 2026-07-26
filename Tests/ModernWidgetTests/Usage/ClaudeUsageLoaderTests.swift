@@ -10,13 +10,11 @@ struct ClaudeUsageLoaderTests {
         let cases: [(model: String, inputCost: Double)] = [
             ("claude-fable-5", 10),
             ("claude-mythos-5", 10),
+            ("claude-opus-5", 5),
             ("claude-opus-4-8", 5),
             ("claude-opus-4-7", 5),
             ("claude-opus-4-6", 5),
-            ("claude-opus-4-5", 5),
             ("claude-sonnet-5", 3),
-            ("claude-sonnet-4-6", 3),
-            ("claude-sonnet-4-5", 3),
             ("claude-haiku-4-5", 1),
         ]
 
@@ -48,40 +46,6 @@ struct ClaudeUsageLoaderTests {
 
         #expect(totals.totalTokens == 5_000_000)
         #expect(abs(totals.costUSD - 28.05) < 0.000_001)
-    }
-
-    @Test("uses standard rates across the full Claude 4.6 context windows")
-    func pricesFullClaude46ContextAtStandardRates() throws {
-        let cases: [(model: String, expectedCost: Double)] = [
-            ("claude-opus-4-6", 1.75),
-            ("claude-sonnet-4-6", 1.05),
-        ]
-
-        for expectation in cases {
-            let home = try makeFixtureRoot("ClaudeUsageFullContext-\(expectation.model)")
-            defer { try? FileManager.default.removeItem(at: home) }
-            let line =
-                #"{"timestamp":"2026-06-18T02:00:00.000Z","message":{"role":"assistant","id":"msg","model":"\#(expectation.model)","usage":{"input_tokens":300000,"output_tokens":10000}}}"#
-            try writeCodingUsageFixture(line, to: ".claude/projects/p/session.jsonl", in: home)
-
-            let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .claude)
-
-            #expect(abs(totals.costUSD - expectation.expectedCost) < 0.000_001)
-        }
-    }
-
-    @Test("applies Claude 4.5 long-context prices to one request")
-    func pricesLongContextPerRequest() throws {
-        let home = try makeFixtureRoot("ClaudeUsageLongContext")
-        defer { try? FileManager.default.removeItem(at: home) }
-        let line =
-            #"{"timestamp":"2026-06-18T02:00:00.000Z","message":{"role":"assistant","id":"msg","model":"claude-sonnet-4-5","usage":{"input_tokens":300000,"output_tokens":10000}}}"#
-        try writeCodingUsageFixture(line, to: ".claude/projects/p/session.jsonl", in: home)
-
-        let totals = codingUsageTotals(in: loadCodingUsage(from: home), for: .claude)
-
-        #expect(totals.totalTokens == 310_000)
-        #expect(abs(totals.costUSD - 2.025) < 0.000_001)
     }
 
     @Test("applies the persisted data residency modifier")
