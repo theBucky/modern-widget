@@ -20,9 +20,9 @@ struct DailySupplementStoreTests {
         store.setTaken(true, on: evening, now: now)
 
         let reloadedStore = DailySupplementStore(defaults: defaults, now: now)
-        #expect(reloadedStore.isTaken(on: morning))
-        #expect(reloadedStore.isTaken(on: evening))
-        #expect(!reloadedStore.isTaken(on: tomorrow))
+        #expect(reloadedStore.isTaken(on: LocalDay(date: morning)))
+        #expect(reloadedStore.isTaken(on: LocalDay(date: evening)))
+        #expect(!reloadedStore.isTaken(on: LocalDay(date: tomorrow)))
     }
 
     @Test("clearing one day leaves other days alone")
@@ -38,8 +38,8 @@ struct DailySupplementStoreTests {
         store.setTaken(true, on: tomorrow, now: now)
         store.setTaken(false, on: today, now: now)
 
-        #expect(!store.isTaken(on: today))
-        #expect(store.isTaken(on: tomorrow))
+        #expect(!store.isTaken(on: LocalDay(date: today)))
+        #expect(store.isTaken(on: LocalDay(date: tomorrow)))
     }
 
     @Test("days outside the retention window are ignored")
@@ -55,8 +55,8 @@ struct DailySupplementStoreTests {
         store.setTaken(true, on: today, now: now)
 
         let reloadedStore = DailySupplementStore(defaults: defaults, now: now)
-        #expect(!reloadedStore.isTaken(on: expiredDay))
-        #expect(reloadedStore.isTaken(on: today))
+        #expect(!reloadedStore.isTaken(on: LocalDay(date: expiredDay)))
+        #expect(reloadedStore.isTaken(on: LocalDay(date: today)))
     }
 
     @Test("loading prunes expired persisted days")
@@ -80,8 +80,8 @@ struct DailySupplementStoreTests {
         _ = DailySupplementStore(defaults: defaults, now: now)
         let reloadedStore = DailySupplementStore(defaults: defaults, now: now)
 
-        #expect(reloadedStore.isTaken(on: today))
-        #expect(!reloadedStore.isTaken(on: expiredDay))
+        #expect(reloadedStore.isTaken(on: LocalDay(date: today)))
+        #expect(!reloadedStore.isTaken(on: LocalDay(date: expiredDay)))
         let savedData = try #require(defaults.data(forKey: "dailySupplementTakenDays"))
         let savedDays = try JSONDecoder().decode(Set<LocalDay>.self, from: savedData)
         #expect(savedDays == [LocalDay(date: today)])
@@ -105,8 +105,8 @@ struct DailySupplementStoreTests {
         let savedData = try #require(defaults.data(forKey: "dailySupplementTakenDays"))
         let savedDays = try JSONDecoder().decode(Set<LocalDay>.self, from: savedData)
 
-        #expect(store.isTaken(on: today))
-        #expect(reloadedStore.isTaken(on: today))
+        #expect(store.isTaken(on: LocalDay(date: today)))
+        #expect(reloadedStore.isTaken(on: LocalDay(date: today)))
         #expect(savedDays == [validDay])
     }
 

@@ -92,20 +92,23 @@ private struct WalkDaysGrid: View {
     @Environment(DailySupplementStore.self) private var dailySupplementStore
 
     var body: some View {
+        let today = LocalDay(date: .now)
+
         LazyVGrid(columns: CalendarLayout.columns, spacing: CalendarLayout.cellSpacing) {
             ForEach(cells) { cell in
                 // Single-root row: a top-level if/else would make the ForEach row shape
                 // vary per element, forcing id computation to evaluate every row body.
                 ZStack {
-                    if let date = cell.date {
-                        let count = walkHistoryStore.walkCount(on: date)
+                    if let day = cell.day {
+                        let count = walkHistoryStore.walkCount(on: day)
                         WalkDayCell(
-                            date: date,
+                            day: day,
                             count: count,
                             display: WalkHistoryDayDisplay(
-                                date: date,
+                                day: day,
+                                today: today,
                                 walkCount: count,
-                                isSupplementTaken: dailySupplementStore.isTaken(on: date)
+                                isSupplementTaken: dailySupplementStore.isTaken(on: day)
                             )
                         )
                     } else {
@@ -118,7 +121,7 @@ private struct WalkDaysGrid: View {
 }
 
 private struct WalkDayCell: View {
-    let date: Date
+    let day: LocalDay
     let count: Int
     let display: WalkHistoryDayDisplay
 
@@ -133,7 +136,7 @@ private struct WalkDayCell: View {
                     .padding(.top, 8)
             }
 
-            Text(date, format: .dateTime.day())
+            Text(day.day, format: .number.grouping(.never))
                 .font(.system(size: 8, weight: .regular).monospacedDigit())
                 .foregroundStyle(labelColor)
                 .padding(.top, 4)

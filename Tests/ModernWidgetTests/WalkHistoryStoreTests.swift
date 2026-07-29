@@ -20,8 +20,8 @@ struct WalkHistoryStoreTests {
         store.recordWalk(evening, now: now)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
-        #expect(store.walkCount(on: today) == 2)
-        #expect(reloadedStore.walkCount(on: today) == 2)
+        #expect(store.walkCount(on: LocalDay(date: today)) == 2)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: today)) == 2)
     }
 
     @Test("walks outside the retention window are ignored")
@@ -37,8 +37,8 @@ struct WalkHistoryStoreTests {
         store.recordWalk(today, now: now)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
-        #expect(reloadedStore.walkCount(on: expiredDay) == 0)
-        #expect(reloadedStore.walkCount(on: today) == 1)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: expiredDay)) == 0)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: today)) == 1)
     }
 
     @Test("the retention cutoff day stays visible while the day before is pruned")
@@ -54,8 +54,8 @@ struct WalkHistoryStoreTests {
         store.recordWalk(dayBeforeCutoff, now: now)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
-        #expect(reloadedStore.walkCount(on: cutoffDay) == 1)
-        #expect(reloadedStore.walkCount(on: dayBeforeCutoff) == 0)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: cutoffDay)) == 1)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: dayBeforeCutoff)) == 0)
     }
 
     @Test("invalid persisted walk counts are dropped before same-day aggregation")
@@ -70,8 +70,8 @@ struct WalkHistoryStoreTests {
         let store = WalkHistoryStore(defaults: defaults, now: now)
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
 
-        #expect(store.walkCount(on: today) == 2)
-        #expect(reloadedStore.walkCount(on: today) == 2)
+        #expect(store.walkCount(on: LocalDay(date: today)) == 2)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: today)) == 2)
     }
 
     @Test("invalid persisted walk day identities are dropped and not resurrected")
@@ -89,8 +89,8 @@ struct WalkHistoryStoreTests {
         let savedData = try #require(defaults.data(forKey: "walkHistory"))
         let savedDays = try JSONDecoder().decode([StoredWalkDay].self, from: savedData)
 
-        #expect(store.walkCount(on: today) == 3)
-        #expect(reloadedStore.walkCount(on: today) == 3)
+        #expect(store.walkCount(on: LocalDay(date: today)) == 3)
+        #expect(reloadedStore.walkCount(on: LocalDay(date: today)) == 3)
         #expect(savedDays == [validRecord])
     }
 
