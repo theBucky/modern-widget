@@ -6,16 +6,6 @@ struct CodexUsageScan: Sendable {
     let parentCandidates: [CodingUsageFile]
 }
 
-private struct CodexSessionFile {
-    let file: CodingUsageFile
-    let history: CodexFileHistory
-}
-
-private struct CodexResolvedFork: Sendable {
-    let parentFile: CodingUsageFile?
-    let records: [CodexUsageRecord]
-}
-
 private struct CodexUsageRecord: Sendable {
     let timestamp: Date
     let model: String?
@@ -77,7 +67,6 @@ struct CodexRawUsage: Hashable, Sendable {
 struct CodexUsageLoader: Sendable {
     private let fileSystem: CodingUsageFileSystem
     private let historyCache = CodingUsageFileCache<CodexFileHistory>()
-    private let forkCache = CodingUsageFileCache<CodexResolvedFork>()
 
     init(fileSystem: CodingUsageFileSystem) {
         self.fileSystem = fileSystem
@@ -121,53 +110,29 @@ struct CodexUsageLoader: Sendable {
             with: Dictionary(uniqueKeysWithValues: zip(dependencyFiles, dependencyHistories))
         )
 
-        var filesBySession: [UInt64: CodexSessionFile] = [:]
-        filesBySession.reserveCapacity(parentKeys.count)
-        for (file, history) in zip(dependencyFiles, dependencyHistories) {
-            guard let header = history.header else {
+        var historiesBySession: [UInt64: CodexFileHistory] = [:]
+        historiesBySession.reserveCapacity(parentKeys.count)
+        for history in dependencyHistories {
+            guard let header = history.header, parentKeys.contains(header.idHash) else {
                 continue
             }
-            guard parentKeys.contains(header.idHash) else {
-                continue
-            }
-            filesBySession[header.idHash] = CodexSessionFile(
-                file: file,
-                history: history
-            )
+            historiesBySession[header.idHash] = history
         }
 
-        let cachedForks = forkCache.snapshot()
-        var resolvedForks: [CodingUsageFile: CodexResolvedFork] = [:]
-        var pricing = CodexUsagePricing.Resolver()
-        for (file, history) in zip(scan.files, histories) {
-            let parent = history.header?.forkParentID.flatMap { filesBySession[$0] }
-            let records: [CodexUsageRecord]
-            if history.isFork {
-                if let cached = cachedForks[file],
-                    cached.parentFile == parent?.file
-                {
-                    records = cached.records
-                } else {
-                    records = history.records(inheriting: parent?.history)
-                }
-                resolvedForks[file] = CodexResolvedFork(
-                    parentFile: parent?.file,
-                    records: records
-                )
-            } else {
-                records = history.records(inheriting: nil)
-            }
-
-            for record in records {
+        for history in histories {
+            let parent = history.header?.forkParentID.flatMap { historiesBySession[$0] }
+            for record in history.records(inheriting: parent) {
                 guard
-                    let totals = pricing.totals(model: record.model, usage: record.usage)
+                    let totals = CodexUsagePricing.totals(
+                        model: record.model,
+                        usage: record.usage
+                    )
                 else {
                     continue
                 }
                 visit(CodingUsageEvent(timestamp: record.timestamp, totals: totals))
             }
         }
-        forkCache.replace(with: resolvedForks)
     }
 
     private func usageFiles(scope: CodingUsageDateScope) -> (
@@ -555,13 +520,6 @@ private struct CodexFileHistory: Sendable {
     let header: CodexSessionMeta?
     let replayItems: [CodexReplayItem]
     private let accounting: Accounting
-
-    var isFork: Bool {
-        if case .fork = accounting {
-            return true
-        }
-        return false
-    }
 
     private init(
         header: CodexSessionMeta?,

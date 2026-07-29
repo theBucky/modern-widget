@@ -79,12 +79,7 @@ struct CodingUsageAgentSummary: Equatable, Sendable {
 }
 
 struct CodingUsageReport: Equatable, Sendable {
-    enum State: Equatable, Sendable {
-        case loading
-        case loaded(generatedAt: Date)
-    }
-
-    let state: State
+    let isLoading: Bool
     let agents: [CodingUsageAgentSummary]
 
     /// Loading placeholder with the same full-grid shape as a loaded report, so the
@@ -94,7 +89,7 @@ struct CodingUsageReport: Equatable, Sendable {
         agents: [CodingUsageAgent] = CodingUsageAgent.allCases
     ) -> Self {
         Self(
-            state: .loading,
+            isLoading: true,
             agents: agents.map { .zeroed(agent: $0, days: scope.historyDays) }
         )
     }

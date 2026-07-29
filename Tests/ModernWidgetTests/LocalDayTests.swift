@@ -63,8 +63,8 @@ struct LocalDayTests {
         let scope = CodingUsageDateScope(now: now)
         let dayStart = LocalDay.calendar.startOfDay(for: now)
 
-        #expect(scope.today.start == dayStart)
-        #expect(scope.historyDay(containing: now) == dayStart)
-        #expect(LocalDay(date: scope.today.start) == LocalDay(date: now))
+        #expect(scope.interval(for: .today).start == dayStart)
+        #expect(scope.historyDayIndex(containing: now).map { scope.historyDays[$0] } == dayStart)
+        #expect(LocalDay(date: scope.interval(for: .today).start) == LocalDay(date: now))
     }
 }

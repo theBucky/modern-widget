@@ -8,14 +8,18 @@ import Foundation
 /// dominant cost, so the scanner steps over unwanted strings, arrays, and objects
 /// without allocating them.
 ///
-/// Provider parsers finish each relevant document before accepting extracted fields;
+/// The scanner checks structure (nesting balance, key/colon shape, string
+/// termination), not grammar minutiae: separators are optional and discarded
+/// scalars only need to be nonempty, so it accepts a superset of JSON. Provider
+/// parsers finish each relevant document before accepting extracted fields;
 /// malformed input is rejected without turning scanner failures into hard errors.
 struct JSONScanner {
+    private static let maxDepth = 64
+
     private let base: UnsafePointer<UInt8>
     private let count: Int
     private var index: Int = 0
     private var objectDepth = 0
-    private var objectNeedsSeparator: UInt64 = 0
     private var isValid = true
 
     init?(_ buffer: UnsafeRawBufferPointer) {
@@ -34,13 +38,11 @@ struct JSONScanner {
             skipValue()
             return false
         }
-        guard objectDepth < UInt64.bitWidth else {
+        guard objectDepth < Self.maxDepth else {
             isValid = false
             index = count
             return false
         }
-        let mask = UInt64(1) << objectDepth
-        objectNeedsSeparator &= ~mask
         objectDepth += 1
         index += 1
         return true
@@ -55,6 +57,9 @@ struct JSONScanner {
             return nil
         }
         skipWhitespace()
+        if consume(.comma) {
+            skipWhitespace()
+        }
         guard index < count else {
             isValid = false
             return nil
@@ -62,39 +67,19 @@ struct JSONScanner {
 
         if base[index] == .closeBrace {
             index += 1
-            closeObject()
+            objectDepth -= 1
             return nil
         }
 
-        let mask = UInt64(1) << (objectDepth - 1)
-        if objectNeedsSeparator & mask != 0 {
-            guard base[index] == .comma else {
-                isValid = false
-                return nil
-            }
-            index += 1
-            skipWhitespace()
-            if index < count, base[index] == .closeBrace {
-                isValid = false
-                index += 1
-                closeObject()
-                return nil
-            }
-        } else if base[index] == .comma {
-            isValid = false
-            return nil
-        }
         guard let key = consumeStringPayload() else {
             isValid = false
             return nil
         }
         skipWhitespace()
-        guard index < count, base[index] == .colon else {
+        guard consume(.colon) else {
             isValid = false
             return nil
         }
-        index += 1
-        objectNeedsSeparator |= mask
         return JSONKey(start: key.start, count: key.count)
     }
 
@@ -134,13 +119,15 @@ struct JSONScanner {
         return overflow ? nil : value
     }
 
-    /// Reads a finite JSON number using Swift's locale-independent parser.
+    /// Reads a finite number using Swift's locale-independent parser. Returns `nil`
+    /// (after skipping) for non-numeric values.
     mutating func readDouble() -> Double? {
         skipWhitespace()
-        let scalar = consumeScalar()
-        guard isValidJSONNumber(scalar) else {
+        guard index < count, base[index].isDigit || base[index] == .minus else {
+            skipValue()
             return nil
         }
+        let scalar = consumeScalar()
         let bytes = UnsafeBufferPointer(start: scalar.start, count: scalar.count)
         guard let value = Double(String(decoding: bytes, as: UTF8.self)), value.isFinite else {
             return nil
@@ -197,14 +184,10 @@ struct JSONScanner {
         }
     }
 
-    private mutating func closeObject() {
-        objectDepth -= 1
-        objectNeedsSeparator &= ~(UInt64(1) << objectDepth)
-    }
-
     private mutating func readBareScalar(equals literal: StaticString) -> Bool {
         let scalar = consumeScalar()
-        return matches(literal, scalar: scalar)
+        return scalar.count == literal.utf8CodeUnitCount
+            && memcmp(scalar.start, literal.utf8Start, scalar.count) == 0
     }
 
     private mutating func consumeScalar() -> (start: UnsafePointer<UInt8>, count: Int) {
@@ -286,7 +269,7 @@ struct JSONScanner {
 
     private mutating func consumeValue(depth: Int) -> Bool {
         skipWhitespace()
-        guard index < count, depth < UInt64.bitWidth else {
+        guard index < count, depth < Self.maxDepth else {
             return false
         }
 
@@ -298,13 +281,13 @@ struct JSONScanner {
         case .openBracket:
             return consumeArray(depth: depth + 1)
         default:
-            return isValidJSONScalar(consumeScalar())
+            return consumeScalar().count > 0
         }
     }
 
     private mutating func consumeObjectValue(depth: Int) -> Bool {
         let startingDepth = objectDepth
-        guard depth < UInt64.bitWidth, beginObject() else {
+        guard beginObject() else {
             return false
         }
         while nextKey() != nil {
@@ -331,10 +314,9 @@ struct JSONScanner {
             if consume(.closeBracket) {
                 return true
             }
-            guard consume(.comma) else {
-                return false
+            if consume(.comma) {
+                skipWhitespace()
             }
-            skipWhitespace()
         }
         return false
     }
@@ -345,77 +327,6 @@ struct JSONScanner {
         }
         index += 1
         return true
-    }
-
-    private func isValidJSONScalar(
-        _ scalar: (start: UnsafePointer<UInt8>, count: Int)
-    ) -> Bool {
-        matches("true", scalar: scalar)
-            || matches("false", scalar: scalar)
-            || matches("null", scalar: scalar)
-            || isValidJSONNumber(scalar)
-    }
-
-    private func matches(
-        _ literal: StaticString,
-        scalar: (start: UnsafePointer<UInt8>, count: Int)
-    ) -> Bool {
-        scalar.count == literal.utf8CodeUnitCount
-            && memcmp(scalar.start, literal.utf8Start, scalar.count) == 0
-    }
-
-    private func isValidJSONNumber(
-        _ scalar: (start: UnsafePointer<UInt8>, count: Int)
-    ) -> Bool {
-        var cursor = 0
-        if cursor < scalar.count, scalar.start[cursor] == .minus {
-            cursor += 1
-        }
-        guard cursor < scalar.count else {
-            return false
-        }
-
-        if scalar.start[cursor] == .zero {
-            cursor += 1
-        } else {
-            guard scalar.start[cursor] >= UInt8(ascii: "1"),
-                scalar.start[cursor] <= .nine
-            else {
-                return false
-            }
-            repeat {
-                cursor += 1
-            } while cursor < scalar.count && scalar.start[cursor].isDigit
-        }
-
-        if cursor < scalar.count, scalar.start[cursor] == .dot {
-            cursor += 1
-            guard cursor < scalar.count, scalar.start[cursor].isDigit else {
-                return false
-            }
-            repeat {
-                cursor += 1
-            } while cursor < scalar.count && scalar.start[cursor].isDigit
-        }
-
-        if cursor < scalar.count,
-            scalar.start[cursor] == .lowerE || scalar.start[cursor] == .upperE
-        {
-            cursor += 1
-            if cursor < scalar.count,
-                scalar.start[cursor] == .plus || scalar.start[cursor] == .minus
-            {
-                cursor += 1
-            }
-            guard cursor < scalar.count, scalar.start[cursor].isDigit else {
-                return false
-            }
-            repeat {
-                cursor += 1
-            } while cursor < scalar.count && scalar.start[cursor].isDigit
-        }
-
-        return cursor == scalar.count
     }
 }
 

@@ -49,18 +49,17 @@ struct CodingUsageTokenFormat: FormatStyle, Codable, Hashable, Sendable {
         ]
         let tokens = Double(value)
 
-        for index in units.indices {
-            guard tokens >= units[index].threshold else {
-                continue
-            }
-
-            var unitIndex = index
-            var unitValue = tokens / units[unitIndex].threshold
-            while unitIndex > units.startIndex && (unitValue * 10).rounded() / 10 >= 1000 {
-                unitIndex -= 1
-                unitValue = tokens / units[unitIndex].threshold
-            }
-            return codingUsageFormat("%.1f%@ tokens", unitValue, units[unitIndex].suffix)
+        for index in units.indices where tokens >= units[index].threshold {
+            // A value like 999,950 rounds to "1000.0K"; display it one unit up as "1.0M".
+            let roundsPastUnit =
+                index > units.startIndex
+                && (tokens / units[index].threshold * 10).rounded() / 10 >= 1000
+            let unitIndex = roundsPastUnit ? index - 1 : index
+            return codingUsageFormat(
+                "%.1f%@ tokens",
+                tokens / units[unitIndex].threshold,
+                units[unitIndex].suffix
+            )
         }
 
         return codingUsageFormat("%.1f tokens", tokens)

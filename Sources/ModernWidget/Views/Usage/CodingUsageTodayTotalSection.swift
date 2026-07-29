@@ -39,12 +39,12 @@ private struct CodingUsageCostTrendGroup: View {
         }
     }
 
-    /// A gradient `foregroundStyle` composites the text within its tight layout bounds, which
-    /// hard-clips the numeric roll blur, so the visible copy masks a fill oversized by
-    /// `costTextOverdraw` while a hidden copy keeps the layout. `minimumScaleFactor` engages
-    /// transiently while the roll interpolates width, so a hidden zero pins the composite to
-    /// the full line height and the mask copy is proposed the composite width to scale in
-    /// lockstep with the layout copy.
+    /// A gradient `foregroundStyle` composites the text within its tight layout bounds,
+    /// hard-clipping the numeric roll blur mid-transition. Instead, an oversized fill is
+    /// masked by a text copy with `costTextOverdraw` of slack around it, so the blur has
+    /// render room. The invisible base copies keep layout honest: the "0" pins the full
+    /// line height while `minimumScaleFactor` transiently engages during the roll, and
+    /// the layout copy proposes the mask copy's width so both scale in lockstep.
     private var totalCostText: some View {
         ZStack {
             Text(verbatim: "0")

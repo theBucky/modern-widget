@@ -16,6 +16,16 @@ func codingUsageScope(
     CodingUsageDateScope(now: now, calendar: gregorianUTC(firstWeekday: 2))
 }
 
+func withUsageHome<T>(_ body: (URL) throws -> T) throws -> T {
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent(
+        UUID().uuidString,
+        isDirectory: true
+    )
+    try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: home) }
+    return try body(home)
+}
+
 func loadCodingUsage(
     from home: URL,
     scope: CodingUsageDateScope = codingUsageScope()
