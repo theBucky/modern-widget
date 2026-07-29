@@ -38,22 +38,22 @@ private struct ReminderStatusSection: View {
     let snapshot: ReminderSnapshot
 
     var body: some View {
-        let display = ReminderStatusDisplay(snapshot)
+        let (title, message, tint) = status
 
         VStack(spacing: PanelLayout.tightSpacing) {
-            Text(display.title)
+            title
                 .font(.system(size: 44, weight: .light, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(tint(for: display.emphasis))
+                .foregroundStyle(tint)
 
-            Text(display.message)
+            message
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let message = snapshot.notificationIssue?.message {
-                Text(message)
+            if let issue = snapshot.notificationIssue?.message {
+                Text(issue)
                     .font(.caption)
                     .foregroundStyle(.red)
             }
@@ -61,14 +61,22 @@ private struct ReminderStatusSection: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func tint(for emphasis: ReminderStatusDisplay.Emphasis) -> Color {
-        switch emphasis {
-        case .active:
-            return .primary
-        case .muted:
-            return .secondary
-        case .alert:
-            return .red
+    private var status: (title: Text, message: Text, tint: Color) {
+        let countdown = Text(
+            Duration.seconds(snapshot.secondsRemaining),
+            format: .time(pattern: .minuteSecond(padMinuteToLength: 2))
+        )
+        switch snapshot.phase {
+        case .countingDown:
+            return (countdown, Text("until next break"), .primary)
+        case .paused:
+            return (countdown, Text("paused"), .secondary)
+        case .overdue:
+            return (
+                Text("MOVE"),
+                Text("muscles atrophy, circulation stops, you know..."),
+                .red
+            )
         }
     }
 }
@@ -77,6 +85,7 @@ private struct ReminderActionsSection: View {
     let phase: ReminderPhase
 
     @Environment(ReminderEngine.self) private var engine
+    @Environment(WalkHistoryStore.self) private var walkHistoryStore
 
     var body: some View {
         let pauseTitle: LocalizedStringKey = phase == .paused ? "Resume timer" : "Pause timer"
@@ -93,7 +102,9 @@ private struct ReminderActionsSection: View {
             .help(pauseTitle)
 
             Button {
-                engine.completeBreak(at: .now)
+                let now = Date.now
+                engine.completeBreak(at: now)
+                walkHistoryStore.recordWalk(now)
             } label: {
                 actionLabel("Complete break", systemImage: "arrow.counterclockwise")
             }

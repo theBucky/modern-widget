@@ -4,14 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class ReminderEngine {
-    private enum Keys {
-        static let state = "reminderState"
-        // Pre-Codable scheme, migrated once into `state` then removed.
-        static let legacyMinutes = "reminderMinutes"
-        static let legacyStartedAt = "reminderStartedAt"
-        static let legacyIsPaused = "isPaused"
-        static let legacyPausedSeconds = "pausedRemainingSeconds"
-    }
+    private static let stateKey = "reminderState"
 
     /// Boundary-aligned countdown snapshot driving both the menu bar icon and the
     /// panel; refreshed exactly on whole-second boundaries so the displayed digit
@@ -22,11 +15,6 @@ final class ReminderEngine {
     /// here rather than in `ReminderState`; it reaches the UI folded into snapshots.
     @ObservationIgnored
     private var notificationIssue: ReminderNotificationIssue?
-
-    /// Completing a break also records a walk; the composition root wires this hook
-    /// so the engine stays ignorant of history storage.
-    @ObservationIgnored
-    var onBreakCompleted: ((Date) -> Void)?
 
     @ObservationIgnored
     private let defaults: UserDefaults
@@ -92,17 +80,13 @@ final class ReminderEngine {
         updateState {
             $0.restart(at: date)
         }
-        onBreakCompleted?(date)
     }
 
     private static func loadState(defaults: UserDefaults) -> ReminderState {
-        if let data = defaults.data(forKey: Keys.state),
+        if let data = defaults.data(forKey: stateKey),
             let decoded = try? JSONDecoder().decode(ReminderState.self, from: data)
         {
             return decoded
-        }
-        if let migrated = migrateLegacyState(defaults: defaults) {
-            return migrated
         }
         return ReminderState(
             reminderMinutes: ReminderState.minutePresets.min()!,
@@ -110,37 +94,11 @@ final class ReminderEngine {
         )
     }
 
-    private static func migrateLegacyState(defaults: UserDefaults) -> ReminderState? {
-        guard defaults.object(forKey: Keys.legacyMinutes) != nil else {
-            return nil
-        }
-
-        // Normalize before deriving the paused fallback, so out-of-range legacy
-        // minutes cannot import a paused timer with an already-expired remaining count.
-        let reminderMinutes = ReminderState.supportedReminderMinutes(
-            for: defaults.integer(forKey: Keys.legacyMinutes))
-        let mode: ReminderMode =
-            defaults.bool(forKey: Keys.legacyIsPaused)
-            ? .paused(
-                secondsRemaining: defaults.object(forKey: Keys.legacyPausedSeconds) as? Int
-                    ?? reminderMinutes * 60)
-            : .running(startedAt: defaults.object(forKey: Keys.legacyStartedAt) as? Date ?? .now)
-
-        let state = ReminderState(reminderMinutes: reminderMinutes, mode: mode)
-        persist(state, to: defaults)
-        for key in [
-            Keys.legacyMinutes, Keys.legacyStartedAt, Keys.legacyIsPaused, Keys.legacyPausedSeconds,
-        ] {
-            defaults.removeObject(forKey: key)
-        }
-        return state
-    }
-
     private static func persist(_ state: ReminderState, to defaults: UserDefaults) {
         guard let data = try? JSONEncoder().encode(state) else {
             return
         }
-        defaults.set(data, forKey: Keys.state)
+        defaults.set(data, forKey: stateKey)
     }
 
     /// A user timer action supersedes any prior delivery status, so mutating the
@@ -225,7 +183,7 @@ final class ReminderEngine {
         }
     }
 
-    private func sendReminderIfDue(now: Date) async {
+    func sendReminderIfDue(now: Date) async {
         guard let delay = state.nextReminderDelay(lastReminderAt: lastReminderAt, now: now),
             delay == 0
         else {
