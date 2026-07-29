@@ -140,7 +140,7 @@ private struct UpdateAvailableButton: View {
     @Environment(UpdaterManager.self) private var updaterManager
 
     var body: some View {
-        if updaterManager.updateBadgeVisible {
+        if updaterManager.isUpdateAvailable {
             Button {
                 updaterManager.checkForUpdates()
             } label: {
@@ -151,7 +151,7 @@ private struct UpdateAvailableButton: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.mini)
-            .disabled(!updaterManager.updateBadgeEnabled)
+            .disabled(!updaterManager.canCheckForUpdates)
             .help("Update Available")
         }
     }

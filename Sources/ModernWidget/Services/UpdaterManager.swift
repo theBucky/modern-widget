@@ -4,38 +4,20 @@ import Foundation
 import Observation
 import Sparkle
 
+/// Sparkle is disabled in debug builds: the bundle is unsigned and runs out of `.build`.
+#if DEBUG
+    private let usesSparkle = false
+#else
+    private let usesSparkle = true
+#endif
+
 @MainActor
 @Observable
 final class UpdaterManager: NSObject {
     static let shared = UpdaterManager()
 
-    private enum BuildMode {
-        #if DEBUG
-            static let usesSparkle = false
-            static let previewsUpdateAvailableBadge = true
-        #else
-            static let usesSparkle = true
-            static let previewsUpdateAvailableBadge = false
-        #endif
-    }
-
     private(set) var canCheckForUpdates = false
     private(set) var isUpdateAvailable = false
-
-    /// The menu bar "Update" badge is shown when an update is waiting and enabled when
-    /// the updater is ready to act. DEBUG forces both on so the layout previews without
-    /// a real Sparkle update; that override lives only in `previewsBadge`.
-    var updateBadgeVisible: Bool {
-        previewsBadge || isUpdateAvailable
-    }
-
-    var updateBadgeEnabled: Bool {
-        previewsBadge || canCheckForUpdates
-    }
-
-    private var previewsBadge: Bool {
-        BuildMode.previewsUpdateAvailableBadge
-    }
 
     @ObservationIgnored
     private lazy var controller = SPUStandardUpdaterController(
@@ -44,27 +26,26 @@ final class UpdaterManager: NSObject {
         userDriverDelegate: self
     )
     @ObservationIgnored
-    private var canCheckObservation: AnyCancellable?
-    @ObservationIgnored
     private var activationPolicyBeforeUpdateUI: NSApplication.ActivationPolicy?
 
     private override init() {
         super.init()
 
-        guard BuildMode.usesSparkle else {
+        guard usesSparkle else {
             return
         }
 
-        canCheckObservation = controller.updater.publisher(for: \.canCheckForUpdates)
-            .sink { [weak self] canCheck in
-                Task { @MainActor in
-                    self?.canCheckForUpdates = canCheck
-                }
+        // The singleton lives for the app's lifetime, so the task is never cancelled.
+        let updater = controller.updater
+        Task { @MainActor [weak self] in
+            for await canCheck in updater.publisher(for: \.canCheckForUpdates).values {
+                self?.canCheckForUpdates = canCheck
             }
+        }
     }
 
     func start() {
-        guard BuildMode.usesSparkle else {
+        guard usesSparkle else {
             return
         }
 
@@ -73,7 +54,7 @@ final class UpdaterManager: NSObject {
     }
 
     func checkForUpdates() {
-        guard BuildMode.usesSparkle else {
+        guard usesSparkle else {
             return
         }
 
