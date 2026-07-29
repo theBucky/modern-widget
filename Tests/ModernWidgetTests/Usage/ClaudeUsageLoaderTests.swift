@@ -69,6 +69,29 @@ struct ClaudeUsageLoaderTests {
         }
     }
 
+    @Test("residency-ineligible models keep the regular price under a US geo")
+    func ignoresDataResidencyForIneligibleModels() throws {
+        try withUsageHome { home in
+            let line =
+                #"{"timestamp":"2026-07-14T02:00:00.000Z","message":{"role":"assistant","id":"msg","model":"claude-haiku-4-5","usage":{"input_tokens":1000000,"output_tokens":1000000,"inference_geo":"us"}}}"#
+            let scope = codingUsageScope(now: date(2026, 7, 14, 12))
+            try writeCodingUsageFixture(
+                line,
+                to: ".claude/projects/p/session.jsonl",
+                in: home,
+                modifiedAt: scope.now
+            )
+
+            let totals = codingUsageTotals(
+                in: loadCodingUsage(from: home, scope: scope),
+                for: .claude
+            )
+
+            #expect(totals.totalTokens == 2_000_000)
+            #expect(abs(totals.costUSD - 6) < 0.000_001)
+        }
+    }
+
     @Test("deduplicates main-chain and sidechain copies")
     func deduplicatesSidechainCopies() throws {
         try withUsageHome { home in
