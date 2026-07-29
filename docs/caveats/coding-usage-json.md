@@ -56,7 +56,6 @@ The parser requires a valid timestamp, an assistant message, a known model, and 
 - `input_tokens`, `output_tokens`, `cache_read_input_tokens`, five-minute cache writes, and one-hour cache writes remain separate through pricing. `totalTokens` is their saturating sum.
 - Structured `cache_creation` wins whenever it is present. The legacy flat `cache_creation_input_tokens` is a five-minute write only when the structured object is absent; the two forms are never added together.
 - `inference_geo == "us"` enables the data-residency modifier only for models whose official table supports it. Persisted `speed` and `service_tier` values do not alter the regular price.
-- Long-context selection is per message and uses every input category, including cache reads and writes. A threshold applies only when the explicit model table defines one.
 - Deduplication runs after date filtering. `message.id` and `requestId` identify copies, `isSidechain == false` wins over a replayed sidechain record, and an out-of-window copy cannot hide an in-window event.
 
 ## Codex

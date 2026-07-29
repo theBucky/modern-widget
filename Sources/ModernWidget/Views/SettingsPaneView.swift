@@ -28,9 +28,9 @@ struct SettingsPaneView: View {
             }
 
             Section("System") {
-                Toggle("Launch at Login", isOn: $loginManager.launchAtLogin)
+                Toggle("Launch at Login", isOn: $loginManager.isEnabled)
                     .toggleStyle(.switch)
-                    .disabled(!loginManager.canChange)
+                    .disabled(!LaunchAtLoginManager.isSupported)
 
                 LabeledContent("Build", value: Self.buildVersion)
 

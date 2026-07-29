@@ -107,28 +107,6 @@ script/build_and_run.sh logs
 script/build_and_run.sh verify
 ```
 
-## Coding usage benchmark
-
-Use the benchmark script to measure the usage refresh pipeline. It reports `scan`, `load.cold`,
-`load.cached`, `startup.cold`, and `refresh.no_change` timings with min, mean, p50, p95, and max milliseconds.
-
-```bash
-script/benchmark_coding_usage.sh --mode real
-script/benchmark_coding_usage.sh --mode fixture --fixture-files 90 --fixture-lines 400
-```
-
-Add hard optimization gates by passing p95 limits:
-
-```bash
-script/benchmark_coding_usage.sh \
-  --mode fixture \
-  --max-scan-p95-ms 25 \
-  --max-load-p95-ms 500 \
-  --max-cached-load-p95-ms 100 \
-  --max-startup-p95-ms 550 \
-  --max-refresh-p95-ms 25
-```
-
 ## Project structure
 
 ```text
@@ -181,7 +159,7 @@ Tests/ModernWidgetTests/
 ├── HistoryRetentionTests.swift            # retention window
 ├── DailySupplementStoreTests.swift        # supplement persistence
 ├── TestSupport.swift                      # shared test helpers
-└── Usage/                                 # Claude/Codex/Pi loader, parser hardening, summary, benchmark tests
+└── Usage/                                 # Claude/Codex/Pi loader, parser hardening, and summary tests
 ```
 
 ## Data and privacy

@@ -4,52 +4,26 @@ import Observation
 @MainActor
 @Observable
 final class DailySupplementStore {
-    private static let journal = LocalDayJournal<LocalDayJournalUnitRecord>(
-        storageKey: "dailySupplementTakenDays"
-    )
-
-    private var takenDays: Set<LocalDay>
-
-    @ObservationIgnored
-    private let defaults: UserDefaults
+    private var journal: LocalDayJournal
 
     init(defaults: UserDefaults = .standard, now: Date = .now) {
-        self.defaults = defaults
-        let loaded = Self.journal.load(from: defaults, now: now)
-        self.takenDays = Set(loaded.records.keys)
-
-        if loaded.needsSave {
-            save()
-        }
+        self.journal = LocalDayJournal(
+            storageKey: "dailySupplementTakenDays",
+            defaults: defaults,
+            now: now
+        )
     }
 
     var isTakenToday: Bool {
-        get { isTaken(on: .now) }
+        get { isTaken(on: LocalDay(date: .now)) }
         set { setTaken(newValue) }
     }
 
-    func isTaken(on date: Date) -> Bool {
-        takenDays.contains(LocalDay(date: date))
+    func isTaken(on day: LocalDay) -> Bool {
+        journal.counts[day, default: 0] > 0
     }
 
     func setTaken(_ isTaken: Bool, on date: Date = .now, now: Date = .now) {
-        let day = LocalDay(date: date)
-
-        if isTaken {
-            takenDays.insert(day)
-        } else {
-            takenDays.remove(day)
-        }
-
-        let cutoff = HistoryRetention.earliestRetainedDay(now: now)
-        takenDays = takenDays.filter { $0 >= cutoff }
-        save()
-    }
-
-    private func save() {
-        let records = Dictionary(
-            uniqueKeysWithValues: takenDays.map { ($0, LocalDayJournalUnitRecord()) }
-        )
-        Self.journal.save(records, to: defaults)
+        journal.setCount(isTaken ? 1 : 0, on: LocalDay(date: date), now: now)
     }
 }

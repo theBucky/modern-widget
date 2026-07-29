@@ -7,19 +7,6 @@ enum CodingUsagePeriod: CaseIterable, Identifiable, Sendable {
     case last30Days
 
     var id: Self { self }
-
-    func interval(in scope: CodingUsageDateScope) -> DateInterval {
-        switch self {
-        case .today:
-            return scope.today
-        case .yesterday:
-            return scope.yesterday
-        case .last7Days:
-            return scope.last7Days
-        case .last30Days:
-            return scope.last30Days
-        }
-    }
 }
 
 struct CodingUsagePresentation: Equatable, Sendable {
@@ -52,18 +39,16 @@ struct CodingUsagePresentation: Equatable, Sendable {
             scope: scope,
             activeAgents: activeAgents
         )
-        let todayTotals = Self.totals(
-            in: CodingUsagePeriod.today.interval(in: scope),
-            sections: sections
-        )
+        let todayInterval = scope.interval(for: .today)
+        let todayTotals = Self.totals(in: todayInterval, sections: sections)
         let yesterdayTotals = Self.totals(
-            in: CodingUsagePeriod.yesterday.interval(in: scope),
+            in: scope.interval(for: .yesterday),
             sections: sections
         )
 
-        self.isLoading = report.state == .loading
+        self.isLoading = report.isLoading
         self.today = CodingUsageTodaySummary(
-            date: scope.today.start,
+            date: todayInterval.start,
             totals: todayTotals,
             costTrend: CodingUsageCostTrend(
                 currentCostUSD: todayTotals.costUSD,
@@ -89,7 +74,7 @@ struct CodingUsagePresentation: Equatable, Sendable {
                 periodTotals: CodingUsagePeriod.allCases.map { period in
                     PeriodTotal(
                         period: period,
-                        totals: totals(in: period.interval(in: scope), days: summary.days)
+                        totals: totals(in: scope.interval(for: period), days: summary.days)
                     )
                 },
                 chartDays: summary.days

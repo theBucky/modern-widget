@@ -26,10 +26,6 @@ struct CodingUsageDateScope: Equatable, Sendable {
         }
     }
 
-    func historyDay(containing date: Date) -> Date? {
-        historyDayIndex(containing: date).map { historyDays[$0] }
-    }
-
     func historyDayIndex(containing date: Date) -> Int? {
         guard date >= history.start && date < history.end else {
             return nil
@@ -49,12 +45,20 @@ struct CodingUsageDateScope: Equatable, Sendable {
     }
 
     /// The windows the usage table totals over. The scope is the single type that
-    /// maps a period name to the dates it covers, so callers never redo the math.
-    var today: DateInterval { interval(fromDayOffset: 0, toDayOffset: 1) }
-    var yesterday: DateInterval { interval(fromDayOffset: -1, toDayOffset: 0) }
-    var last7Days: DateInterval { interval(fromDayOffset: -6, toDayOffset: 1) }
-    /// The last-30-days row is exactly the rolling scan window.
-    var last30Days: DateInterval { history }
+    /// maps a period to the dates it covers, so callers never redo the math.
+    func interval(for period: CodingUsagePeriod) -> DateInterval {
+        switch period {
+        case .today:
+            return interval(fromDayOffset: 0, toDayOffset: 1)
+        case .yesterday:
+            return interval(fromDayOffset: -1, toDayOffset: 0)
+        case .last7Days:
+            return interval(fromDayOffset: -6, toDayOffset: 1)
+        case .last30Days:
+            // The last-30-days row is exactly the rolling scan window.
+            return history
+        }
+    }
 
     private func interval(fromDayOffset startOffset: Int, toDayOffset endOffset: Int)
         -> DateInterval

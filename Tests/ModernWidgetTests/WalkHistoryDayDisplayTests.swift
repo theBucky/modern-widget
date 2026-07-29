@@ -5,49 +5,52 @@ import Testing
 
 @Suite("Walk history day display")
 struct WalkHistoryDayDisplayTests {
-    private static let now = date(2026, 7, 15, 12)
+    private static let today = LocalDay(year: 2026, month: 7, day: 15)!
 
     private func makeDisplay(
-        _ day: Date,
+        _ day: LocalDay?,
         walkCount: Int = 0,
         isSupplementTaken: Bool = false
     ) -> WalkHistoryDayDisplay {
         WalkHistoryDayDisplay(
-            date: day,
+            day: day!,
+            today: Self.today,
             walkCount: walkCount,
-            isSupplementTaken: isSupplementTaken,
-            now: Self.now,
-            calendar: gregorianUTC()
+            isSupplementTaken: isSupplementTaken
         )
     }
 
     @Test("tomorrow dims as future with no fill")
     func tomorrowIsFuture() {
-        let display = makeDisplay(date(2026, 7, 16))
+        let display = makeDisplay(LocalDay(year: 2026, month: 7, day: 16))
 
         #expect(display.label == .future)
         #expect(display.fill == .empty)
     }
 
-    @Test("a later hour today is not future")
-    func laterHourTodayIsNotFuture() {
-        #expect(makeDisplay(date(2026, 7, 15, 23)).label == .supplementPending)
+    @Test("today reads supplement state instead of dimming as future")
+    func todayIsNotFuture() {
+        #expect(makeDisplay(Self.today).label == .supplementPending)
     }
 
     @Test("past days read supplement state")
     func pastDaySupplementState() {
-        #expect(makeDisplay(date(2026, 7, 14), isSupplementTaken: true).label == .supplementTaken)
-        #expect(makeDisplay(date(2026, 7, 14)).label == .supplementPending)
+        let yesterday = LocalDay(year: 2026, month: 7, day: 14)
+
+        #expect(makeDisplay(yesterday, isSupplementTaken: true).label == .supplementTaken)
+        #expect(makeDisplay(yesterday).label == .supplementPending)
     }
 
     @Test("today fill wins over walked fill")
     func todayFillWins() {
-        #expect(makeDisplay(date(2026, 7, 15), walkCount: 2).fill == .today)
+        #expect(makeDisplay(Self.today, walkCount: 2).fill == .today)
     }
 
     @Test("walked past days fill, empty ones do not")
     func walkedFill() {
-        #expect(makeDisplay(date(2026, 7, 14), walkCount: 1).fill == .walked)
-        #expect(makeDisplay(date(2026, 7, 14)).fill == .empty)
+        let yesterday = LocalDay(year: 2026, month: 7, day: 14)
+
+        #expect(makeDisplay(yesterday, walkCount: 1).fill == .walked)
+        #expect(makeDisplay(yesterday).fill == .empty)
     }
 }

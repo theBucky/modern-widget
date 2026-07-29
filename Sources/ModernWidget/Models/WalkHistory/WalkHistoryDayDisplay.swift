@@ -1,5 +1,3 @@
-import Foundation
-
 /// Display projection of one calendar day cell: which label color and fill the walk
 /// grid renders, derived from the day's relation to today and its recorded state.
 struct WalkHistoryDayDisplay: Equatable {
@@ -18,16 +16,7 @@ struct WalkHistoryDayDisplay: Equatable {
     let label: Label
     let fill: Fill
 
-    init(
-        date: Date,
-        walkCount: Int,
-        isSupplementTaken: Bool,
-        now: Date = .now,
-        calendar: Calendar = LocalDay.calendar
-    ) {
-        let day = calendar.startOfDay(for: date)
-        let today = calendar.startOfDay(for: now)
-
+    init(day: LocalDay, today: LocalDay, walkCount: Int, isSupplementTaken: Bool) {
         if day > today {
             label = .future
         } else if isSupplementTaken {

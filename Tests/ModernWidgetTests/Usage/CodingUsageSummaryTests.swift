@@ -12,7 +12,7 @@ struct CodingUsageSummaryTests {
         let scope = CodingUsageDateScope(now: now, calendar: calendar)
         let presentation = CodingUsagePresentation(
             report: CodingUsageReport(
-                state: .loaded(generatedAt: now),
+                isLoading: false,
                 agents: [
                     CodingUsageAgentSummary(
                         agent: .claude,
@@ -47,7 +47,7 @@ struct CodingUsageSummaryTests {
         let now = date(2026, 6, 18, 12)
         let presentation = CodingUsagePresentation(
             report: CodingUsageReport(
-                state: .loaded(generatedAt: now),
+                isLoading: false,
                 agents: [
                     CodingUsageAgentSummary(
                         agent: .claude,
@@ -79,7 +79,7 @@ struct CodingUsageSummaryTests {
         let now = date(2026, 6, 18, 12)
         let presentation = CodingUsagePresentation(
             report: CodingUsageReport(
-                state: .loaded(generatedAt: now),
+                isLoading: false,
                 agents: [
                     CodingUsageAgentSummary(
                         agent: .claude,
@@ -108,7 +108,7 @@ struct CodingUsageSummaryTests {
         let scope = CodingUsageDateScope(now: now, calendar: gregorianUTC())
         let presentation = CodingUsagePresentation(
             report: CodingUsageReport(
-                state: .loaded(generatedAt: now),
+                isLoading: false,
                 agents: [
                     CodingUsageAgentSummary(agent: .claude, days: [day(2026, 6, 18, 1)]),
                     CodingUsageAgentSummary(agent: .codex, days: [day(2026, 6, 18, 2)]),
@@ -216,7 +216,7 @@ struct CodingUsageSummaryTests {
         let scope = CodingUsageDateScope(now: date(2026, 6, 18, 12), calendar: calendar)
         let report = CodingUsageReport.placeholder(scope: scope, agents: [.codex, .pi])
 
-        #expect(report.state == .loading)
+        #expect(report.isLoading)
         #expect(report.agents.map(\.agent) == [.codex, .pi])
         for summary in report.agents {
             #expect(summary.days.count == 30)

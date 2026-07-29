@@ -6,56 +6,51 @@ import ServiceManagement
 final class LaunchAtLoginManager {
     static let shared = LaunchAtLoginManager()
 
-    private(set) var isEnabled = false
+    /// SMAppService needs a signed bundle in a stable location; debug builds run out
+    /// of `.build`, so registration is unavailable there.
+    #if DEBUG
+        static let isSupported = false
+    #else
+        static let isSupported = true
+    #endif
+
+    private var status = false
+
     private init() {
         refresh()
     }
 
-    var canChange: Bool {
-        #if DEBUG
-            false
-        #else
-            true
-        #endif
-    }
-
-    var launchAtLogin: Bool {
-        get { isEnabled }
-        set { setEnabled(newValue) }
-    }
-
-    func refresh() {
-        #if DEBUG
-            isEnabled = false
-        #else
-            switch SMAppService.mainApp.status {
-            case .enabled, .requiresApproval:
-                isEnabled = true
-            case .notFound, .notRegistered:
-                isEnabled = false
-            @unknown default:
-                isEnabled = false
+    var isEnabled: Bool {
+        get { status }
+        set {
+            guard Self.isSupported else {
+                return
             }
-        #endif
-    }
-
-    private func setEnabled(_ enabled: Bool) {
-        #if DEBUG
-            refresh()
-        #else
-            defer {
-                refresh()
-            }
-
             do {
-                if enabled {
+                if newValue {
                     try SMAppService.mainApp.register()
                 } else {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                // ignored: the defer refresh reconciles isEnabled with the real status
+                // ignored: refresh reconciles with the real registration status
             }
-        #endif
+            refresh()
+        }
+    }
+
+    /// Re-reads the registration status, catching changes made in System Settings.
+    func refresh() {
+        guard Self.isSupported else {
+            return
+        }
+        switch SMAppService.mainApp.status {
+        case .enabled, .requiresApproval:
+            status = true
+        case .notFound, .notRegistered:
+            status = false
+        @unknown default:
+            status = false
+        }
     }
 }

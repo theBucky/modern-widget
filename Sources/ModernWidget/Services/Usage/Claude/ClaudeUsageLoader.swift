@@ -78,13 +78,10 @@ struct ClaudeUsageLoader: Sendable {
                 return cached
             }
 
-            var pricing = ClaudeUsagePricing.Resolver()
             let usageNeedle = JSONLineNeedle(#""usage""#)
             var entries: [ClaudeUsageEntry] = []
             forEachJSONLine(in: file) { line in
-                guard line.contains(usageNeedle),
-                    let entry = parseEntry(line, pricing: &pricing)
-                else {
+                guard line.contains(usageNeedle), let entry = parseEntry(line) else {
                     return
                 }
                 entries.append(entry)
@@ -159,10 +156,7 @@ struct ClaudeUsageLoader: Sendable {
     }
 }
 
-private func parseEntry(
-    _ buffer: UnsafeRawBufferPointer,
-    pricing: inout ClaudeUsagePricing.Resolver
-) -> ClaudeUsageEntry? {
+private func parseEntry(_ buffer: UnsafeRawBufferPointer) -> ClaudeUsageEntry? {
     guard var scanner = JSONScanner(buffer), scanner.beginObject() else {
         return nil
     }
@@ -199,7 +193,7 @@ private func parseEntry(
         cacheReadTokens: fields.cacheReadTokens,
         usesUSDataResidency: fields.usesUSDataResidency
     )
-    guard let totals = pricing.totals(model: message.model, usage: usage) else {
+    guard let totals = ClaudeUsagePricing.totals(model: message.model, usage: usage) else {
         return nil
     }
 

@@ -101,7 +101,7 @@ struct CodingUsageLoader: Sendable {
         }
 
         return CodingUsageReport(
-            state: .loaded(generatedAt: scan.scope.now),
+            isLoading: false,
             agents: accumulator.agentSummaries(for: scan.fingerprint.agents)
         )
     }
