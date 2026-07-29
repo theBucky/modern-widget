@@ -30,10 +30,12 @@ struct LocalDayJournal {
                 needsSave = true
                 continue
             }
-            if counts[day] != nil {
+            let existing = counts[day]
+            if existing != nil {
                 needsSave = true
             }
-            counts[day, default: 0] += record.count
+            let (sum, overflow) = (existing ?? 0).addingReportingOverflow(record.count)
+            counts[day] = overflow ? .max : sum
         }
         if needsSave {
             save()

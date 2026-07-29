@@ -12,7 +12,8 @@ final class WalkHistoryStore {
 
     func recordWalk(_ date: Date = .now, now: Date = .now) {
         let day = LocalDay(date: date)
-        journal.setCount(journal.counts[day, default: 0] + 1, on: day, now: now)
+        let count = journal.counts[day, default: 0]
+        journal.setCount(count == .max ? count : count + 1, on: day, now: now)
     }
 
     func walkCount(on day: LocalDay) -> Int {

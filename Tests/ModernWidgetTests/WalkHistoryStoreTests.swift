@@ -94,6 +94,24 @@ struct WalkHistoryStoreTests {
         #expect(savedDays == [validRecord])
     }
 
+    @Test("counts near Int.max clamp on load and further walks saturate")
+    func overflowingPersistedCountsSaturate() throws {
+        let defaults = makeDefaults("WalkHistoryStoreTests")
+        let now = date(2026, 6, 18, 12)
+        let calendar = LocalDay.calendar
+        let today = calendar.startOfDay(for: now)
+        let records = [
+            StoredWalkDay(day: today, count: Int.max),
+            StoredWalkDay(day: today, count: 1),
+        ]
+        defaults.set(try JSONEncoder().encode(records), forKey: "walkHistory")
+
+        let store = WalkHistoryStore(defaults: defaults, now: now)
+        store.recordWalk(today, now: now)
+
+        #expect(store.walkCount(on: LocalDay(date: today)) == Int.max)
+    }
+
     @Test("persisted walk days rewrite deterministically")
     func persistedWalkDaysRewriteDeterministically() throws {
         let defaults = makeDefaults("WalkHistoryStoreTests")
