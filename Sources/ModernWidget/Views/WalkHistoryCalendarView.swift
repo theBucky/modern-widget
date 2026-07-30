@@ -18,7 +18,7 @@ struct WalkHistoryCalendarView: View {
 
 private enum CalendarLayout {
     static let cellSpacing: CGFloat = 3
-    static let cellHeight: CGFloat = 44
+    static let cellHeight: CGFloat = 40
     static let columns = Array(
         repeating: GridItem(.flexible(), spacing: cellSpacing),
         count: 7
@@ -126,23 +126,17 @@ private struct WalkDayCell: View {
     let display: WalkHistoryDayDisplay
 
     var body: some View {
-        ZStack {
-            if count > 0 {
-                Text("\(count)")
-                    .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.top, 8)
-            }
-
-            Text(day.day, format: .number.grouping(.never))
-                .font(.system(size: 8, weight: .regular).monospacedDigit())
+        VStack(spacing: 1) {
+            Text(day.day, format: .number)
+                .font(.system(size: 9, weight: .regular).monospacedDigit())
                 .foregroundStyle(labelColor)
-                .padding(.top, 4)
-                .padding(.trailing, 5)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+
+            Text("\(count)")
+                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .opacity(count > 0 ? 1 : 0)
         }
+        .frame(maxWidth: .infinity)
         .frame(height: CalendarLayout.cellHeight)
         .background(
             RoundedRectangle(cornerRadius: PanelLayout.cornerRadius, style: .continuous)
