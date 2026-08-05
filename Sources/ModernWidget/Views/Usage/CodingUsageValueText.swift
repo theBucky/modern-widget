@@ -11,9 +11,11 @@ struct CodingUsageValueText: View {
             Text(verbatim: "/")
                 .fontWeight(.regular)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(totals.costUSD, format: .codingUsageCost)
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
         }
+        .accessibilityElement(children: .combine)
     }
 }

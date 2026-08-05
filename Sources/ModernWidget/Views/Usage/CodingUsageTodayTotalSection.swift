@@ -25,6 +25,7 @@ struct CodingUsageTodayTotalSection: View {
         }
         .font(.caption.monospacedDigit().weight(.semibold))
         .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -63,7 +64,9 @@ private struct CodingUsageCostTrendGroup: View {
                 .padding(-costTextOverdraw)
         }
         .accessibilityRepresentation {
-            Text(summary.totals.costUSD, format: .codingUsageCost)
+            LabeledContent("Today's cost") {
+                Text(summary.totals.costUSD, format: .codingUsageCost)
+            }
         }
     }
 
@@ -92,6 +95,10 @@ private struct CodingUsageCostTrendGroup: View {
             .padding(.vertical, 2)
             .background(trendColor, in: Capsule(style: .continuous))
             .contentTransition(.numericText(value: summary.costTrend.percent))
+            .accessibilityLabel("Cost trend")
+            .accessibilityValue(
+                Text(summary.costTrend, format: .codingUsageCostTrendPercent)
+            )
     }
 
     private var trendColor: Color {

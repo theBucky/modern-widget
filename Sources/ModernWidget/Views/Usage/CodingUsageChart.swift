@@ -9,14 +9,29 @@ struct CodingUsageChart: View {
     @State private var selectedDate: Date?
 
     var body: some View {
+        let maxCost = days.lazy.map(\.totals.costUSD).max() ?? 0
+        let minimumVisibleCost = maxCost > 0 ? maxCost * 0.08 : 0.08
+        let chartUpperBound = isRedacted ? 1 : max(maxCost, minimumVisibleCost)
+
         Chart {
             ForEach(days, id: \.date) { day in
                 BarMark(
                     x: .value("Day", day.date, unit: .day),
-                    y: .value("Cost", barHeightValue(for: day)),
+                    y: .value(
+                        "Cost",
+                        barHeightValue(for: day, minimumVisibleCost: minimumVisibleCost)
+                    ),
                     width: .ratio(0.7)
                 )
                 .foregroundStyle(isRedacted ? Color.secondary.opacity(0.18) : barColor)
+                .accessibilityLabel(
+                    Text(day.date, format: .dateTime.month(.wide).day().year())
+                )
+                .accessibilityValue(
+                    day.totals.totalTokens.formatted(.codingUsageTokens)
+                        + ", "
+                        + day.totals.costUSD.formatted(.codingUsageCost)
+                )
             }
 
             if let selectedDay {
@@ -27,7 +42,7 @@ struct CodingUsageChart: View {
                         position: .top, spacing: 0,
                         overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
                     ) {
-                        chartHoverAnnotation(selectedDay)
+                        CodingUsageChartAnnotation(day: selectedDay)
                     }
                     .accessibilityHidden(true)
             }
@@ -37,6 +52,7 @@ struct CodingUsageChart: View {
         .chartLegend(.hidden)
         .chartXSelection(value: isRedacted ? .constant(nil) : $selectedDate)
         .chartYScale(domain: 0...chartUpperBound)
+        .accessibilityHidden(isRedacted)
         .frame(height: 58)
         .frame(maxWidth: .infinity)
     }
@@ -45,22 +61,10 @@ struct CodingUsageChart: View {
         redactionReasons.contains(.placeholder)
     }
 
-    private var maxCost: Double {
-        days.lazy.map(\.totals.costUSD).max() ?? 0
-    }
-
-    private var minimumVisibleCost: Double {
-        maxCost > 0 ? maxCost * 0.08 : 0.08
-    }
-
-    private var chartUpperBound: Double {
-        if isRedacted {
-            return 1
-        }
-        return max(maxCost, minimumVisibleCost)
-    }
-
-    private func barHeightValue(for day: CodingUsageDaySummary) -> Double {
+    private func barHeightValue(
+        for day: CodingUsageDaySummary,
+        minimumVisibleCost: Double
+    ) -> Double {
         if isRedacted {
             return 1
         }
@@ -76,10 +80,14 @@ struct CodingUsageChart: View {
         }
         return days.first { LocalDay.calendar.isDate($0.date, inSameDayAs: selectedDate) }
     }
+}
 
-    private func chartHoverAnnotation(_ day: CodingUsageDaySummary) -> some View {
+private struct CodingUsageChartAnnotation: View {
+    let day: CodingUsageDaySummary
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(day.date.formatted(.dateTime.month(.abbreviated).day()))
+            Text(day.date, format: .dateTime.month(.abbreviated).day())
                 .foregroundStyle(.primary)
             CodingUsageValueText(totals: day.totals)
         }

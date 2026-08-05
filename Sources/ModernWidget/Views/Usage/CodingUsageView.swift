@@ -13,8 +13,18 @@ struct CodingUsageView: View {
                 CodingUsageTodayTotalSection(summary: presentation.today)
             #endif
             Divider()
-            ForEach(presentation.sections) { section in
-                AgentUsageSection(section: section)
+            if presentation.sections.isEmpty, !presentation.isLoading {
+                ContentUnavailableView(
+                    "No Usage Data",
+                    systemImage: "chart.bar.xaxis",
+                    description: Text(
+                        "Install or enable Claude, Codex, or Pi to show local usage."
+                    )
+                )
+            } else {
+                ForEach(presentation.sections) { section in
+                    AgentUsageSection(section: section)
+                }
             }
         }
         .redacted(reason: presentation.isLoading ? .placeholder : [])
@@ -27,11 +37,10 @@ private struct AgentUsageSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PanelLayout.contentSpacing) {
             HStack(spacing: 6) {
-                Image(section.agent.logoResourceName)
+                Image(decorative: section.agent.logoResourceName)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 14, height: 14)
-                    .accessibilityHidden(true)
 
                 Text(section.agent.title)
                     .font(.subheadline.weight(.semibold))
@@ -71,6 +80,7 @@ private struct CodingUsageTable: View {
                     CodingUsageValueText(totals: total.totals)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+                .accessibilityElement(children: .combine)
             }
         }
         .font(.caption.monospacedDigit())

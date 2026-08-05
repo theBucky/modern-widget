@@ -128,7 +128,8 @@ private struct PanelTopBar: View {
             Button {
                 selection = .settings
             } label: {
-                Image(systemName: Pane.settings.systemImage)
+                Label(Pane.settings.title, systemImage: Pane.settings.systemImage)
+                    .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
             .help(Text(Pane.settings.title))
