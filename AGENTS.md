@@ -1,6 +1,17 @@
-# Project Context
+# Repository agent guide
 
-macOS menu bar app for break reminders, walk history, daily supplement tracking, and local AI usage summaries. SwiftPM, Swift 6.3, macOS 26.0+.
+## Engineering rules
+
+- Choose the simplest correct implementation for current requirements. Extract shared logic only when genuine duplication or a shared invariant demands the abstraction; keep one-off code inline.
+- Build in layers: start from the smallest version that works end to end, then add each capability on top of a working product.
+- Keep components modular, concerns separated, and code self-explanatory. Rewrite unclear logic rather than defending a design with comments.
+- Preserve runtime behavior during formatting, lint, typing, and test-structure changes.
+
+## Boundaries
+
+- Treat `refs/` as read-only reference material; do not edit or import from that directory.
+- Do not preserve backward compatibility. Remove obsolete paths directly; skip compatibility layers, fallbacks, and migrations.
+- Keep public pull requests, commits, generated files, and documentation free of private names, internal context, customer-derived data, and AI attribution.
 
 ## Structure
 
@@ -23,9 +34,7 @@ Tests/ModernWidgetTests/
   *.swift              reminder, walk history, supplement, retention tests
 ```
 
-Build artifacts in `.build/`, signed bundle in `dist/`.
-
-## Workflow
+## Scripts and commands
 
 1. `swift-format format --in-place --recursive Sources/ Tests/`
 2. `swift build`
@@ -33,9 +42,3 @@ Build artifacts in `.build/`, signed bundle in `dist/`.
 4. `script/build_and_run.sh`
 
 Script modes: `debug`, `logs`, `verify`, `telemetry`.
-
-Tests use Swift Testing.
-
-## Style
-
-4-space indent. `UpperCamelCase` types, `lowerCamelCase` members. Flat control flow, early returns. See `.swift-format`.
