@@ -20,6 +20,34 @@ enum CodingUsageRefreshInterval: Int, CaseIterable, Identifiable {
     }
 }
 
+private actor CodingUsageWorker {
+    private let loader: CodingUsageLoader
+
+    init(loader: CodingUsageLoader) {
+        self.loader = loader
+    }
+
+    func refresh(
+        scope: CodingUsageDateScope,
+        enabledAgents: Set<CodingUsageAgent>,
+        previousFingerprint: CodingUsageFingerprint?
+    ) -> (scan: CodingUsageScan, report: CodingUsageReport?)? {
+        guard !Task.isCancelled else {
+            return nil
+        }
+        let scan = loader.usageScan(scope: scope, enabledAgents: enabledAgents)
+        guard !Task.isCancelled else {
+            return nil
+        }
+        guard scan.fingerprint != previousFingerprint else {
+            return (scan, nil)
+        }
+
+        let report = loader.loadReport(scan: scan)
+        return Task.isCancelled ? nil : (scan, report)
+    }
+}
+
 @MainActor
 @Observable
 final class CodingUsageStore {
@@ -34,7 +62,7 @@ final class CodingUsageStore {
     @ObservationIgnored
     private let defaults: UserDefaults
     @ObservationIgnored
-    private let loader: CodingUsageLoader
+    private let worker: CodingUsageWorker
     @ObservationIgnored
     private var refreshTask: Task<Void, Never>?
     @ObservationIgnored
@@ -89,7 +117,7 @@ final class CodingUsageStore {
 
     init(defaults: UserDefaults = .standard, loader: CodingUsageLoader = CodingUsageLoader()) {
         self.defaults = defaults
-        self.loader = loader
+        self.worker = CodingUsageWorker(loader: loader)
         let storedEnabledAgents = Set(
             CodingUsageAgent.allCases.filter { agent in
                 defaults.object(forKey: DefaultsKey.enabledAgent(agent)) as? Bool ?? true
@@ -128,14 +156,19 @@ final class CodingUsageStore {
     }
 
     private func startRefreshTask() {
-        refreshTask = Task { [weak self] in
+        refreshTask = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
-                guard let self else {
-                    return
-                }
-                await self.reload()
+                let delay: Int
                 do {
-                    try await Task.sleep(for: .seconds(refreshInterval.rawValue))
+                    guard let self else {
+                        return
+                    }
+                    await self.reload()
+                    delay = refreshInterval.rawValue
+                }
+
+                do {
+                    try await Task.sleep(for: .seconds(delay))
                 } catch {
                     return
                 }
@@ -144,40 +177,34 @@ final class CodingUsageStore {
     }
 
     private func reload() async {
-        let loader = self.loader
         let scope = CodingUsageDateScope()
         let enabledAgents = self.enabledAgents
-        let scan = await Task.detached(priority: .utility) {
-            loader.usageScan(scope: scope, enabledAgents: enabledAgents)
-        }.value
-
-        if Task.isCancelled {
+        guard
+            let result = await worker.refresh(
+                scope: scope,
+                enabledAgents: enabledAgents,
+                previousFingerprint: lastFingerprint
+            ),
+            !Task.isCancelled
+        else {
             return
         }
+
+        let scan = result.scan
         if installedAgents != scan.installedAgents {
             installedAgents = scan.installedAgents
         }
-        if scan.fingerprint == lastFingerprint {
+        guard let report = result.report else {
             return
         }
-
         let activeAgents = enabledAgents.intersection(scan.installedAgents)
-        let result = await Task.detached(priority: .utility) {
-            let report = loader.loadReport(scan: scan)
-            let presentation = CodingUsagePresentation(
-                report: report,
-                scope: scan.scope,
-                activeAgents: activeAgents
-            )
-            return (report: report, presentation: presentation)
-        }.value
-
-        if Task.isCancelled {
-            return
-        }
         lastFingerprint = scan.fingerprint
         self.scope = scan.scope
-        self.report = result.report
-        self.presentation = result.presentation
+        self.report = report
+        self.presentation = CodingUsagePresentation(
+            report: report,
+            scope: scan.scope,
+            activeAgents: activeAgents
+        )
     }
 }

@@ -166,9 +166,17 @@ final class ReminderEngine {
 
         reminderTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                guard let self else { return }
-                guard let delay = state.nextReminderDelay(lastReminderAt: lastReminderAt, now: .now)
-                else { return }
+                let delay: TimeInterval
+                do {
+                    guard let self else { return }
+                    guard
+                        let nextDelay = state.nextReminderDelay(
+                            lastReminderAt: lastReminderAt,
+                            now: .now
+                        )
+                    else { return }
+                    delay = nextDelay
+                }
 
                 if delay > 0 {
                     do {
@@ -178,7 +186,7 @@ final class ReminderEngine {
                     }
                 }
 
-                await sendReminderIfDue(now: .now)
+                await self?.sendReminderIfDue(now: .now)
             }
         }
     }
