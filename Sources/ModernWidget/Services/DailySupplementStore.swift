@@ -16,14 +16,17 @@ final class DailySupplementStore {
 
     var isTakenToday: Bool {
         get { isTaken(on: LocalDay(date: .now)) }
-        set { setTaken(newValue) }
+        set {
+            let now = Date.now
+            setTaken(newValue, on: LocalDay(date: now), now: now)
+        }
     }
 
     func isTaken(on day: LocalDay) -> Bool {
         journal.counts[day, default: 0] > 0
     }
 
-    func setTaken(_ isTaken: Bool, on date: Date = .now, now: Date = .now) {
-        journal.setCount(isTaken ? 1 : 0, on: LocalDay(date: date), now: now)
+    func setTaken(_ isTaken: Bool, on day: LocalDay, now: Date) {
+        journal.setCount(isTaken ? 1 : 0, on: day, now: now)
     }
 }

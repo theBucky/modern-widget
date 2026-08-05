@@ -4,14 +4,29 @@ struct WalkHistoryCalendarView: View {
     @State private var visibleMonth = HistoryRetention.currentMonth()
 
     var body: some View {
-        // Rebuilt per evaluation on purpose: caching the grid desyncs it from the
-        // weekday header when the system locale or first weekday changes.
-        let month = WalkHistoryMonth(containing: visibleMonth)
+        TimelineView(.everyMinute) { context in
+            let month = WalkHistoryMonth(containing: visibleMonth)
+            let earliestMonth = HistoryRetention.earliestMonth(now: context.date)
+            let currentMonth = HistoryRetention.currentMonth(now: context.date)
 
-        VStack(spacing: PanelLayout.sectionSpacing) {
-            MonthNavigationHeader(visibleMonth: $visibleMonth)
-            WeekdayHeader()
-            WalkDaysGrid(cells: month.dayCells)
+            VStack(spacing: PanelLayout.sectionSpacing) {
+                MonthNavigationHeader(
+                    visibleMonth: $visibleMonth,
+                    earliestMonth: earliestMonth,
+                    currentMonth: currentMonth
+                )
+                WeekdayHeader()
+                WalkDaysGrid(
+                    cells: month.dayCells,
+                    today: LocalDay(date: context.date)
+                )
+            }
+            .onChange(of: currentMonth, initial: true) {
+                let clampedMonth = min(max(visibleMonth, earliestMonth), currentMonth)
+                if clampedMonth != visibleMonth {
+                    visibleMonth = clampedMonth
+                }
+            }
         }
     }
 }
@@ -27,6 +42,8 @@ private enum CalendarLayout {
 
 private struct MonthNavigationHeader: View {
     @Binding var visibleMonth: Date
+    let earliestMonth: Date
+    let currentMonth: Date
 
     private static let chevronButtonSize: CGFloat = 22
 
@@ -60,15 +77,14 @@ private struct MonthNavigationHeader: View {
         }
         .buttonStyle(.borderless)
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.4)
     }
 
     private var canGoBack: Bool {
-        visibleMonth > HistoryRetention.earliestMonth()
+        visibleMonth > earliestMonth
     }
 
     private var canGoForward: Bool {
-        visibleMonth < HistoryRetention.currentMonth()
+        visibleMonth < currentMonth
     }
 }
 
@@ -80,6 +96,7 @@ private struct WeekdayHeader: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
+                    .accessibilityLabel(weekday.name)
             }
         }
     }
@@ -87,13 +104,12 @@ private struct WeekdayHeader: View {
 
 private struct WalkDaysGrid: View {
     let cells: [WalkHistoryMonth.DayCell]
+    let today: LocalDay
 
     @Environment(WalkHistoryStore.self) private var walkHistoryStore
     @Environment(DailySupplementStore.self) private var dailySupplementStore
 
     var body: some View {
-        let today = LocalDay(date: .now)
-
         LazyVGrid(columns: CalendarLayout.columns, spacing: CalendarLayout.cellSpacing) {
             ForEach(cells) { cell in
                 // Single-root row: a top-level if/else would make the ForEach row shape
@@ -139,9 +155,25 @@ private struct WalkDayCell: View {
         .frame(maxWidth: .infinity)
         .frame(height: CalendarLayout.cellHeight)
         .background(
-            RoundedRectangle(cornerRadius: PanelLayout.cornerRadius, style: .continuous)
-                .fill(fill)
+            fill,
+            in: .rect(cornerRadius: PanelLayout.cornerRadius, style: .continuous)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Text(day.startDate, format: .dateTime.month(.wide).day().year())
+        )
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: Text {
+        switch display.label {
+        case .future:
+            return Text("Future date, walk count: \(count)")
+        case .supplementTaken:
+            return Text("Supplement taken, walk count: \(count)")
+        case .supplementPending:
+            return Text("Supplement not taken, walk count: \(count)")
+        }
     }
 
     private var labelColor: Color {

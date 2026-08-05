@@ -36,6 +36,10 @@ struct LocalDay: Comparable, Hashable, Codable {
         self = validDay
     }
 
+    var startDate: Date {
+        Self.calendar.date(from: DateComponents(year: year, month: month, day: day))!
+    }
+
     static func < (lhs: LocalDay, rhs: LocalDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }

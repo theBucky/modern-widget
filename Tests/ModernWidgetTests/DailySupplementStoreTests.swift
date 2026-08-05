@@ -17,7 +17,7 @@ struct DailySupplementStoreTests {
         let evening = calendar.date(byAdding: .hour, value: 21, to: today)!
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
 
-        store.setTaken(true, on: evening, now: now)
+        store.setTaken(true, on: LocalDay(date: evening), now: now)
 
         let reloadedStore = DailySupplementStore(defaults: defaults, now: now)
         #expect(reloadedStore.isTaken(on: LocalDay(date: morning)))
@@ -34,9 +34,9 @@ struct DailySupplementStoreTests {
         let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
 
-        store.setTaken(true, on: today, now: now)
-        store.setTaken(true, on: tomorrow, now: now)
-        store.setTaken(false, on: today, now: now)
+        store.setTaken(true, on: LocalDay(date: today), now: now)
+        store.setTaken(true, on: LocalDay(date: tomorrow), now: now)
+        store.setTaken(false, on: LocalDay(date: today), now: now)
 
         #expect(!store.isTaken(on: LocalDay(date: today)))
         #expect(store.isTaken(on: LocalDay(date: tomorrow)))
@@ -51,8 +51,8 @@ struct DailySupplementStoreTests {
         let today = calendar.startOfDay(for: now)
         let expiredDay = calendar.date(byAdding: .month, value: -4, to: today)!
 
-        store.setTaken(true, on: expiredDay, now: now)
-        store.setTaken(true, on: today, now: now)
+        store.setTaken(true, on: LocalDay(date: expiredDay), now: now)
+        store.setTaken(true, on: LocalDay(date: today), now: now)
 
         let reloadedStore = DailySupplementStore(defaults: defaults, now: now)
         #expect(!reloadedStore.isTaken(on: LocalDay(date: expiredDay)))

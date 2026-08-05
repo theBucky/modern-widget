@@ -16,8 +16,8 @@ struct WalkHistoryStoreTests {
         let morning = calendar.date(byAdding: .hour, value: 9, to: today)!
         let evening = calendar.date(byAdding: .hour, value: 18, to: today)!
 
-        store.recordWalk(morning, now: now)
-        store.recordWalk(evening, now: now)
+        store.recordWalk(on: LocalDay(date: morning), now: now)
+        store.recordWalk(on: LocalDay(date: evening), now: now)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
         #expect(store.walkCount(on: LocalDay(date: today)) == 2)
@@ -33,8 +33,8 @@ struct WalkHistoryStoreTests {
         let today = calendar.startOfDay(for: now)
         let expiredDay = calendar.date(byAdding: .month, value: -4, to: today)!
 
-        store.recordWalk(expiredDay, now: now)
-        store.recordWalk(today, now: now)
+        store.recordWalk(on: LocalDay(date: expiredDay), now: now)
+        store.recordWalk(on: LocalDay(date: today), now: now)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
         #expect(reloadedStore.walkCount(on: LocalDay(date: expiredDay)) == 0)
@@ -50,8 +50,8 @@ struct WalkHistoryStoreTests {
         let cutoffDay = HistoryRetention.earliestMonth(now: now)
         let dayBeforeCutoff = calendar.date(byAdding: .day, value: -1, to: cutoffDay)!
 
-        store.recordWalk(cutoffDay, now: now)
-        store.recordWalk(dayBeforeCutoff, now: now)
+        store.recordWalk(on: LocalDay(date: cutoffDay), now: now)
+        store.recordWalk(on: LocalDay(date: dayBeforeCutoff), now: now)
 
         let reloadedStore = WalkHistoryStore(defaults: defaults, now: now)
         #expect(reloadedStore.walkCount(on: LocalDay(date: cutoffDay)) == 1)
@@ -107,7 +107,7 @@ struct WalkHistoryStoreTests {
         defaults.set(try JSONEncoder().encode(records), forKey: "walkHistory")
 
         let store = WalkHistoryStore(defaults: defaults, now: now)
-        store.recordWalk(today, now: now)
+        store.recordWalk(on: LocalDay(date: today), now: now)
 
         #expect(store.walkCount(on: LocalDay(date: today)) == Int.max)
     }

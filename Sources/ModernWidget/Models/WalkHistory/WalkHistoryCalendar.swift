@@ -43,13 +43,19 @@ struct WalkHistoryMonth {
     struct WeekdayLabel: Identifiable {
         let id: Int
         let symbol: String
+        let name: String
     }
 
     static func weekdayLabels(calendar: Calendar = LocalDay.calendar) -> [WeekdayLabel] {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols
+        let names = calendar.standaloneWeekdaySymbols
         return (0..<7).map { column in
             let weekday = (calendar.firstWeekday - 1 + column) % 7
-            return WeekdayLabel(id: weekday + 1, symbol: symbols[weekday])
+            return WeekdayLabel(
+                id: weekday + 1,
+                symbol: symbols[weekday],
+                name: names[weekday]
+            )
         }
     }
 }

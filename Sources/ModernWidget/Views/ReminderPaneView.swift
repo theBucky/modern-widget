@@ -104,7 +104,7 @@ private struct ReminderActionsSection: View {
             Button {
                 let now = Date.now
                 engine.completeBreak(at: now)
-                walkHistoryStore.recordWalk(now)
+                walkHistoryStore.recordWalk(on: LocalDay(date: now), now: now)
             } label: {
                 actionLabel("Complete break", systemImage: "arrow.counterclockwise")
             }
@@ -127,11 +127,13 @@ private struct DailySupplementToggle: View {
     @Environment(DailySupplementStore.self) private var store
 
     var body: some View {
-        @Bindable var store = store
+        TimelineView(.everyMinute) { _ in
+            @Bindable var store = store
 
-        Toggle("daily supplement taken", isOn: $store.isTakenToday)
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Toggle("Daily supplement taken", isOn: $store.isTakenToday)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
