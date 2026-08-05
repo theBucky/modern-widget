@@ -42,3 +42,7 @@ Tests/ModernWidgetTests/
 4. `script/build_and_run.sh`
 
 Script modes: `debug`, `logs`, `verify`, `telemetry`.
+
+## UI decisions
+
+- Default to `SwiftUI`. Use `AppKit` only when `SwiftUI` cannot meet a requirement cleanly or the required glue would outweigh the benefit.
