@@ -14,8 +14,6 @@ import Sparkle
 @MainActor
 @Observable
 final class UpdaterManager: NSObject {
-    static let shared = UpdaterManager()
-
     private(set) var canCheckForUpdates = false
     private(set) var isUpdateAvailable = false
 
@@ -28,14 +26,14 @@ final class UpdaterManager: NSObject {
     @ObservationIgnored
     private var activationPolicyBeforeUpdateUI: NSApplication.ActivationPolicy?
 
-    private override init() {
+    override init() {
         super.init()
 
         guard usesSparkle else {
             return
         }
 
-        // The singleton lives for the app's lifetime, so the task is never cancelled.
+        // The app delegate owns this manager for the process lifetime.
         let updater = controller.updater
         Task { @MainActor [weak self] in
             for await canCheck in updater.publisher(for: \.canCheckForUpdates).values {

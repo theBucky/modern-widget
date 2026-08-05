@@ -9,6 +9,7 @@ struct ModernWidgetApp: App {
     @State private var walkHistoryStore = WalkHistoryStore()
     @State private var dailySupplementStore = DailySupplementStore()
     @State private var usageStore = CodingUsageStore()
+    @State private var launchAtLoginManager = LaunchAtLoginManager()
 
     var body: some Scene {
         MenuBarExtra {
@@ -17,8 +18,8 @@ struct ModernWidgetApp: App {
                 .environment(walkHistoryStore)
                 .environment(dailySupplementStore)
                 .environment(usageStore)
-                .environment(UpdaterManager.shared)
-                .environment(LaunchAtLoginManager.shared)
+                .environment(appDelegate.updaterManager)
+                .environment(launchAtLoginManager)
         } label: {
             MenuBarIconView(engine: engine)
                 .accessibilityLabel("ModernWidget")

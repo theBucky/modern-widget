@@ -4,8 +4,6 @@ import ServiceManagement
 @MainActor
 @Observable
 final class LaunchAtLoginManager {
-    static let shared = LaunchAtLoginManager()
-
     /// SMAppService needs a signed bundle in a stable location; debug builds run out
     /// of `.build`, so registration is unavailable there.
     #if DEBUG
@@ -16,7 +14,7 @@ final class LaunchAtLoginManager {
 
     private var status = false
 
-    private init() {
+    init() {
         refresh()
     }
 

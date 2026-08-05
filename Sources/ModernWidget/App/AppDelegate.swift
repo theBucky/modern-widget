@@ -2,7 +2,9 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        UpdaterManager.shared.start()
+    let updaterManager = UpdaterManager()
+
+    func applicationDidFinishLaunching(_: Notification) {
+        updaterManager.start()
     }
 }
